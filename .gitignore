@@ -1,0 +1,44 @@
+# 编译产物
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go 测试与覆盖率
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Go 工作区文件
+go.work
+go.work.sum
+
+# 依赖（默认不提交，需要离线构建时由 make vendor 生成）
+/vendor/
+
+# 本地数据库
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# 日志
+*.log
+
+# 本地环境变量与密钥
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# 编辑器与 IDE
+.idea/
+*.swp
+*.swo
+*~
