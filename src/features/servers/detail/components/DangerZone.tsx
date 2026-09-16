@@ -53,7 +53,7 @@ export function DangerZone({ server, onDelete, deleting, onToggleEnabled, enabli
           <div>
             <p className="text-[13px] font-medium text-error-strong">删除 Server</p>
             <p className="form-hint mt-0.5">
-              将移除全部 {formatInt(server.toolCount)} 个工具，并连带删除其密钥池（ON DELETE CASCADE）
+              将移除全部 {formatInt(server.toolCount)} 个工具，并连带删除其密钥池
             </p>
           </div>
           <Button variant="destructive" size="sm" onClick={() => setOpen(true)}>

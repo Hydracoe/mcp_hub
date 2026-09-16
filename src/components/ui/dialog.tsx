@@ -97,14 +97,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/**
- * 弹框正文。
- *
- * 收在这里的原因：之前每个弹框自己写一遍
- * `space-y-4 overflow-y-auto px-5 py-4`，抄出三种 `space-y` 和
- * `p-5` / `p-6` 两种内边距 —— 同一个应用里的弹框正文间距各不相同。
- * `min-h-0 flex-1` 是为了让页脚钉在底部、正文自己滚。
- */
+/** 弹框正文：统一 space-y-4 + 可滚；min-h-0 flex-1 让页脚钉底、正文自滚。 */
 function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -115,13 +108,7 @@ function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/**
- * 弹框页脚。
- *
- * 默认「次要操作靠左、主操作靠右」—— 三个向导弹框早就这么做了，
- * 其余弹框是 `justify-end`，同一类东西两种排法。
- * 只有一个按钮时传 `className="justify-end"`。
- */
+/** 弹框页脚。默认次要操作靠左、主操作靠右；只有单按钮时传 `className="justify-end"`。 */
 function DialogFooter({
   className,
   showCloseButton = false,

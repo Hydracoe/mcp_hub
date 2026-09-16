@@ -2,18 +2,19 @@ import { useMemo } from 'react'
 
 import { Combobox, type ComboboxOption } from '@/components/common/Combobox'
 import { useServers } from '@/lib/api/queries'
+import { cn } from '@/lib/utils'
 
 interface ServerPickerProps {
   value: string | null
   onChange: (id: string) => void
+  className?: string
 }
 
-/** 选择要管理哪个 server 的密钥池。结果由上层写回 URL（?server=）。 */
-export function ServerPicker({ value, onChange }: ServerPickerProps) {
+/** 选要管哪个 server 的密钥池，结果由上层写回 URL（?server=）。 */
+export function ServerPicker({ value, onChange, className }: ServerPickerProps) {
   const { data: servers, isLoading } = useServers()
 
-  /* Server 数量是外部数据，可能几十上百 —— 走带搜索的 Combobox，
-     展示名放右侧灰字，搜索时 key 与 name 都参与匹配。 */
+  /* Server 可能几十上百个，走带搜索的下拉，key 与 name 都参与匹配。 */
   const options = useMemo<ComboboxOption[]>(
     () =>
       (servers?.items ?? []).map((s) => ({
@@ -29,7 +30,7 @@ export function ServerPicker({ value, onChange }: ServerPickerProps) {
       value={value}
       onChange={onChange}
       options={options}
-      className="w-[280px]"
+      className={cn('w-70', className)}
       placeholder={isLoading ? '加载中…' : '选择 Server'}
       searchPlaceholder="搜索 key 或名称…"
       emptyText="没有匹配的 Server"

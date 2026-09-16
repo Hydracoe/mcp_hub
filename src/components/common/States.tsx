@@ -75,13 +75,8 @@ export function ErrorState({ title = '加载失败', error, onRetry, className }
 
 /* ────────────────────────────── 加载 ────────────────────────────── */
 
-/**
- * 表格的加载骨架不在这里 —— 它是 `TableSkeletonRows`（`ui/table.tsx`），
- * 由 `TableFrame` 渲染在真实表头下面。
- *
- * 之前这里有一个 div 拼的假表（`py-3` / `py-3.5`），行高与真实行对不上，
- * 加载完整页会耸一下；而且它自己不带表头，空表看起来像「列都没了」。
- */
+/** 表格加载骨架不在这里，见 `ui/table.tsx` 的 `TableSkeletonRows`：
+ *  它由 TableFrame 渲染在真实表头下面，行高与真实行一致。 */
 
 /** 指标卡骨架。 */
 export function CardSkeleton({ count = 4 }: { count?: number }) {
@@ -102,4 +97,24 @@ export function CardSkeleton({ count = 4 }: { count?: number }) {
 /** 行内加载：按钮里的转圈。 */
 export function Spinner({ size = 14, className }: { size?: number; className?: string }) {
   return <Icon name="refresh-cw" size={size} className={cn('animate-spin', className)} />
+}
+
+/** 路由级懒加载占位：只复刻工具栏与内容区的外框尺寸，不画假页面骨架——页面形状各异，猜错反而更晃眼。 */
+export function PageSkeleton() {
+  return (
+    <>
+      <div className="app-toolbar">
+        <Skeleton className="h-4 w-32" />
+      </div>
+      <div className="app-content">
+        <div className="ui-panel p-6">
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="mt-5 h-9 w-full max-w-md" />
+          <Skeleton className="mt-3 h-9 w-full" />
+          <Skeleton className="mt-3 h-9 w-full" />
+          <Skeleton className="mt-3 h-9 w-3/4" />
+        </div>
+      </div>
+    </>
+  )
 }

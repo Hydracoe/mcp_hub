@@ -21,11 +21,8 @@ interface Props {
   onOpenChange: (open: boolean) => void
 }
 
-/**
- * 密钥管理弹框：只读摘要 + 每把密钥的状态/指纹/用量。
- * 新增/编辑密钥不在本弹框（那是密钥池页职责），这里只给入口链接。
- * ⚠ 设计稿原版弹窗常驻 DOM（display:none），此处改 Radix 受控 open。
- */
+/** 密钥管理弹框：只读摘要 + 每把密钥的状态/指纹/用量。
+ *  新增/编辑走密钥池页，这里只给入口链接。 */
 export function ServerCredentialsDialog({ server, open, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

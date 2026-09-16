@@ -12,7 +12,7 @@ export interface TagInputProps {
   placeholder?: string
 }
 
-/** 可增删的标签输入（设计稿的「tags」chip 编辑）。 */
+/** 可增删的标签输入。 */
 export function TagInput({ value, onChange, placeholder = '添加标签后回车' }: TagInputProps) {
   const [draft, setDraft] = useState('')
 
@@ -75,12 +75,7 @@ export interface KeyValueEditorProps {
   addLabel?: string
 }
 
-/**
- * 键值对编辑器：用于远程传输的 Headers 与 stdio 的 Env。
- *
- * ⚠ 设计稿原版把「提交 *** 表示沿用原值」写死在每行 hint 里，但没约束
- * 实现：这里回显值若仍是 `***` 视为未修改，保存时不回传给后端（见 buildServerRequest）。
- */
+/** 键值对编辑器：远程 Headers 与 stdio Env 共用。回显值若仍是 *** 视为未改，保存不回传（见 buildServerRequest）。 */
 export function KeyValueEditor({
   rows,
   onChange,

@@ -24,14 +24,8 @@ interface CategoriesTableProps {
 
 const COLS = ['中文名', '英文名', '描述', 'Server', '工具', '操作']
 
-/**
- * 分类列表。
- *
- * 一列「英文名」承担了两件事：它既是展示字段，也是对外工具名的
- * 第一段。存量分类可能没有英文名（历史数据按中文名折不出来），
- * 这类行就地标出来 —— 否则用户看到工具名前缀是随机 id，
- * 只会以为是后端在乱起名。
- */
+/** 分类列表。「英文名」（slug）用于列表与筛选，不进对外工具名。
+ *  存量分类可能没有英文名，这类行要就地标出——筛选参数里它会缺位。 */
 export function CategoriesTable({ items, frame, mutations, onEdit }: CategoriesTableProps) {
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null)
 
@@ -39,7 +33,8 @@ export function CategoriesTable({ items, frame, mutations, onEdit }: CategoriesT
     if (!deleteTarget) return
     try {
       await mutations.remove.mutateAsync(deleteTarget.id)
-      toastSuccess('已删除分类', '原属该分类的 Server 已转为未分类')
+      // 能走到这里说明分类下已无 Server（有 Server 后端会拒绝删除）。
+      toastSuccess('已删除分类')
     } catch (e) {
       toastError(e)
     } finally {
@@ -70,7 +65,7 @@ export function CategoriesTable({ items, frame, mutations, onEdit }: CategoriesT
               ) : (
                 <span
                   className="inline-flex items-center gap-1 cell-sub text-warning-strong"
-                  title="按中文名折不出英文名，工具名前缀暂时回退成分类 id"
+                  title="未设英文名（slug）：检索与按分类筛选时会缺这一段标识"
                 >
                   <Icon name="alert-triangle" size={12} />
                   未设英文名
@@ -112,15 +107,14 @@ export function CategoriesTable({ items, frame, mutations, onEdit }: CategoriesT
         title={`删除分类「${deleteTarget?.name ?? ''}」`}
         description={
           <>
-            分类本身会被删除。
             {deleteTarget && (deleteTarget.serverCount ?? 0) > 0 ? (
               <>
-                {' '}
-                属于它的 <b>{deleteTarget.serverCount} 个 Server</b> 会转为「未分类」，工具名前缀随之
-                变成 <code className="code-chip">uncategorized</code> —— 正在按旧名调用这些工具的
-                AI 客户端会找不到它们。
+                该分类下还有 <b>{deleteTarget.serverCount} 个 Server</b>
+                ，删除会被拒绝（409）。请先把这些 Server 移到其他分类或删除，再回来删分类。
               </>
-            ) : null}
+            ) : (
+              <>该分类下没有 Server，可以安全删除。分类不进对外工具名，删除不影响任何工具名。</>
+            )}
             {' '}此操作不可撤销。
           </>
         }

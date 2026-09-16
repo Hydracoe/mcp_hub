@@ -1,12 +1,8 @@
-import { Badge } from '@/components/ui/badge'
-import { KeyValueGrid } from '@/components/common/KeyValue'
+import { DotStat, KeyValueGrid } from '@/components/common/KeyValue'
 import { formatDateTime, formatInt, formatUptime } from '@/lib/format'
 import type { OverviewResponse } from '@/lib/api/types'
 
-/**
- * 网关总览：运行时信息。
- * 统一换成语义 token（ui-card / code-chip）。
- */
+/** 网关总览：运行时信息。 */
 export function RuntimeOverview({ overview }: { overview: OverviewResponse }) {
   const { servers, uptimeSeconds, builtAt, ready, endpoints } = overview
   const entries = Object.entries(endpoints ?? {})
@@ -24,8 +20,9 @@ export function RuntimeOverview({ overview }: { overview: OverviewResponse }) {
             { key: 'built', label: '构建时间', value: formatDateTime(builtAt) },
             {
               key: 'ready',
-              label: '就绪',
-              value: ready ? <Badge variant="success">Ready</Badge> : <Badge variant="neutral">未就绪</Badge>,
+              label: '状态',
+              /* 色点+文字而不用徽标：徽标的内边距会让文字相对表头缩进，四列值不齐。 */
+              value: ready ? <DotStat tone="success" label="Ready" /> : <DotStat tone="neutral" label="未就绪" />,
             },
             { key: 'servers', label: 'Server 数', value: formatInt(servers.total) },
           ]}

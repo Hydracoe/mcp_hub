@@ -11,12 +11,8 @@ import { ErrorKindBadge } from '@/components/common/StatusBadge'
 import { formatDuration, formatRelative } from '@/lib/format'
 import type { TestAllResponse } from '@/lib/api/types'
 
-/**
- * 最近一次全量测试结果面板。
- * 缺口 B4：后端不保存报告，useTestAllServers 把结果塞进
- * queryKey ['servers','test-all'] 的内存里，这里 enabled:false 读回来。
- * ⚠ 设计稿原版没有这个面板（全量测试只有按钮没有结果呈现），此处补齐。
- */
+/** 最近一次全量测试结果面板。后端不保存报告，`useTestAllServers` 把结果放在
+ *  queryKey ['servers','test-all'] 的内存里，这里 enabled:false 读回来。 */
 export function TestAllPanel() {
   const { data } = useQuery<TestAllResponse>({ queryKey: ['servers', 'test-all'], enabled: false })
   const [open, setOpen] = useState(true)

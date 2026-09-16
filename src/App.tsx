@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from 'react-router-dom'
 
@@ -6,7 +5,6 @@ import { AuthGate } from '@/features/auth/AuthGate'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { router } from './router'
-import { useUiStore, applyTheme, watchSystemTheme } from '@/stores/ui-store'
 import { ApiError } from '@/lib/api/client'
 
 const queryClient = new QueryClient({
@@ -24,22 +22,10 @@ const queryClient = new QueryClient({
   },
 })
 
-/** 主题落到 <html>，并跟随系统变化（mode = system 时）。 */
-function ThemeBridge() {
-  const theme = useUiStore((s) => s.theme)
-  useEffect(() => {
-    applyTheme(theme)
-    if (theme !== 'system') return
-    return watchSystemTheme(() => useUiStore.getState().theme)
-  }, [theme])
-  return null
-}
-
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={300}>
-        <ThemeBridge />
         <AuthGate>
           <RouterProvider router={router} />
         </AuthGate>

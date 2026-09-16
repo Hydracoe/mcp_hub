@@ -1,13 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import type { CredentialState, DisabledKind, ServerStatus } from '@/lib/api/types'
 
-/**
- * 状态徽标。
- *
- * 语义色只在这一个文件里与文案挂钩。设计稿把
- * `background:color-mix(in srgb, var(--state-success) 12%, transparent)`
- * 抄到了 30 多处、透明度还各不相同（12% / 15%），改一次配色要翻遍全站。
- */
+/** 状态徽标。语义色集中在这一个文件里与文案挂钩，改配色只动这里。 */
 
 const SERVER_STATUS: Record<ServerStatus, { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }> = {
   healthy: { label: 'healthy', variant: 'success' },
@@ -21,11 +15,8 @@ export function ServerStatusBadge({ status }: { status: ServerStatus }) {
   return <Badge variant={cfg.variant}>{cfg.label}</Badge>
 }
 
-/**
- * 「停用中」与 `status` 是两回事：status 说的是下游健不健康，
- * draining 说的是网关打算怎么处置它。混在一起会让用户以为
- * 点了停用就当场断干净了，而实际上还有调用在收尾。
- */
+/** 「停用中」与 `status` 是两回事：status 说的是下游健不健康，
+ *  draining 说的是网关打算怎么处置它——停用后还有调用在收尾。 */
 export function DrainingBadge({ inflight }: { inflight?: number }) {
   return (
     <Badge variant="neutral">
@@ -56,8 +47,7 @@ export function CredentialStateBadge({
 }) {
   if (!enabled && state !== 'disabled') return <Badge variant="neutral">已停用</Badge>
   const cfg = CRED_STATE[state] ?? CRED_STATE.active
-  // 弃用时把原因直接写进徽标：用户要的是「为什么这把不能用了」，
-  // 而不是「它不能用了」。
+  // 弃用时把原因直接写进徽标：用户要的是「为什么不能用了」，而非「它不能用了」。
   return <Badge variant={cfg.variant}>{state === 'disabled' && disabledKind ? disabledKind : cfg.label}</Badge>
 }
 
@@ -112,10 +102,14 @@ export function KeyEventBadge({ type }: { type: 'KEY_COOLDOWN' | 'KEY_DISABLED' 
   )
 }
 
-/** 传输类型标签。等宽小片，列表页用。 */
+/** 传输类型标签。等宽小胶囊；超长（streamable_http）在窄列里截断，悬停看全文，
+ *  绝不溢出压到相邻的状态列。 */
 export function TransportTag({ transport }: { transport: string }) {
   return (
-    <span className="inline-block rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+    <span
+      title={transport}
+      className="inline-block max-w-full truncate rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground"
+    >
       {transport}
     </span>
   )

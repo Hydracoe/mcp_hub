@@ -15,7 +15,7 @@ import {
 import type { AuthMode } from '@/lib/api/types'
 
 import { KeyValueEditor } from './FormBits'
-import type { ServerFormState } from '../ServerForm'
+import type { ServerFormState } from '../server-form-model'
 
 export interface TransportFieldsProps {
   form: ServerFormState
@@ -48,7 +48,6 @@ export function TransportFields({ form, setForm }: TransportFieldsProps) {
             onChange={(e) => update({ argsText: e.target.value })}
             placeholder={'-y\n@modelcontextprotocol/server-filesystem\n/tmp'}
           />
-          {/* ⚠ 设计稿原版 Args 用单行输入；这里改为每行一个参数，保存为 JSON 数组 */}
           <p className="form-hint">每行一个参数，保存为 JSON 数组</p>
         </div>
         <div>
@@ -122,7 +121,6 @@ export function TransportFields({ form, setForm }: TransportFieldsProps) {
             valuePlaceholder="Bearer sk-…"
             addLabel="添加 Header"
           />
-          {/* ⚠ 设计稿原版把「提交 *** 表示沿用原值」只写在 hint 里；回显值仍是 *** 时保存不回传，见 buildServerRequest */}
           <p className="form-hint">
             <Icon name="info" size={13} className="mr-1 inline-block align-[-2px]" />
             未改的 Header 值回显为 <span className="font-mono">***</span>，保存时沿用原值，不会把

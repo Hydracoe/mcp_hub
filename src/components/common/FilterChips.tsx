@@ -12,11 +12,7 @@ export interface FilterChipsProps<T extends string> {
   value: T
   options: readonly FilterChipOption<T>[]
   onChange: (value: T) => void
-  /**
-   * `sm`（默认）用于列表页工具条这类纯 chip 行；`md` 把高度顶到 32px，
-   * 用于和 `.ui-select-trigger` / `.filter-input` 同排的表单条件行 ——
-   * 否则同一行里 chip 26px、下拉 32px，基线看着就散了。
-   */
+  /** `sm`（默认）用于列表页工具条；`md` 高度顶到 32px，用于和 Select/输入同排的表单条件行。 */
   size?: 'sm' | 'md'
   className?: string
 }
@@ -28,12 +24,7 @@ const toneColor: Record<NonNullable<FilterChipOption<string>['tone']>, string> =
   neutral: 'var(--icon-muted)',
 }
 
-/**
- * 分段式筛选 chip。
- *
- * 设计稿原版靠 JS 逐个 `el.style.background = ...` 上色，
- * 一旦重绘就丢状态。这里由 `value` 单向决定外观。
- */
+/** 分段式筛选 chip。外观由 `value` 单向决定。 */
 export function FilterChips<T extends string>({
   value,
   options,

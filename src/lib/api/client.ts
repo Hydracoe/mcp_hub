@@ -1,11 +1,6 @@
 import type { ApiErrorCode } from './types'
 
-/**
- * 统一错误体 `{code, error}` 的前端表示。
- *
- * 界面按 `code` 分支（`unauthorized` 弹解锁、`not_found` 提示已删除、
- * `key_taken` 定位到 key 字段），不要按 `message` 文案匹配。
- */
+/** 统一错误体 `{code, error}` 的前端表示。界面按 `code` 分支（unauthorized/not_found/key_taken…），别按 message 文案匹配。 */
 export class ApiError extends Error {
   readonly status: number
   readonly code: ApiErrorCode | string
@@ -71,11 +66,7 @@ function buildUrl(path: string, query?: RequestOptions['query']) {
   return qs ? `${path}?${qs}` : path
 }
 
-/**
- * 发一次管理接口请求。
- *
- * 时间既接受 Unix 毫秒也接受 RFC3339，这里统一发毫秒。
- */
+/** 发一次管理接口请求，统一走 fetch 封装（鉴权头、JSON、错误体归一）。 */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', query, body, signal } = options
   const headers: Record<string, string> = { Accept: 'application/json' }

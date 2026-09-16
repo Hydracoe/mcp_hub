@@ -25,17 +25,8 @@ interface CredentialFormDialogProps {
   mutations: Mutations
 }
 
-/**
- * 新增 / 编辑密钥表单。
- *
- * 不显示 server：密钥池是页面级选择（ServerPicker 已表明归属），
- * 弹框里再报一遍 server 只剩噪音。mutations 本身绑定在对应 server 上。
- *
- * ⚠ 设计稿 credential-form.html 在表单里放了一个「Enabled」开关，
- * 但 CredentialRequest 没有 enabled 字段（启用/停用走独立的
- * setEnabled 接口，见表格操作列的开关）。这里按契约去掉它，避免一个
- * 提交后无任何效果的控件。
- */
+/** 新增/编辑密钥表单。不在弹框里显示 server（归属由页面级 ServerPicker 决定）；
+ *  CredentialRequest 无 enabled 字段，启用/停用走独立的 setEnabled 接口。 */
 export function CredentialFormDialog({
   open,
   onOpenChange,
@@ -98,8 +89,7 @@ export function CredentialFormDialog({
         return null
       }
     }
-    /* 限额是非负整数：负数会绕过 `x > 0` 的比较直接锁死调度，
-       小数没有业务含义。number input 允许键入 e / +/-，不能只靠 min。 */
+    /* 限额须为非负整数：负数会绕过 x>0 直接锁死调度，且 number input 允许键入 e/+/-，不能只靠 min。 */
     if (rpmLimit.trim()) {
       const n = Number(rpmLimit)
       if (!Number.isInteger(n) || n < 0) {
@@ -160,7 +150,6 @@ export function CredentialFormDialog({
         />
       </div>
 
-      {/* ⚠ 设计稿用 JS 切换两段面板；这里用同一套 token 的分段控件。 */}
       <div className="tab-toggle">
         <button type="button" data-active={mode === 'value'} onClick={() => setMode('value')}>
           值 + 鉴权方案

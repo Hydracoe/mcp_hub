@@ -11,19 +11,8 @@ import { useOverview } from '@/lib/api/queries'
 import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
 
-/**
- * 管理鉴权闸门。
- *
- * 默认完全不打扰：后端没开 `--api-key` 时 `/api/*` 一律放行，
- * 这里也就不渲染任何东西。
- *
- * 只有真的收到 401 才需要用户介入。这比「启动就去问一次
- * /api/overview 判断要不要鉴权」更准 —— 后者在网关刚启动、
- * 或网络抖动时会把用户导向一个假的解锁流程。
- *
- * ⚠ 设计稿完全没画这个流程（缺口 D1），这里的形态是补的：
- * 半透明遮罩 + 居中卡片，沿用 dialogs.html 里那两个 frame 的观感。
- */
+/** 管理鉴权闸门：后端没开 --api-key 时全部放行、不渲染任何东西；
+ *  只在真的收到 401 才介入——比启动就探 /api/overview 更准，避免抖动时误弹。 */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const rejected = useAuthStore((s) => s.rejected)
   const markRejected = useAuthStore((s) => s.markRejected)
@@ -73,8 +62,7 @@ export function UnlockDialog({
     }
   }, [open, apiKey])
 
-  // 校验方式是真打一次 /api/overview：本地没法验证令牌对不对，
-  // 猜一个「长度够长就放行」的规则只会把错误推迟到下一个请求。
+  // 校验是真打一次 /api/overview：本地无法验证令牌，长度判断只会把错误推迟。
   const { refetch } = useOverview({ enabled: false })
 
   async function submit() {

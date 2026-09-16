@@ -4,23 +4,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 /**
- * 表格原语。视觉全部来自设计系统的 `.ui-table` / `.ui-table-wrap`
- * （表头 10.5px 全大写、行内边距 11px/16px、行悬停换底色）。
+ * 表格原语。视觉全部来自 `.ui-table` / `.ui-table-wrap`，结构固定为：
+ * 帧（背景/描边/圆角/阴影）→ 横向滚动层 → table.ui-table → 可选页脚。
  *
- * 外壳只有一层，由 `Table` 负责，结构固定为：
- *
- * ```
- * .ui-table-wrap              帧：背景 / 描边 / 圆角 / 阴影
- *   .ui-table-scroll          横向滚动
- *     table.ui-table          表本体
- *   {footer}                  可选页脚（分页条）
- * ```
- *
- * ⚠ 不要在 `Table` 外面再包一层 `.ui-table-wrap`。之前列表页各包了一层，
- * 结果是双描边、双圆角、双滚动条。分页条也不要自己包 —— 传 `footer`。
- *
- * ⚠ 单元格字号由 CSS 单点决定，组件里不要再叠 `text-sm` / `text-xs` /
- * `text-[12px]`：那会让同一张表出现 3~4 档字号，而且 CSS 改不动。
+ * 外壳由 `Table` 单独负责：外面不要再包 `.ui-table-wrap`，分页条走 `footer`，
+ * 否则会出现双描边、双圆角、双滚动条。
+ * 单元格字号由 CSS 单点决定，组件里不要再叠 `text-sm` / `text-xs`，
  * 需要第二行小字用 `<span className="cell-sub">`。
  */
 function Table({
@@ -82,12 +71,7 @@ function TableCaption({ className, ...props }: React.ComponentProps<'caption'>) 
   )
 }
 
-/**
- * 状态行：空态 / 错误态都走它，**表头因此得以保留**。
- *
- * 空表整块换成 EmptyState 是另一种观感：用户看不到列的构成，
- * 也就不知道「空」的是什么形状。统一成「保留表头 + 表内状态」。
- */
+/** 状态行：空态/错误态都走它，并保留表头——否则用户看不到列的构成，不知「空」的是什么形状。 */
 function TableStateRow({
   colSpan,
   className,
@@ -103,12 +87,7 @@ function TableStateRow({
   )
 }
 
-/**
- * 加载骨架行。
- *
- * 行内边距与真实行一致（11px/16px），加载完高度不跳动；
- * 之前那版按 `py-3` 画 div，切到真表时整页会耸一下。
- */
+/** 加载骨架行。行高与真实行一致（11px/16px），加载完不跳动。 */
 function TableSkeletonRows({ rows = 6, cols = 6 }: { rows?: number; cols?: number }) {
   return (
     <>

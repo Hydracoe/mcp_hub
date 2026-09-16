@@ -12,25 +12,15 @@ export interface PaginationProps {
   onPageSizeChange?: (size: number) => void
   /** 左侧文案的模板，「个 Server」这类量词由调用方给。 */
   unit?: string
-  /**
-   * 独立成框（不挂在表格帧内）。
-   *
-   * 默认形态只有一条上边线，是靠 `TableFrame` 的 `footer` 槽位活在表壳里的；
-   * 单独摆一条分页时把这条边线换成整圈描边，否则顶边会出现两道线。
-   */
+  /** 独立成框（不挂在表格帧内）。默认只靠 TableFrame 的 footer 槽位；单独摆时换整圈描边，否则顶边出现两道线。 */
   standalone?: boolean
   className?: string
 }
 
 const PAGE_SIZES = [10, 20, 50, 100]
 
-/**
- * 分页条。
- *
- * 设计稿有两条互相打架的实现：`.pg-btn`（自带选中态样式）与
- * `ui-btn ui-btn-primary`（把选中态交给按钮变体）。两者同时挂在
- * 一个元素上时，谁赢取决于 CSS 顺序 —— 这里只用 `.pg-btn` 一条路。
- */
+/** 分页条。只用 `.pg-btn` 一条路：它自带选中态，与按钮变体同时挂在一个元素上时
+ *  谁生效取决于 CSS 顺序。 */
 export function Pagination({
   page,
   pageSize,
@@ -61,9 +51,8 @@ export function Pagination({
           显示 {formatInt(from)}-{formatInt(to)} / 共 {formatInt(total)} {unit}
         </span>
         {onPageSizeChange ? (
-          /* 之前这里是原生 <select class="form-select h-6! …">：
-             高度被 !important 压到 24px，箭头靠 CSS background-image 画，
-             和页面里其它下拉不是一套。改用同一枚 Select 原语的 sm 档。 */
+          /* 用 Select 原语的 sm 档，不要退回原生 <select>：后者高度被
+             !important 压到 24px、箭头靠背景图画，与其它下拉不是一套。 */
           <Select
             value={String(pageSize)}
             onValueChange={(v) => onPageSizeChange(Number(v))}

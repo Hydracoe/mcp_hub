@@ -2,15 +2,7 @@ import { Toaster as Sonner, type ToasterProps } from 'sonner'
 
 import { Icon } from '@/components/common/Icon'
 
-/**
- * 全局提示（toast）。
- *
- * 图标用项目自带的 SVG（`assets/icons/apple`）而不是 lucide，
- * 保持「全站只有一套图标」。
- *
- * 主题不再走 next-themes：本项目的深色模式由 `.dark` 类切换，
- * 多装一个主题库只会多一处真相。
- */
+/** 全局提示（toast）。图标用项目自带 SVG 保持全站一套图标。 */
 const Toaster = ({ ...props }: ToasterProps) => (
   <Sonner
     className="toaster group"

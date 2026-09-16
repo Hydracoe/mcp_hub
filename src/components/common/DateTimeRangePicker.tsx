@@ -39,12 +39,7 @@ export interface DateTimeRangePickerProps extends DateTimeRange {
 const WEEK_OPTS = { weekStartsOn: 1 as const }
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日']
 
-/**
- * 快捷区间。
- *
- * 这些是**一次点击即生效并关闭**的 —— 预设本身就是完整答案，
- * 再要求用户点一次「应用」是多余的仪式。
- */
+/** 快捷区间：一次点击即生效并关闭，预设本身就是完整答案。 */
 const PRESETS: { label: string; range: () => DateTimeRange }[] = [
   { label: '最近 5 分钟', range: () => ({ since: +addMinutes(Date.now(), -5), until: Date.now() }) },
   { label: '最近 1 小时', range: () => ({ since: +addHours(Date.now(), -1), until: Date.now() }) },
@@ -75,7 +70,7 @@ function atTime(day: Date, hm: string): number {
 }
 
 /** 触发器上的区间文案。同年省略年份，够窄也不至于被截得看不懂。 */
-export function formatRange({ since, until }: DateTimeRange, now = new Date()): string {
+function formatRange({ since, until }: DateTimeRange, now = new Date()): string {
   if (!since && !until) return '全部时间'
   const sameYear = (ms: number) => new Date(ms).getFullYear() === now.getFullYear()
   const f = (ms: number) => format(ms, sameYear(ms) ? 'MM-dd HH:mm' : 'yyyy-MM-dd HH:mm')
@@ -84,20 +79,8 @@ export function formatRange({ since, until }: DateTimeRange, now = new Date()): 
   return `${f(since!)} → ${f(until!)}`
 }
 
-/**
- * 时间区间选择器。
- *
- * 替换掉原先并排的两个原生 `datetime-local`。原来那对输入框有三个问题：
- *   1. 一格只有 ~150px，两个原生控件在 Chrome 里各需 ~200px 才显示得全，
- *      实际会被压扁裁切；
- *   2. `.filter-input` 上的 `appearance:none` 把原生日历图标抹掉了，
- *      剩下一个看不出是日期框的灰框；
- *   3. onChange 直接写回 URL，逐字符触发请求 —— 敲到 `2026-09-1` 时
- *      `new Date()` 已经能解析，会打一次无效查询。
- *
- * 现在：面板内部维护草稿，只有点「应用」才写回；预设一键生效；
- * since > until 会挡住提交。
- */
+/** 时间区间选择器。面板内部维护草稿，点「应用」才写回；预设一键生效；
+ *  since > until 时挡住提交。 */
 export function DateTimeRangePicker({
   since,
   until,

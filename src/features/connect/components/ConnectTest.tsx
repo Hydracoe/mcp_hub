@@ -25,8 +25,7 @@ export function ConnectTest({ mcpEndpoint }: Props) {
     setRunning(true)
     const t0 = performance.now()
     try {
-      // ⚠ 设计稿原版是 mockJS（直接写死「连接成功 · 延迟 12ms」）。
-      // 这里改成真实调用网关的接入接口，展示真实往返耗时与失败原因。
+      // 真打一次接入接口，拿到真实往返耗时与失败原因。
       await getConnect()
       setResult({ ok: true, ms: Math.round(performance.now() - t0) })
     } catch (e) {

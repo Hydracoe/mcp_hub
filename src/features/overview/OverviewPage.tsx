@@ -6,6 +6,8 @@ import { useOverview } from '@/lib/api/queries'
 import { StatCards } from './components/StatCards'
 import { RuntimeOverview } from './components/RuntimeOverview'
 import { KeyPoolSection } from './components/KeyPoolSection'
+import { ActionRequired } from './components/ActionRequired'
+import { ToolChangesFeed } from './components/ToolChangesFeed'
 
 export function OverviewPage() {
   const { data: overview, isError, error, refetch } = useOverview()
@@ -22,13 +24,14 @@ export function OverviewPage() {
     <PageLayout
       title="概览 Dashboard"
       version={overview?.version}
-      ready={overview?.ready}
     >
       <Section title="网关总览" hint={<span className="text-[11.5px] text-muted-foreground">实时刷新 · 每 15s</span>}>
         {!overview ? (
           <CardSkeleton count={4} />
         ) : (
           <div className="flex flex-col gap-5">
+            {/* 告警排在最前：能自愈的网关自己消化，剩下这些不做决定就不会变好。 */}
+            <ActionRequired overview={overview} />
             <StatCards overview={overview} />
             <RuntimeOverview overview={overview} />
           </div>
@@ -44,6 +47,13 @@ export function OverviewPage() {
         ) : (
           <KeyPoolSection details={overview.keyDetails} />
         )}
+      </Section>
+
+      <Section
+        title="最近工具变更"
+        hint={<span className="text-[11.5px] text-muted-foreground">探活对账自动记录 · 新增 / 删除 / 描述与参数变更</span>}
+      >
+        <ToolChangesFeed limit={8} />
       </Section>
     </PageLayout>
   )

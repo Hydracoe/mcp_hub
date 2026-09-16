@@ -24,10 +24,7 @@ interface Props {
   onOpenChange: (open: boolean) => void
 }
 
-/**
- * 工具管理弹框：只读列表（缺口 D-只读，写操作在 /tools 独立路由与密钥池页）。
- * ⚠ 设计稿原版把弹窗常驻 DOM（display:none / drawer-hidden），这里改成 Radix 受控 open。
- */
+/** 工具管理弹框：只读列表，写操作在 /tools 独立路由与密钥池页。 */
 export function ServerToolsDialog({ server, open, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -63,9 +60,6 @@ function ToolsBody({ server }: { server: ServerSummary }) {
           <span>
             工具 <b className="text-foreground tabular-nums">{server.enabledToolCount ?? total} / {total}</b> 启用
           </span>
-          {server.toolFilterMode !== 'allow_all' ? (
-            <Badge variant="warning">过滤中 · {server.toolFilterMode}</Badge>
-          ) : null}
         </div>
 
         {isLoading ? (
@@ -84,7 +78,9 @@ function ToolsBody({ server }: { server: ServerSummary }) {
       <DialogFooter>
         <span className="text-[11.5px] text-muted-foreground">只读视图 · 启停与新增请到工具管理页</span>
         <Button variant="outline" size="sm" asChild>
-          <Link to={`/tools?server=${server.id}`}>
+          {/* 工具页按 serverKey 过滤（它是稳定的对外标识），所以这里传 key
+              而不是 id：传 id 会让筛选对不上，界面还回显一串哈希。 */}
+          <Link to={`/tools?server=${encodeURIComponent(server.key)}`}>
             <Icon name="external-link" size={13} />
             在工具管理中查看
           </Link>
@@ -116,12 +112,19 @@ function ToolRow({ tool }: { tool: ToolEntry }) {
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {tool.available ? (
-            <Badge variant="success">可用</Badge>
+          {/* 与工具管理页 StatusBadge 口径一致：enabled 是可选字段，
+              缺省视为启用；pending 只在禁用状态下有意义。 */}
+          {tool.enabled === false ? (
+            tool.pending ? (
+              <Badge variant="warning">待启用</Badge>
+            ) : (
+              <Badge variant="neutral">已禁用</Badge>
+            )
+          ) : tool.available ? (
+            <Badge variant="success">已启用</Badge>
           ) : (
-            <Badge variant="error">不可用</Badge>
+            <Badge variant="error">下游不可用</Badge>
           )}
-          {tool.enabled ? <Badge variant="neutral">已启用</Badge> : <Badge variant="outline">已停用</Badge>}
           {typeof tool.successRate === 'number' ? (
             <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
               {formatPercent(tool.successRate)}

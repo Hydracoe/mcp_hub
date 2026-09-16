@@ -4,11 +4,7 @@ import { Slot } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
 
-/**
- * 徽标。语义色只允许从 success / warning / error / neutral / brand 里选，
- * 不接受内联色值 —— 设计稿里同一个「healthy」徽标在 5 个页面里用了
- * 4 种不同的 color-mix 透明度，这就是它们的来源。
- */
+/** 徽标。语义色只允许 success/warning/error/neutral/brand，不接受内联色值——否则同一状态会出现多种透明度。 */
 const badgeVariants = cva('badge', {
   variants: {
     variant: {

@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils'
 export interface CopyButtonProps {
   /** 要复制的文本。传函数可延迟取值（如从 DOM 读）。 */
   value: string | (() => string)
-  /** 提示文案。 */
   label?: string
   size?: number
   className?: string
@@ -15,13 +14,8 @@ export interface CopyButtonProps {
   onCopied?: () => void
 }
 
-/**
- * 复制按钮。
- *
- * 用 `navigator.clipboard`，失败时回落到 `document.execCommand` ——
- * 非 HTTPS 的局域网地址下 clipboard API 直接不可用，而管理后台
- * 恰恰常跑在 `http://192.168.x.x:9090`。
- */
+/** 复制按钮。优先 `navigator.clipboard`，失败回落到 `document.execCommand`——
+ *  非 HTTPS 的局域网地址下 clipboard API 直接不可用。 */
 export function CopyButton({
   value,
   label = '复制',

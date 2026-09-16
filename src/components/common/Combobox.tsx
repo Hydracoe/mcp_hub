@@ -23,7 +23,6 @@ export interface ComboboxProps {
   options: readonly ComboboxOption[]
   placeholder?: string
   searchPlaceholder?: string
-  /** 搜不到时的文案。 */
   emptyText?: string
   /** 触发器宽度与外形：表单里传 `w-full`，工具条里给定宽。 */
   className?: string
@@ -49,22 +48,10 @@ function matches(o: ComboboxOption, needle: string): boolean {
   )
 }
 
-/**
- * 带搜索的下拉。
- *
- * 用于**选项多于 8 个**的场景：19 项错误类型、Server 列表、下游 enum 参数、
- * 分类列表。短列表请用 `@/components/ui/select` —— 给 3 个选项配搜索框
- * 是净负担。
- *
- * 为什么不用 Radix Select 塞个输入框：Radix Select 的值是「选中即提交」，
- * 没有可输入的内部状态，硬塞输入框会跟它自带的「输入字母跳选项」打架。
- * 这里用 Popover + cmdk：搜索、上下键、回车、Esc 都是现成能力。
- *
- * 过滤由本组件自己做（cmdk 传 shouldFilter={false}），因为要匹配 hint 与
- * keywords —— cmdk 只认渲染出来的文本。上下键导航仍由 cmdk 的 DOM 遍历提供。
- *
- * 外观与 Select 共用 `.ui-select-trigger` 与 `.ui-popover`，两者是一套东西。
- */
+/** 带搜索的下拉，用于选项多于 8 个的场景；短列表请用 `@/components/ui/select`。
+ *  用 Popover + cmdk 而非 Radix Select：后者是「选中即提交」，硬塞输入框会跟
+ *  它自带的「输入字母跳选项」打架。
+ *  过滤自己实现（cmdk 传 shouldFilter={false}），因为要匹配 hint 与 keywords。 */
 export function Combobox({
   value,
   onChange,
@@ -107,8 +94,7 @@ export function Combobox({
     return [...map.entries()]
   }, [filtered])
 
-  /* 每次打开都重置：搜索词清空，高亮回到当前选中项（没有就第一项）。
-     焦点也在这里给 —— 只靠 input 的 autoFocus 属性在 portal 里不可靠。 */
+  /* 每次打开重置搜索词、高亮回到选中项，并手动给焦点（portal 里 autoFocus 不可靠）。 */
   useEffect(() => {
     if (!open) return
     setQuery('')
@@ -163,8 +149,7 @@ export function Combobox({
         /* 焦点交给下面那个输入框，不要让面板自己抢 */
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        {/* 搜索框与列表都放在 Command 根节点**内部** —— 这样上下键与回车
-            会自然冒泡到 cmdk 的键盘处理器。放在外面就得手工转发事件。 */}
+        {/* 搜索框与列表必须放在 Command 根节点内，上下键/回车才能冒泡到 cmdk 的键盘处理器。 */}
         <Command
           shouldFilter={false}
           loop

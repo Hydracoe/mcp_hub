@@ -1,9 +1,4 @@
-/**
- * 展示层格式化。
- *
- * 全部集中在这里，而不是散在组件里 —— 设计稿里「同一个百分比在
- * 概览页保留 2 位、列表页保留 1 位」就是这么来的。
- */
+/** 展示层格式化。集中放这里，免得同一个数字在不同页面位数不一致。 */
 
 /** 千分位整数：1284 → "1,284"。 */
 export function formatInt(n: number | undefined | null): string {
@@ -11,18 +6,7 @@ export function formatInt(n: number | undefined | null): string {
   return Math.round(n).toLocaleString('en-US')
 }
 
-/** 带单位的紧凑数：1284 → "1.3k"。用于空间紧张的卡片。 */
-export function formatCompact(n: number | undefined | null): string {
-  if (n === undefined || n === null || Number.isNaN(n)) return '—'
-  if (Math.abs(n) < 1000) return String(Math.round(n))
-  if (Math.abs(n) < 1_000_000) return `${(n / 1000).toFixed(1)}k`
-  return `${(n / 1_000_000).toFixed(1)}M`
-}
-
-/**
- * 比率（0–1）→ 百分比字符串。默认 2 位，与设计稿的 99.35% 对齐。
- * 传 `undefined` 时返回占位符 —— 不要显示 "NaN%"。
- */
+/** 比率（0–1）→ 百分比。默认 2 位；传空返回占位符，不显示 NaN%。 */
 export function formatPercent(ratio: number | undefined | null, digits = 2): string {
   if (ratio === undefined || ratio === null || Number.isNaN(ratio)) return '—'
   return `${(ratio * 100).toFixed(digits)}%`
@@ -61,21 +45,14 @@ export function formatDateTime(ts: number | string | undefined | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-/** Unix 毫秒 → "2026-09-15 17:40:56.412"。日志详情用。 */
+/** Unix 毫秒 → "2026-09-15 17:40:56.412"。 */
 export function formatDateTimeMs(ts: number | string | undefined | null): string {
   const d = toDate(ts)
   if (!d) return '—'
   return `${formatDateTime(d.getTime())}.${String(d.getMilliseconds()).padStart(3, '0')}`
 }
 
-/** Unix 毫秒 → "09-15 17:40"。列表页用。 */
-export function formatShortTime(ts: number | string | undefined | null): string {
-  const d = toDate(ts)
-  if (!d) return '—'
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-/** 相对时间：3 分钟前 / 2 小时前 / 3 天前。 */
+/** 相对时间：3m ago / 2h ago / 3d ago。 */
 export function formatRelative(ts: number | string | undefined | null, now = Date.now()): string {
   const d = toDate(ts)
   if (!d) return '—'
@@ -106,15 +83,9 @@ export function transportLabel(t: string): string {
   return t === 'streamable_http' ? 'streamable_http' : t
 }
 
-/** 截断长文本，保留尾部 —— 密钥末 4 位、URL 尾段这类场景。 */
-export function ellipsisTail(value: string, keep = 8): string {
-  if (value.length <= keep) return value
-  return `…${value.slice(-keep)}`
-}
-
 function toDate(ts: number | string | undefined | null): Date | null {
   if (ts === undefined || ts === null || ts === '') return null
-  // 后端同时接受 Unix 毫秒与 RFC3339；这里两种都认。
+  // 后端同时接受 Unix 毫秒与 RFC3339，两种都认。
   const d = typeof ts === 'number' ? new Date(ts) : new Date(/^\d+$/.test(ts) ? Number(ts) : ts)
   return Number.isNaN(d.getTime()) ? null : d
 }

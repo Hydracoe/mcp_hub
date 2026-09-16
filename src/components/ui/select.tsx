@@ -5,18 +5,9 @@ import { cn } from "@/lib/utils"
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 import { Select as SelectPrimitive } from "radix-ui"
 
-/**
- * 下拉选择（Radix Select）。
- *
- * 适用：**选项 ≤ 8 个**的枚举 —— 传输类型、鉴权方式、过滤模式、每页条数。
- * 选项更多（错误类型 19 项、Server 列表、下游 enum 参数）请用
- * `@/components/common/Combobox`：那个带搜索框，键盘导航也更好。
- *
- * 外观收口在三处，调用点只声明宽度：
- *   .ui-select-trigger  触发器（CSS，锁高度 32px / 字号 13px）
- *   .ui-popover         浮层皮（CSS，与 Dialog/Sheet 同一套令牌）
- *   SelectItem          行高、勾选位在下面定义
- */
+/** 下拉选择（Radix Select），适用选项 ≤ 8 个的枚举；选项更多请用
+ *  `@/components/common/Combobox`（带搜索框，键盘导航也更好）。
+ *  外观收口在 `.ui-select-trigger` / `.ui-popover` / `SelectItem` 三处，调用点只声明宽度。 */
 function Select({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {
@@ -56,8 +47,7 @@ function SelectTrigger({
       {...props}
     >
       {children}
-      {/* 箭头由组件渲染，不再走 CSS background-image —— 那个的颜色写死了，
-          深色模式不跟随。打开时旋转 180° 给一点反馈。 */}
+      {/* 箭头由组件渲染而非 CSS background-image（那个颜色写死、深色模式不跟随）；打开时旋转 180°。 */}
       <SelectPrimitive.Icon asChild>
         <ChevronDownIcon className="size-4 shrink-0 text-icon-muted transition-transform duration-200 group-data-[state=open]:rotate-180" />
       </SelectPrimitive.Icon>
@@ -131,9 +121,8 @@ function SelectItem({
       data-slot="select-item"
       className={cn(
         "relative flex h-8 w-full cursor-default items-center gap-2 rounded-md py-1 pr-8 pl-2.5 text-[13px] outline-hidden select-none",
-        /* data-highlighted 是 Radix 给的键盘/指针高亮位；
-           data-state=checked 是当前选中项。两者此前都引用 bg-selection，
-           而 --color-selection 没注册，实际一点底色都没有。 */
+        /* data-highlighted 是键盘/指针高亮位，data-state=checked 是选中项。
+           两者都依赖 --color-selection，这个令牌没注册就不会有任何底色。 */
         "data-[highlighted]:bg-selection data-[highlighted]:text-foreground",
         "data-[state=checked]:bg-selection data-[state=checked]:font-medium data-[state=checked]:text-foreground",
         "data-disabled:pointer-events-none data-disabled:opacity-50",

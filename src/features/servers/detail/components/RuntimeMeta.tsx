@@ -1,11 +1,19 @@
-import { KeyValueGrid } from '@/components/common/KeyValue'
-import { DrainingBadge, ServerStatusBadge } from '@/components/common/StatusBadge'
+import { DotStat, KeyValueGrid } from '@/components/common/KeyValue'
+import { DrainingBadge } from '@/components/common/StatusBadge'
 import { ErrorKindBadge } from '@/components/common/StatusBadge'
 import { formatDateTime, formatDuration, formatRelative } from '@/lib/format'
-import type { ServerDetail } from '@/lib/api/types'
+import type { ServerDetail, ServerStatus } from '@/lib/api/types'
 
 export interface RuntimeMetaProps {
   server: ServerDetail
+}
+
+/* 状态 → 色点语义色。与 StatCards 的 DotStat 同一套词汇（healthy/degraded/offline）。 */
+const STATUS_TONE: Record<ServerStatus, 'success' | 'warning' | 'error' | 'neutral'> = {
+  healthy: 'success',
+  degraded: 'warning',
+  offline: 'error',
+  unknown: 'neutral',
 }
 
 export function RuntimeMeta({ server }: RuntimeMetaProps) {
@@ -22,14 +30,19 @@ export function RuntimeMeta({ server }: RuntimeMetaProps) {
       label: '最近延迟',
       value: server.lastLatencyMs != null ? formatDuration(server.lastLatencyMs) : '—',
     },
-    { key: 'status', label: '健康状态', value: <ServerStatusBadge status={server.status} /> },
+    {
+      key: 'status',
+      label: '健康状态',
+      /* 色点+文字而不用徽标：与标签严格左对齐，且和概览页的健康配色一致。 */
+      value: <DotStat tone={STATUS_TONE[server.status] ?? 'neutral'} label={server.status} />,
+    },
     {
       key: 'tools',
-      label: '工具过滤',
+      label: '工具数',
       value: (
         <span className="font-mono">
           {server.exposedToolCount}
-          <span className="text-muted-foreground"> 暴露 / </span>
+          <span className="text-muted-foreground"> 生效 / </span>
           {server.toolCount}
           <span className="text-muted-foreground"> 声明</span>
         </span>

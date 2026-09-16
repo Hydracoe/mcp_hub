@@ -10,10 +10,7 @@ export interface ProgressProps
   indicatorClassName?: string
 }
 
-/**
- * 进度条。用设计系统的 `.progress-track` / `.progress-fill`
- * （5px 高、全圆角），而不是 shadcn 默认的 8px。
- */
+/** 进度条。用设计系统的 `.progress-track`/`.progress-fill`（5px 高、全圆角），而非 shadcn 默认的 8px。 */
 function Progress({ className, value, indicatorClassName, ...props }: ProgressProps) {
   const pct = Math.max(0, Math.min(100, value ?? 0))
   return (

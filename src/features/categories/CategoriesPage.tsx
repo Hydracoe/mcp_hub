@@ -12,19 +12,8 @@ import type { Category } from '@/lib/api/types'
 import { CategoriesTable } from './components/CategoriesTable'
 import { CategoryFormDialog } from './components/CategoryFormDialog'
 
-/**
- * 分类。
- *
- * 分类不是给界面分类用的，它是**对外工具名的第一段**：
- *
- * ```
- * <分类英文名>__<serverKey>__<工具名>
- * ```
- *
- * 三段里 serverKey 有全局唯一约束、一个 server 又只属于一个分类，
- * 所以整名按构造就不会重复 —— 不需要「事后消解」命名冲突，
- * 也就不需要在这一页上摆一个冲突检测面板。
- */
+/** 分类是组织与检索用的元数据：中文名用于展示，英文名（slug）用于列表与筛选。
+ *  对外工具名 = <serverKey>__<工具名>，不包含分类段；分类下还有 Server 时禁止删除。 */
 export function CategoriesPage() {
   const { data: overview } = useOverview()
   const { data, isLoading, error, refetch } = useCategories()
@@ -49,7 +38,6 @@ export function CategoriesPage() {
     <PageLayout
       title="分类"
       version={overview?.version}
-      ready={overview?.ready}
       actions={
         <Button variant="primary" size="sm" onClick={openCreate}>
           <Icon name="plus" size={13} />
@@ -97,10 +85,10 @@ export function CategoriesPage() {
             footer: (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-separator px-4 py-2.5 text-[11.5px] text-muted-foreground">
                 <span>
-                  对外工具名 = <code className="code-chip">&lt;英文名&gt;__&lt;serverKey&gt;__&lt;工具名&gt;</code>
-                  ；前缀段的唯一性由 serverKey 保证，英文名可以重复。
+                  对外工具名 = <code className="code-chip">&lt;serverKey&gt;__&lt;工具名&gt;</code>
+                  ；分类不进工具名，新增、改名或删除分类都不会改动已有工具名。
                 </span>
-                <span>删除分类不会删 Server，只把它们转为未分类。</span>
+                <span>分类下还有 Server 时不能删除，需先把这些 Server 移到其他分类。</span>
               </div>
             ),
           }}

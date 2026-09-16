@@ -12,12 +12,8 @@ export interface KeyValueRowProps {
   className?: string
 }
 
-/**
- * 一行「小写标签 + 值」。设计稿的 `.fingerprint-row`。
- *
- * 标签一律小号大写加字距：这是 Apple 分组列表里区分
- * 「字段名」与「字段值」最省力的一招，也是设计稿的既定风格。
- */
+/** 一行「小写标签 + 值」(`.fingerprint-row`)。标签一律小号大写加字距，
+ *  用来区分字段名与字段值。 */
 export function KeyValueRow({ label, children, mono = true, className }: KeyValueRowProps) {
   return (
     <div className={cn('fingerprint-row', className)}>
@@ -79,12 +75,7 @@ export interface MetricCardProps {
   className?: string
 }
 
-/**
- * 概览页的指标卡。
- *
- * 结构固定为「标签 + 大数字 + 明细 + 脚注」四段。设计稿的 4 张卡
- * 每张都手写了一遍这四段的间距，于是四张卡的行高各不相同。
- */
+/** 概览页指标卡，结构固定为「标签 + 大数字 + 明细 + 脚注」四段。 */
 export function MetricCard({
   label,
   icon,

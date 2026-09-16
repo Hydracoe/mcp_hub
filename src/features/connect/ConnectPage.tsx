@@ -13,15 +13,8 @@ import { EndpointGrid } from './components/EndpointGrid'
 import { ClientGuide } from './components/ClientGuide'
 import { ConnectTest } from './components/ConnectTest'
 
-/**
- * 把后端的 `{名称: url}` 折成客户端配置里的 `mcpServers`。
- *
- * 端点要求鉴权时必须连 `headers` 一起给：只给 url 的话，用户照抄
- * 粘贴过去只会拿到 401，然后再回来问"为什么连不上"。
- *
- * headers 里放的是**占位符**而不是真实密钥 —— 明文只在创建那一刻
- * 交付一次，这一页既拿不到它，也不该拿得到。
- */
+/** 把后端 {名称:url} 折成客户端 mcpServers。需鉴权时连 headers 占位符一起给
+ *  （放占位符而非真实密钥——明文只在创建时交付一次，本页不该拿到）。 */
 function buildMcpServers(servers: Record<string, string>, keyRequired: boolean) {
   if (!keyRequired) return servers
   const out: Record<string, { url: string; headers: Record<string, string> }> = {}
@@ -51,8 +44,7 @@ export function ConnectPage() {
   const { data: connect, error, refetch } = useConnect()
   const { data: keys } = useApiKeys()
 
-  /* 端点的鉴权开关不是配置项，而是"库里有没有 key"这个事实本身
-     （见后端 httpd.mcpAuth）。所以这里的配置示例要跟着它变。 */
+  /* 端点鉴权开关 = 库里有没有 key（见 httpd.mcpAuth），配置示例随之变化。 */
   const keyRequired = (keys?.total ?? 0) > 0
   const usableKeys = keys?.items.filter((k) => k.enabled).length ?? 0
 
@@ -64,7 +56,6 @@ export function ConnectPage() {
     <PageLayout
       title="接入指引"
       version={overview?.version}
-      ready={overview?.ready}
     >
       {error ? (
         <Section title="端点列表">

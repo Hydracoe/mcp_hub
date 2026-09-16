@@ -67,13 +67,7 @@ function AlertDialogContent({
   )
 }
 
-/**
- * 确认框头 / 脚与 `DialogContent` 共用同一套皮肤（内边距、描边、灰底页脚）。
- *
- * 之前它是 shadcn 的默认值：内容区零内边距、页脚没有底色和分隔线，
- * 于是「删 Server」的确认框和「新增密钥」的表单框长得像两个产品。
- * 对齐方式（sm 档居中、default 档左对齐）保留，只统一皮。
- */
+/** 确认框头/脚与 `DialogContent` 共用同一套皮肤（内边距、描边、灰底页脚），对齐方式保留。 */
 function AlertDialogHeader({
   className,
   ...props

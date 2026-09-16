@@ -13,12 +13,8 @@ export interface SearchInputProps {
   'aria-label'?: string
 }
 
-/**
- * 带放大镜的搜索框。
- *
- * 内部维护一份受控副本 + 防抖，避免每敲一个字符都打一次接口；
- * 外部值变化（如清空筛选）时会同步回来。
- */
+/** 带放大镜的搜索框。内部维护受控副本 + 防抖，避免每敲一个字符打一次接口；
+ *  外部值变化（如清空筛选）时会同步回来。 */
 export function SearchInput({
   value,
   onChange,
@@ -29,8 +25,11 @@ export function SearchInput({
 }: SearchInputProps) {
   const [draft, setDraft] = useState(value)
   const timer = useRef<number | undefined>(undefined)
+  /* onChange 存进 ref，避免父组件每次渲染换函数而重建定时器；写 ref 放进 effect（渲染期改 ref 在并发渲染下可能被丢弃）。 */
   const onChangeRef = useRef(onChange)
-  onChangeRef.current = onChange
+  useEffect(() => {
+    onChangeRef.current = onChange
+  })
 
   useEffect(() => {
     setDraft(value)

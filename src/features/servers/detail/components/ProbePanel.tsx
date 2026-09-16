@@ -43,7 +43,7 @@ function LevelRow({ level }: { level: ProbeLevel }) {
             <ErrorKindBadge kind={level.errorKind} />
           </div>
         ) : null}
-        {/* ⚠ 设计稿原版：stdio 失败无 stderr 线索；缺口 D6 要求把 stderr 单独回显 */}
+        {/* 失败 stderr 单独回显，便于定位 stdio 启动问题 */}
         {level.stderr ? (
           <pre className="code-block mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap p-2 text-[11px] leading-relaxed">
             {level.stderr}
@@ -66,7 +66,6 @@ export function ProbePanel({ probe, testing, onTest }: ProbePanelProps) {
       </div>
       <div className="form-section-body" style={{ paddingTop: 0, paddingBottom: 0 }}>
         {!probe ? (
-          // ⚠ 设计稿原版未探活会显示成失败态；此处明确区分「尚未探活」与失败
           <div className="flex items-center gap-2 py-4 text-[12.5px] text-muted-foreground">
             <Icon name="circle-minus" size={16} />
             尚未探活。点击「测试」运行 L1→L3 探活。
@@ -92,7 +91,8 @@ export function ProbePanel({ probe, testing, onTest }: ProbePanelProps) {
               />
             </div>
             <div className="divide-y divide-separator">
-              {probe.levels.map((lvl) => (
+              {/* 老响应可能没有 levels：缺省当「无分段明细」渲染，不能崩。 */}
+              {(probe.levels ?? []).map((lvl) => (
                 <LevelRow key={lvl.level} level={lvl} />
               ))}
             </div>

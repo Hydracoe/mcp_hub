@@ -16,12 +16,21 @@ import { formatPercent, formatRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { ServerSummary } from '@/lib/api/types'
 
-/** 7 列，宽表。table-fixed + 每列定宽：auto 布局的列宽由「当页最宽的行」
-    决定，排序/翻页换一批行，列宽就跟着跳 —— 定宽后行集合怎么换都不动。 */
+/** 7 列宽表。table-fixed + 每列定宽，避免列宽随排序/翻页换批行而跳动。 */
 const COLS = 7
 
-/** 各列定宽（px）。总和 ≈1256，窄容器由外层 wrap 横向滚动，宽屏按比例拉伸。 */
-const COL_W = ['w-[260px]', 'w-28', 'w-[170px]', 'w-[180px]', 'w-[170px]', 'w-36', 'w-[260px]']
+/** 列宽一律用百分比，总和恒为 100%——定宽 px 会让表格在任意窗口都多出一条
+ *  永远关不掉的横向滚动条。代价是窄窗口表头被截断（有 overflow 兜底）。
+ *  传输列要装下最长的 streamable_http，压缩名称列给它让位。 */
+const COL_W = [
+  'w-[19%]', // 名称 / Key
+  'w-[10%]', // 传输
+  'w-[13%]', // 状态
+  'w-[14%]', // 工具
+  'w-[13%]', // 密钥
+  'w-[13%]', // 延迟 / 检查
+  'w-[18%]', // 操作
+]
 
 interface Props {
   rows: ServerSummary[]
@@ -43,8 +52,7 @@ const SORTABLE = new Set(['name', 'status', 'tools', 'keys', 'latency'])
 
 export function ServersTable(props: Props) {
   const { rows, sort, dir, onSort, frame } = props
-  /* 共用表头用 'asc' | 'desc'，列表页的 URL 状态用 1 | -1（`useListQueryState`）。
-     换算只在这一处做 —— 两套表示各自服务自己的调用方，谁也别改谁。 */
+  /* 表头排序用 'asc'|'desc'，URL 状态用 1|-1，换算只在此处做。 */
   const sortDir: SortDir = dir === 1 ? 'asc' : 'desc'
   const head = (label: string, col: string, i: number, className?: string) =>
     SORTABLE.has(col) ? (
@@ -95,28 +103,24 @@ function ServerRow({ s, onToggleEnabled, togglingId, onTest, testingId, onOpenTo
         </div>
       </TableCell>
 
-      {/* 传输 */}
       <TableCell>
         <TransportTag transport={s.transport} />
       </TableCell>
 
-      {/* 状态 */}
       <TableCell>
-        <div className="flex flex-col gap-1">
+        {/* items-start：flex-col 默认 stretch 会把徽标拉满整列宽，看起来像一条长矩形。 */}
+        <div className="flex flex-col items-start gap-1">
           {disabled ? <StoppedBadge /> : <ServerStatusBadge status={s.status} />}
           {s.draining ? <DrainingBadge inflight={s.drainingInflight} /> : null}
         </div>
       </TableCell>
 
-      {/* 工具子列 */}
       <TableCell>
         <button type="button" onClick={() => onOpenTools(s)} className="text-left hover:opacity-80" title={toolTitle(s)}>
           <span className="font-mono tabular-nums text-foreground">{toolSummary(s)}</span>
-          {s.toolFilterMode !== 'allow_all' ? <span className="ml-1 cell-sub text-warning-strong">· 过滤</span> : null}
         </button>
       </TableCell>
 
-      {/* 密钥子列 */}
       <TableCell>
         {s.keyPool ? (
           <button type="button" onClick={() => onOpenCreds(s)} className="text-left hover:opacity-80" title={keyTitle(s)}>
@@ -132,7 +136,6 @@ function ServerRow({ s, onToggleEnabled, togglingId, onTest, testingId, onOpenTo
         )}
       </TableCell>
 
-      {/* 延迟 / 检查 */}
       <TableCell>
         {typeof s.lastLatencyMs === 'number' ? (
           <div>
@@ -144,7 +147,6 @@ function ServerRow({ s, onToggleEnabled, togglingId, onTest, testingId, onOpenTo
         )}
       </TableCell>
 
-      {/* 操作 */}
       <TableCell>
         <div className="flex items-center justify-end gap-1.5">
           <Switch
@@ -190,7 +192,6 @@ function toolSummary(s: ServerSummary): string {
 function toolTitle(s: ServerSummary): string {
   const parts = [toolSummary(s)]
   if (typeof s.toolSuccessRate === 'number') parts.push(`成功率 ${formatPercent(s.toolSuccessRate)}`)
-  if (s.toolFilterMode !== 'allow_all') parts.push(`过滤模式 ${s.toolFilterMode}`)
   return parts.join(' · ')
 }
 

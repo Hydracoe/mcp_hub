@@ -1,20 +1,7 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   apple-ui.css — Apple 级别的界面层
-   ───────────────────────────────────────────────────────────────────────────
+/* apple-ui.css — Apple 级别的界面层。
    加载顺序必须是：tailwind.css → tokens.css → apple-ui.css → icons.css
-   本文件是「未分层」样式，因此天然压过 Tailwind 的 @layer theme；
-   而页面里的 <style> 块已全部抽走，独此一处定义组件，不再有第二份真相。
+   （本文件未分层，天然压过 Tailwind 的 @layer theme）。 */
 
-   设计依据（macOS 26 一档的桌面 Web 界面）：
-     · 打字   SF Pro / PingFang，13px 正文，11px 全大写小标签，-0.01em 级字距
-     · 材质   半透明 + backdrop-filter 的工具栏与侧边栏（vibrancy）
-     · 层次   浅灰画布 + 白卡片；两段式柔和投影；1px 内高光做玻璃边缘
-     · 圆角   单调阶梯 4/6/8/10/14/20（此前是倒置的：lg 19.2px > xl 12px）
-     · 动效   cubic-bezier(.32,.72,0,1)，120/200/320ms 三档
-     · 反馈   hover 变底色、press 缩到 .97、focus 出 2.5px 蓝晕
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ─────────────────────────── 1. 基础 ─────────────────────────── */
 
 *,
 *::before,
@@ -62,15 +49,13 @@ table,
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* 统一的键盘焦点环。鼠标点击不触发（:focus-visible）——
-   这是 Apple 与「到处都是 outline」的廉价感之间最明显的分界。 */
+/* 统一的键盘焦点环（:focus-visible，鼠标点击不触发），保持 Apple 的克制感。 */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2.5px solid color-mix(in srgb, var(--brand-500) 42%, transparent);
   outline-offset: 1.5px;
   border-radius: inherit;
 }
 
-/* ─────────────────────────── 2. 应用外壳 ─────────────────────────── */
 
 /* body 钩子：锁住视口高度，避免 iOS 上地址栏收放造成的跳动 */
 .app-body {
@@ -131,9 +116,7 @@ table,
 
 .sidebar-head { padding: 12px 12px 6px; }
 
-/* 折叠态：只留图标，给内容区让出 232px 里的 176px。
-   ⚠ 设计稿没有折叠态，这是补的形态 —— 列表页列多，
-   窄屏下侧边栏占掉 232px 会让表格被迫横向滚动。 */
+/* 折叠态只留图标：列表页列多，窄屏下 232px 侧边栏会逼表格横向滚动。 */
 .app-sidebar[data-collapsed="true"] { width: 56px; }
 .app-sidebar[data-collapsed="true"] .brand-text,
 .app-sidebar[data-collapsed="true"] .nav-group-label,
@@ -142,8 +125,18 @@ table,
 .app-sidebar[data-collapsed="true"] .sidebar-brand { justify-content: center; }
 .app-sidebar[data-collapsed="true"] .nav-item { justify-content: center; padding: 0; }
 .app-sidebar[data-collapsed="true"] .sidebar-foot { justify-content: center; padding-inline: 0; }
-/* 折叠后「收起」按钮没法再点，改挂到导航区的悬停上 */
-.app-sidebar[data-collapsed="true"] .sidebar-collapse-btn { position: absolute; top: 14px; left: 60px; z-index: 5; }
+/* 折叠态头部只留一个居中的展开按钮：56px 栏放不下「logo+按钮」横排，
+   logo 收起、按钮顶替它的位置（尺寸对齐 brand-mark，头部高度不变）。
+   按钮必须留在栏内——挂在栏外会被主区盖住，is-fixed 页更被
+   overflow:hidden 直接裁掉，导致折叠后没有展开入口。 */
+.app-sidebar[data-collapsed="true"] .sidebar-head { padding-inline: 0; }
+.app-sidebar[data-collapsed="true"] .brand-mark { display: none; }
+.app-sidebar[data-collapsed="true"] .sidebar-collapse-btn {
+  position: static;
+  margin-left: 0;
+  width: 28px;
+  height: 28px;
+}
 .app-sidebar { transition: width var(--dur) var(--ease-apple); }
 .sidebar-collapse-btn { width: 22px; height: 22px; }
 
@@ -273,7 +266,6 @@ table,
 .status-dot[data-state="error"] { background: var(--state-error); color: var(--state-error); }
 .status-dot[data-state="idle"] { background: var(--icon-muted); color: var(--icon-muted); }
 
-/* ─────────────────────────── 3. 工具栏 ─────────────────────────── */
 
 .app-toolbar {
   position: sticky;
@@ -328,7 +320,6 @@ table,
   font-weight: 600;
 }
 
-/* ─────────────────────────── 4. 内容区 ─────────────────────────── */
 
 .app-content {
   flex: 1;
@@ -353,15 +344,8 @@ table,
   .app-content-wide { padding: 18px 18px 44px; }
 }
 
-/* 内容区排版：用 .app-content 这个类做锚点，
-   权重 (0,1,1) 恰好压过 Tailwind 的 text- 与 font- 单类工具。
-
-   ⚠ 原注释里把两个工具类前缀写成了带星号的形式，其中的
-   斜杠星号序列会**提前闭合注释**，于是紧随其后的 `.app-content h2 {`
-   被解析成一串无效 token，该条规则连带其后若干条一起失效。
-   症状是「概览页标题忽大忽小」，而 CSS 里看不出任何异样 ——
-   构建器只给一句 "Unexpected token Delim"。
-   本仓库的注释里不要出现斜杠星号序列。 */
+/* 内容区排版：以 .app-content 为锚点，权重 (0,1,1) 压过 Tailwind 的 text-/font- 单类工具，
+   故右对齐表头要单独写 .text-right 出口。注意：注释里别出现斜杠星号序列，会提前闭合 CSS 注释、让后续规则失效。 */
 .app-content h2 {
   font-size: 15px;
   font-weight: 600;
@@ -384,10 +368,7 @@ table,
   margin-bottom: 12px;
 }
 
-/* 页面级功能按钮行：内容区首行，右对齐。
-   ⚠ 页面按钮只落在这里，不落 `.app-toolbar`。导航栏跟着侧边栏选中项
-   变来变去，会退化成第二排页面工具栏；设计稿的 `.toolbar-trail`
-   里始终只有版本与就绪两枚 chip。 */
+/* 页面级功能按钮行（右对齐）：只落这里、不落 .app-toolbar，否则会退化成第二排页面工具栏。 */
 .page-actions {
   display: flex;
   flex-wrap: wrap;
@@ -397,7 +378,6 @@ table,
   margin-bottom: 18px;
 }
 
-/* ─────────────────────────── 5. 表面 ─────────────────────────── */
 
 .ui-card,
 .ui-panel {
@@ -422,7 +402,7 @@ table,
 /* 不裁剪：面板里的筛选行需要能撑开，表格容器自带圆角与裁剪 */
 .ui-panel { overflow: visible; }
 
-/* 玻璃边缘：顶部一道 1px 内高光，是「材质感」最省力的一招 */
+/* 顶部 1px 内高光做玻璃边缘（材质感最省力一招）。 */
 .ui-card::after {
   content: "";
   position: absolute;
@@ -455,7 +435,6 @@ table,
   border-color: var(--apple-border);
 }
 
-/* ─────────────────────────── 6. 按钮 ─────────────────────────── */
 
 .ui-btn {
   display: inline-flex;
@@ -542,7 +521,7 @@ table,
 .icon-btn:active { background: var(--fill-primary); }
 .icon-btn.danger:hover { background: var(--state-error-surface); color: var(--state-error-strong); }
 
-/* 详情页按钮：与 .ui-btn 同一套视觉，保留原类名以免改 40 处标记 */
+/* 详情页按钮：与 .ui-btn 同一套视觉（沿用旧类名）。 */
 .btn-action {
   display: inline-flex;
   align-items: center;
@@ -612,12 +591,8 @@ table,
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
-/* ─────────────────────────── 7. 表单控件 ─────────────────────────── */
 
-/* ⚠ 这里只剩「文本类」控件。
-   下拉触发器的样式在下面的 .ui-select-trigger —— 原先 .form-select 既当
-   原生 <select> 又当 Radix 触发器，两边的需求（自绘箭头 vs 组件图标、
-   width:100% vs 调用方定宽）互相打架，所以拆开了。 */
+/* 文本类控件。下拉触发器独立到 .ui-select-trigger（原生 select 与 Radix 触发器需求打架，故拆开）。 */
 .form-input,
 .form-textarea,
 .filter-input {
@@ -682,13 +657,8 @@ table,
   color: var(--apple-muted-foreground);
 }
 
-/* 浮层统一皮 ──────────────────────────────────────────────────────
-   下拉菜单 / 弹出面板 / 日期面板共用同一份外观。
-
-   此前 select / popover / dropdown-menu 各自抄了一遍 shadcn 原版
-   （rounded-lg + border-border + shadow-lg），跟 Dialog / Sheet 用的
-   radius-2xl / shadow-xl 不是一套 —— 菜单看着像从另一个项目抠来的。
-   改这里即全场生效，不要再往调用点写外观类。 */
+/* 浮层统一皮：下拉 / 弹层 / 日期面板共用同一份外观。
+   改这里全场生效，勿在调用点写外观类。 */
 .ui-popover {
   border: 1px solid var(--apple-border);
   border-radius: var(--radius-xl);
@@ -697,13 +667,8 @@ table,
   box-shadow: var(--shadow-xl);
 }
 
-/* ── 下拉触发器 ──────────────────────────────────────────────────────
-   高度 / 字号 / 内边距在这里锁死，调用方只声明**宽度**（宽度是语义：
-   表单里 w-full，工具条里定宽）。
-
-   ⚠ 高度 / 字号锁在这里，所以调用点不要再写 h-7! / text-[12px] 这类补丁。
-   箭头由 Radix 的 SelectIcon 渲染（lucide ChevronDownIcon），不走
-   CSS background-image —— 那张图的颜色是硬编码的，深色模式不跟随。 */
+/* 下拉触发器：高度/字号/内边距锁死，调用方只声明宽度（宽度是语义：表单 w-full、工具条定宽）。
+   调用点勿写 h-7!/text-[12px] 补丁；箭头用 Radix SelectIcon，不走 background-image（颜色硬编码，深色不跟随）。 */
 .ui-select-trigger {
   height: 32px;
   padding: 0 10px;
@@ -740,9 +705,7 @@ table,
 }
 .ui-select-trigger[aria-invalid='true'] { border-color: var(--state-error); }
 
-/* 时间输入：刻意**不**设 appearance:none。
-   改成 none 会丢掉 WebKit 的时间分段编辑与图标，
-   这正是原生 datetime-local 看上去像个灰框的原因。 */
+/* 时间输入刻意不设 appearance:none：设 none 会丢 WebKit 的分段编辑与图标，datetime-local 看着像灰框。 */
 .ui-time-input {
   height: 30px;
   padding: 0 8px;
@@ -762,13 +725,8 @@ table,
   box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--brand-500) 20%, transparent);
 }
 
-/* 开关：38×22，滑块带投影（Apple 的细节）
-   ─────────────────────────────────────────────────────────────
-   ⚠ 设计稿原版把轨道画在 .switch::after 上，选中态靠
-   `body:has(#singleKeyToggle:checked)` 这个全局选择器驱动。两个问题：
-   状态藏在 DOM 结构里（任一元素 id 撞车即串台），且一次只能表达一个开关。
-   React 版由 Radix Switch 提供 role="switch" 与键盘操作，
-   样式改挂 data-state —— 同一份 CSS 可承载任意多个开关。 */
+/* 开关：由 Radix 提供 role="switch" 与键盘操作，样式挂 data-state —— 同一份 CSS 可承载任意多个开关
+   （旧版用全局选择器驱动，一次只表达一个开关、且 id 撞车即串台）。 */
 .switch {
   position: relative;
   display: inline-flex;
@@ -803,16 +761,9 @@ table,
 }
 .switch[data-state="checked"] .knob { transform: translateX(16px); }
 
-/* ─────────────────────────── 8. 表格 ─────────────────────────── */
 
-/* 外壳只此一层：圆角描边卡片 + 内部滚动层 + 可选页脚。
-   之前 `.ui-table-wrap` 同时管滚动，于是「表格外面再包一层」就会
-   出现双描边、双圆角、双滚动条（列表页曾各包一层）。
-   现在拆成两个职责：
-     .ui-table-wrap    帧（背景 / 描边 / 圆角 / 阴影 / 裁切）
-     .ui-table-scroll  横向滚动
-   宽表的 min-width 由各表自己声明在 <table> 上 —— 三列的小表
-   （详情页工具清单）不该被 880px 撑出横向滚动条。 */
+/* 外壳只此一层：帧（背景/描边/圆角/阴影/裁切）与 .ui-table-scroll（横向滚动）拆开，
+   避免嵌套时双描边双滚动条。宽表 min-width 由各表自声明，小表不该被撑出横滚。 */
 .ui-table-wrap {
   overflow: hidden;
   background: var(--apple-card);
@@ -849,11 +800,18 @@ table,
   background: color-mix(in srgb, var(--apple-muted) 45%, var(--apple-card));
   border-bottom: 1px solid var(--apple-border);
   white-space: nowrap;
+  /* 窄窗口下列宽按百分比收缩，可能比表头文字还窄。不裁的话 nowrap 的
+     表头会直接压到隔壁列的字上（"错误分类" 四个字就够压过去）。 */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* 单元格字号只在这里定一次。组件里不要再叠 text-sm / text-xs /
-   text-[12px] —— 那会让同一张表出现 3~4 档字号，且 CSS 改不动它。
-   要弱化的层次用 .cell-sub（第二行小字）。 */
+/* 表头对齐出口：本文件未分层，优先级压过 @layer utilities，`<th class="text-right">` 会输给上面的 left，
+   故此处单独写一条更具体的选择器。 */
+.ui-table thead th.text-right { text-align: right; }
+
+/* 单元格字号只在这里定一次，组件勿叠 text-sm/text-xs（否则同表出现多档字号且 CSS 改不动）；
+   弱化层次用 .cell-sub。 */
 .ui-table tbody td {
   padding: 11px 16px;
   font-size: 13px;
@@ -861,9 +819,7 @@ table,
   border-bottom: 1px solid color-mix(in srgb, var(--apple-border) 55%, transparent);
   vertical-align: middle;
 }
-/* 单元格里第二行的小字（Key、相对时间、次要计数）。
-   只定字号、不定颜色 —— 颜色留给调用方，避免和 Tailwind 的
-   text-warning-strong 这类单类工具抢优先级。 */
+/* 单元格第二行小字（Key、相对时间、次要计数）。只定字号、不定颜色，避免和 Tailwind 单类工具抢优先级。 */
 .ui-table .cell-sub {
   font-size: 11px;
 }
@@ -890,7 +846,6 @@ table,
 }
 .ui-table tbody tr.is-error:hover { background: var(--state-error-surface); }
 
-/* ─────────────────────────── 9. 徽标 / 标签 ─────────────────────────── */
 
 .badge,
 .ui-badge {
@@ -899,7 +854,7 @@ table,
   gap: 4px;
   height: 19px;
   padding: 0 7px;
-  border-radius: 5px;
+  border-radius: 999px; /* 胶囊形：状态徽标一眼可辨，也和圆点/开关的语言一致 */
   font-size: 11px;
   font-weight: 600;
   letter-spacing: -0.002em;
@@ -957,7 +912,6 @@ table,
 .copy-btn:active { background: var(--fill-primary); }
 .copy-btn.copied { background: var(--state-success); color: #fff; }
 
-/* ─────────────────────────── 10. 进度条 ─────────────────────────── */
 
 .progress-track {
   height: 5px;
@@ -971,7 +925,6 @@ table,
   transition: width var(--dur-slow) var(--ease-apple);
 }
 
-/* ─────────────────────────── 11. 栅格 ─────────────────────────── */
 
 .stat-grid,
 .pool-grid,
@@ -1018,10 +971,7 @@ table,
   align-items: start;
 }
 
-/* 分类栏：一条横向的分类条，超出视口横向滑动。
-   不再是竖向列表 —— 分类数量不可控，纵向会撑长页面，横向只占一行。
-   不用 flex-wrap 换行：换行后「分类有两条」又变回标签墙，
-   滑动至少保住了「一行扫完所有分类」的心智。 */
+/* 分类栏横向滑动一条：分类数量不可控，纵向撑长页面、横向只占一行；不用 flex-wrap（换行变回标签墙）。 */
 .market-rail {
   display: flex;
   flex-direction: row;
@@ -1069,7 +1019,6 @@ table,
   color: var(--icon-muted);
 }
 
-/* ─────────────────────────── 12. 折叠 / 标签页 / 抽屉 ─────────────────────────── */
 
 summary { list-style: none; cursor: pointer; }
 summary::-webkit-details-marker { display: none; }
@@ -1079,7 +1028,7 @@ summary::-webkit-details-marker { display: none; }
   transition: transform var(--dur) var(--ease-apple);
   color: var(--icon-muted);
 }
-/* 收起时朝右，展开时朝下 —— 全站统一，此前两种约定混用 */
+/* 收起朝右、展开朝下（全站统一）。 */
 details:not([open]) > summary .chev,
 details:not([open]) > summary .chevron { transform: rotate(-90deg); }
 details[open] > summary .chev,
@@ -1127,7 +1076,6 @@ details[open] > summary .chevron { transform: rotate(0deg); }
 .schema-modal[data-open="true"],
 .schema-modal.is-open { display: flex; }
 
-/* ─────────────────────────── 13. 表单卡 / 分组面板 ─────────────────────────── */
 
 .form-card {
   background: var(--apple-card);
@@ -1170,7 +1118,6 @@ details[open] > summary .chevron { transform: rotate(0deg); }
   .sticky-panel { position: sticky; top: 68px; }
 }
 
-/* ─────────────────────────── 14. 无障碍 / 减弱动效 ─────────────────────────── */
 
 .sr-only {
   position: absolute;
@@ -1195,33 +1142,3 @@ details[open] > summary .chevron { transform: rotate(0deg); }
   }
 }
 
-/* ─────────────────────────── 15. 深色模式 ─────────────────────────── */
-
-.dark {
-  color-scheme: dark;
-  --material-sidebar: color-mix(in srgb, var(--background-800) 76%, transparent);
-  --material-toolbar: color-mix(in srgb, var(--background-800) 74%, transparent);
-  --fill-quaternary: rgba(235, 235, 245, 0.05);
-  --fill-tertiary: rgba(235, 235, 245, 0.09);
-  --fill-secondary: rgba(235, 235, 245, 0.14);
-  --fill-primary: rgba(235, 235, 245, 0.20);
-  --separator: rgba(235, 235, 245, 0.11);
-  --selection: color-mix(in srgb, var(--brand-400) 22%, transparent);
-  --selection-strong: color-mix(in srgb, var(--brand-400) 30%, transparent);
-}
-
-.dark .ui-card::after {
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.10) 18%,
-    rgba(255, 255, 255, 0.10) 82%,
-    transparent
-  );
-}
-.dark .brand-mark { color: var(--background-900); }
-.dark .ui-btn-primary { color: var(--background-900); }
-.dark .pg-btn[data-active="true"] { color: var(--background-900); }
-.dark .copy-btn.copied { color: var(--background-900); }
-.dark .switch .knob,
-.dark .toggle-slider::before { background: #f2f2f7; }

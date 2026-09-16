@@ -3,12 +3,8 @@ import { persist } from 'zustand/middleware'
 
 import { apiKeyStorage } from '@/lib/api/client'
 
-/**
- * 管理接口鉴权状态。
- *
- * 后端 `--api-key` 未启用时这段完全无感：请求照常放行，
- * 解锁弹窗也不会出现（只在收到 401 时才需要用户填）。
- */
+/** 管理接口鉴权状态。后端未启用 `--api-key` 时完全无感：
+ *  请求照常放行，解锁弹窗只在收到 401 时才出现。 */
 interface AuthState {
   /** 当前令牌。空串 = 未启用鉴权。 */
   apiKey: string

@@ -2,9 +2,7 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
-/* 图标列展开有两种触发方式：原生 <svg>（shadcn 默认）与项目的
-   <i data-icon>（Icon 组件，CSS mask）。后者不命中 has-[>svg] 时
-   图标列宽仍是 0，图标会叠到标题上 —— 这就是"重叠"的根因。 */
+/* 图标列有 <svg> 与 <i data-icon> 两种形态；后者不命中 has-[>svg]，列宽为 0 会让图标叠到标题上。 */
 const alertVariants = cva(
   "relative grid w-full grid-cols-[0_1fr] items-start gap-y-0.5 rounded-xl border px-4 py-3 text-[13px] has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] has-[>svg]:gap-x-3 has-[>[data-icon]]:grid-cols-[calc(var(--spacing)*4)_1fr] has-[>[data-icon]]:gap-x-3 [&>svg]:size-4 [&>svg]:translate-y-0.5 [&>svg]:text-current [&>[data-icon]]:translate-y-0.5 [&>[data-icon]]:text-current",
   {

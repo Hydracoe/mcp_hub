@@ -1,31 +1,31 @@
+import { Suspense } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
 import { Sidebar } from './Sidebar'
-import { useOverview } from '@/lib/api/queries'
+import { RouteErrorBoundary } from './RouteErrorBoundary'
+import { PageSkeleton } from '@/components/common/States'
+import { useBackendConnection, useOverview } from '@/lib/api/queries'
 import { cn } from '@/lib/utils'
 
-/**
- * 应用外壳。
- *
- * 结构固定为「侧边栏 + 主区（工具栏 / 内容）」。
- * 页面自己只负责内容，工具栏由这里统一给 ——
- * 否则每个页面都要把同一段外壳复制一遍。
- *
- * `is-fixed` 变体用于「主区独立滚动」的页面（Server 详情），
- * 由页面通过 `useAppShellMode` 声明。这里用 location.pathname 判断，
- * 因为它是布局层的决定，不该让子页面往父级塞状态。
- */
+/** 应用外壳：侧边栏 + 主区（工具栏/内容），工具栏由这里统一给。
+ *  `is-fixed` 用于主区独立滚动的页（Server 详情），由布局层判断。
+ *  错误边界挂这里而非更外层：chunk 下载失败时侧边栏/工具栏保持可交互。 */
 export function AppShell() {
-  const { data, isError } = useOverview()
+  const { data } = useOverview()
+  const connection = useBackendConnection()
   const { pathname } = useLocation()
 
   const isFixed = /^\/servers\/[^/]+$/.test(pathname)
 
   return (
     <div className={cn('app-shell', isFixed && 'is-fixed')}>
-      <Sidebar version={data?.version} running={Boolean(data?.ready) && !isError} />
+      <Sidebar version={data?.version} connection={connection} />
       <div className={cn('app-main', isFixed && 'is-fixed')}>
-        <Outlet />
+        <RouteErrorBoundary resetKey={pathname}>
+          <Suspense fallback={<PageSkeleton />}>
+            <Outlet />
+          </Suspense>
+        </RouteErrorBoundary>
       </div>
     </div>
   )

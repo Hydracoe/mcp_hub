@@ -17,7 +17,7 @@ export interface FormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: ReactNode
-  /** 标题左侧图标。头部带不带图标之前是一半对一半，模板里统一成「给了就渲染」。 */
+  /** 标题左侧图标，给了就渲染。 */
   icon?: IconName
   description?: ReactNode
   size?: 'sm' | 'default' | 'lg' | 'xl'
@@ -25,11 +25,8 @@ export interface FormDialogProps {
   pending?: boolean
   submitText?: string
   cancelText?: string
-  /**
-   * 不渲染「取消」。用于一次性的交付 / 结果页：那时候关掉弹框
-   * 不是一个"放弃操作"的选项，留一个取消按钮只会让人以为
-   * 这一步还能反悔。
-   */
+  /** 不渲染「取消」。用于一次性的交付 / 结果页——那时关掉弹框
+   *  不是"放弃操作"，留个取消按钮只会让人以为还能反悔。 */
   hideCancel?: boolean
   /** 不传就没有页脚（只读查看类弹框）。 */
   onSubmit?: () => void
@@ -43,19 +40,8 @@ export interface FormDialogProps {
   children: ReactNode
 }
 
-/**
- * 表单弹框模板。
- *
- * 页面只给「标题 + 正文 + 提交动作」，结构固定为
- * Header（图标 / 标题 / 副标题）→ Body（内边距与间距由模板定）
- * → Footer（次要操作靠左、主操作靠右）。
- *
- * 收这个模板是为了终结三种分叉：正文手写 6 遍不同间距、
- * 页脚一半靠左一半靠右、标题一半带图标一半不带。
- *
- * 只读弹框（没有提交动作、没有页脚）不要用在这里 ——
- * 直接用 `DialogContent` + `DialogBody`。
- */
+/** 表单弹框模板。页面只给「标题 + 正文 + 提交动作」，
+ *  结构固定为 Header → Body → Footer（次要靠左、主操作靠右）。 */
 export function FormDialog({
   open,
   onOpenChange,

@@ -3,11 +3,8 @@ import { DotStat, MetricCard } from '@/components/common/KeyValue'
 import { formatInt, formatPercent } from '@/lib/format'
 import type { OverviewResponse } from '@/lib/api/types'
 
-/**
- * 顶部指标卡区。四张卡全部取自 useOverview() 的返回值，
- * ⚠ 设计稿原版的 918 / 1,248、2,894 / 3,186、1,284、8,806 / 9,660 都是写死的假数字，
- * 与真实来源（ServerStats / ToolStats / CallStats / KeySummary）不一致，这里一律换成接口值。
- */
+/** 顶部指标卡区。四张卡全部取自 useOverview() 的返回值
+ *  （ServerStats / ToolStats / CallStats / KeySummary），不用写死的假数字。 */
 export function StatCards({ overview }: { overview: OverviewResponse }) {
   const { servers, tools, calls, credentials: keys } = overview
 
@@ -33,20 +30,20 @@ export function StatCards({ overview }: { overview: OverviewResponse }) {
       <MetricCard
         label="工具总数"
         icon={<Icon name="wrench" size={16} className="text-icon-muted" />}
-        value={formatInt(tools.exposed)}
-        suffix={`/ ${formatInt(tools.cached)}`}
+        value={formatInt(tools.total)}
+        suffix={`/ ${formatInt(tools.cached ?? tools.total)}`}
         detail={
           <>
             <span className="text-muted-foreground">
-              cached <span className="text-foreground">{formatInt(tools.cached)}</span>
+              下游声明 <span className="text-foreground">{formatInt(tools.cached ?? tools.total)}</span>
             </span>
-            <span className="text-foreground">exposed {formatInt(tools.exposed)}</span>
+            <span className="text-foreground">生效中 {formatInt(tools.total)}</span>
             <span className="inline-flex items-center gap-1 rounded-md bg-fill-tertiary px-1.5 py-0.5 text-foreground">
-              {formatInt(tools.filtered)} 被过滤
+              {formatInt(tools.hidden ?? 0)} 未启用
             </span>
           </>
         }
-        footnote="按 allow / block 过滤后对外暴露"
+        footnote="未启用 = 人工禁用，或 Server 未探活 / 已停用"
       />
 
       <MetricCard
@@ -89,7 +86,7 @@ export function StatCards({ overview }: { overview: OverviewResponse }) {
             <DotStat tone="error" label="disabled" value={formatInt(keys.disabled)} />
           </>
         }
-        footnote={`${formatInt(keys.servers)} 个 Server 独立成池 · ${formatInt(keys.unusable)} 把不可用，自愈中`}
+        footnote={`${formatInt(keys.unusable)} 把不可用，自愈中`}
       />
     </div>
   )

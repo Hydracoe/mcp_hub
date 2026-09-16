@@ -46,11 +46,8 @@ function KeyRow({ detail, base }: { detail: KeyDetail; base: number }) {
   )
 }
 
-/**
- * 密钥池异常明细：只显示不可用（冷却 / 停用）的密钥。
- * 按 Server 分组，组行点击展开该 Server 下每把异常密钥的运行时明细。
- * keyDetails 为空 / undefined / 字段缺失时降级为正常态，不报错、不显示 NaN。
- */
+/** 密钥池异常明细：只显示冷却 / 停用的密钥，按 Server 分组、点击展开明细。
+ *  keyDetails 缺失时降级为正常态，不报错、不显示 NaN。 */
 export function KeyPoolSection({ details }: { details?: KeyDetail[] | null }) {
   // 1s 心跳：仅用于让冷却倒计时跳动，组件卸载时清掉。
   const [, setTick] = useState(0)

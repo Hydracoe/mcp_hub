@@ -1,18 +1,7 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   index.css — 样式入口
-   ───────────────────────────────────────────────────────────────────────────
-   顺序即优先级，不要调换：
-
-     tailwindcss      Tailwind 引擎（含 @layer theme / base / utilities）
-     tw-animate-css   进场退场动画（shadcn 的 data-state 动画依赖它）
-     tokens.css       设计令牌，**未分层** —— 未分层样式压过任何 @layer
-     apple-ui.css     设计系统组件层，同样未分层
-     icons.css        本地 SVG 图标（CSS mask）
-
-   tokens.css / apple-ui.css 必须未分层且排在 tailwind 之后：Tailwind v4 把
-   主题变量放在 @layer theme 里，只有未分层才能反过来压住
-   --spacing / --radius-* / --font-* 这些默认令牌。
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* index.css — 样式入口。顺序即优先级，不要调换：
+   tailwindcss → tw-animate-css → tokens.css → apple-ui.css → icons.css。
+   tokens/apple-ui 必须未分层且排在 tailwind 之后，才能压过 Tailwind 的默认令牌。
+   注意：注释里不要写出「斜杠 + 星号」的相邻序列，它会提前闭合注释。 */
 
 @import 'tailwindcss';
 @import 'tw-animate-css';
@@ -22,7 +11,7 @@
 @import './icons.css';
 
 /* 主题映射：把语义令牌暴露成 Tailwind 颜色 / 圆角 / 字体工具类。
-   inline 表示原样输出 var()，因此深色模式切换无需重新生成 CSS。 */
+   inline 表示原样输出 var()，令牌改值时工具类自动跟随。 */
 @theme inline {
   --color-background: var(--apple-background);
   --color-foreground: var(--apple-foreground);
@@ -44,8 +33,7 @@
   --color-input: var(--apple-input);
   --color-ring: var(--apple-ring);
 
-  /* 状态色：徽标 / 开关 / 进度条只允许用这三组，不要写内联色值。
-     设计稿里散落的 color-mix(...) 全部收敛到这里。 */
+  /* 状态色：徽标 / 开关 / 进度条只许用这三组，勿写内联色值。 */
   --color-success: var(--state-success);
   --color-success-strong: var(--state-success-strong);
   --color-success-surface: var(--state-success-surface);
@@ -87,9 +75,7 @@
   --color-fill-primary: var(--fill-primary);
   --color-separator: var(--separator);
 
-  /* 选中底色。此前只有 --selection 变量，没注册成 --color-selection，
-     于是 select.tsx 里的 `bg-selection` / `data-[state=checked]:bg-selection`
-     一个类都生成不出来 —— 下拉的选中项与键盘高亮是**完全看不见**的。 */
+  /* 选中底色。必须注册成 --color-selection，否则 select 的选中项与键盘高亮不可见。 */
   --color-selection: var(--selection);
   --color-selection-strong: var(--selection-strong);
 
@@ -104,15 +90,4 @@
   --font-mono: var(--apple-font-mono);
 
   --ease-apple: var(--ease-apple);
-}
-
-/* 类名与 Tailwind 的 dark: 变体都挂到 .dark 上（与 tokens.css 的 .dark 对齐） */
-@custom-variant dark (&:where(.dark, .dark *));
-
-@layer base {
-  /* 设计稿的多处 body 样式已由 apple-ui.css 承担；这里只补 Tailwind 侧
-     需要参与层叠的默认值，不要重复定义字号与字体。 */
-  html.dark {
-    color-scheme: dark;
-  }
 }

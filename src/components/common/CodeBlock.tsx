@@ -14,10 +14,7 @@ export interface CodeBlockProps {
   maxHeight?: number
 }
 
-/**
- * 代码块。JSON 走一个极小的分词高亮（关键字 / 字符串 / 标点），
- * 不引入高亮库 —— 管理后台里需要高亮的只有 JSON 和命令行。
- */
+/** 代码块。JSON 走一个极小的分词高亮，不引高亮库。 */
 export function CodeBlock({
   code,
   language = 'text',
@@ -54,12 +51,7 @@ function escapeHtml(s: string) {
     .replace(/>/g, '&gt;')
 }
 
-/**
- * 极简 JSON 高亮。
- *
- * 先把每个 token 转义再包 span，避免在原文上做替换 ——
- * 在已插入标签的字符串上继续正则匹配，会把标签内容也吃掉。
- */
+/** 极简 JSON 高亮：先逐个 token 转义再包 span，避免在已插入标签的字符串上继续正则而吃掉标签内容。 */
 function highlightJson(raw: string): string {
   const out: string[] = []
   const re = /("(?:\\.|[^"\\])*")(\s*:)?|(\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|\b(true|false|null)\b|([{}[\],:])/g

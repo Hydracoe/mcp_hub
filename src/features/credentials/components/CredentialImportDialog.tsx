@@ -27,16 +27,8 @@ interface Props {
   mutations: Mutations
 }
 
-/**
- * 批量粘贴密钥。
- *
- * 不显示 serverKey：归属由页面上的 ServerPicker 表明，弹框里重复一次
- * 只剩噪音；端点路径是调试信息，不值得常驻界面上。
- *
- * ⚠ 设计稿原版只有一个光秃秃的粘贴框，没说清「一行一把」的两种写法，
- * 也不知道值会被展开成什么 header。这里把格式示例与展开预览补上 ——
- * 密钥这种一次性的东西，贴错了只能重来。
- */
+/** 批量粘贴密钥。不显示 serverKey（归属由页面 ServerPicker 表明）；
+ *  补上「一行一把」的格式示例与 header 展开预览，密钥一次性贴错只能重来。 */
 export function CredentialImportDialog({ open, onOpenChange, mutations }: Props) {
   const [raw, setRaw] = useState('')
   const [scheme, setScheme] = useState<Scheme>('bearer')

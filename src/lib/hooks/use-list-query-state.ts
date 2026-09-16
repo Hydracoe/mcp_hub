@@ -1,13 +1,8 @@
 import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-/**
- * 列表页的查询状态（搜索 / 筛选 / 排序 / 分页）挂在 URL 上。
- *
- * 为什么不用 zustand：这些条件的价值在于「能被复制、能被后退、
- * 刷新不丢」。放进全局 store 之后，用户从日志页跳回列表页
- * 会带着上一页的筛选，而他并不记得自己筛过什么。
- */
+/** 列表查询状态（搜索/筛选/排序/分页）挂在 URL 上：状态要能被复制、后退、刷新不丢；
+ *  放全局 store 会让用户跳回时带着自己不记得的筛选。纯函数部分在同级的 `../list-utils`。 */
 export interface ListQueryState {
   /** 全文搜索词。 */
   q: string
@@ -87,28 +82,4 @@ export function useListQueryState({
   )
 
   return { state, setQ, setFilter, setPage, setPageSize, toggleSort, patch }
-}
-
-/** 本地内存版的分页/排序（数据已全量在前端时用）。 */
-export function paginate<T>(rows: T[], page: number, pageSize: number) {
-  const pages = Math.max(1, Math.ceil(rows.length / pageSize))
-  const current = Math.min(page, pages)
-  return {
-    rows: rows.slice((current - 1) * pageSize, current * pageSize),
-    page: current,
-    pages,
-    total: rows.length,
-  }
-}
-
-export function sortRows<T>(rows: T[], key: keyof T | ((row: T) => unknown), dir: 1 | -1): T[] {
-  const get = typeof key === 'function' ? key : (row: T) => row[key]
-  return [...rows].sort((a, b) => {
-    const va = get(a)
-    const vb = get(b)
-    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir
-    const sa = String(va ?? '')
-    const sb = String(vb ?? '')
-    return sa.localeCompare(sb, 'zh-Hans-CN') * dir
-  })
 }

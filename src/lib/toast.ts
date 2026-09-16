@@ -2,12 +2,7 @@ import { toast } from 'sonner'
 
 import { ApiError } from './api/client'
 
-/**
- * 把一次失败统一呈现成 toast。
- *
- * 后端错误体已经是 `{code, error}`，`error` 是写给用户看的中文句子，
- * 那句就是排查方向 —— 不要再包一层「操作失败」把它盖掉。
- */
+/** 把失败统一呈现成 toast。后端错误体 `{code, error}` 里 `error` 已是写给用户的中文句子，直接用即可，别再包一层「操作失败」盖掉它。 */
 export function toastError(error: unknown, fallback = '操作失败') {
   if (error instanceof ApiError) {
     const title = codeTitle(error.code)

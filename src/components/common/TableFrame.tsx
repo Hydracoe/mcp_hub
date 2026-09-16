@@ -31,15 +31,7 @@ export interface TableFrameProps {
   wrapClassName?: string
 }
 
-/**
- * 表格模板。
- *
- * 页面只声明「表头 + 数据 + 状态」，不写 `<thead>` / `<tbody>` / 外壳，
- * 因此不会出现「有人包了壳、有人没包」「空态三种形态」这类分叉。
- *
- * 这里刻意**不做列声明式配置** —— 列内容仍是调用方写的 JSX，
- * 模板只管结构：外壳单层、状态位内建、表头常驻、页脚进帧。
- */
+/** 表格模板。页面只声明「表头 + 数据 + 状态」，不写 thead/tbody/外壳——模板只管结构（外壳单层、状态位内建、表头常驻、页脚进帧），列内容仍是调用方写的 JSX。 */
 export function TableFrame({
   head,
   colCount,

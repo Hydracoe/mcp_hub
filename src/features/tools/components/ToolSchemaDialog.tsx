@@ -20,15 +20,9 @@ import { CodeBlock } from '@/components/common/CodeBlock'
 import { Dash } from '@/components/common/KeyValue'
 import type { ToolEntry } from '@/lib/api/types'
 
-import { parseSchema } from './SchemaForm'
+import { parseSchema } from './schema-model'
 
-/**
- * inputSchema 查看器。
- *
- * ⚠ 设计稿原版这个弹窗缺了 hidden 属性，打开页面时它就已经在 DOM 里
- * 渲染着（只是被别的浮层盖住）；tools.html 里同一个 bug 出现在两处。
- * 这里用 Radix 受控渲染，不打开就不存在。
- */
+/** inputSchema 查看器。用 Radix 受控渲染，不打开就不在 DOM 里。 */
 export function ToolSchemaDialog({
   tool,
   open,

@@ -4,15 +4,9 @@ import { Slot } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
 
-/**
- * 按钮。视觉全部走 apple-ui.css 的 `.ui-btn*`（设计系统单一来源），
- * 这里只负责变体映射与尺寸。
- *
- * ⚠ 刻意不用 Tailwind 的 h-9 / rounded-md / bg-primary 之类：
- * 设计稿的控件高度是 30px、字重 500、字距 -0.004em，与 shadcn 默认的
- * 36px + 2px 圆角不是一套尺度。两套尺寸混用正是设计稿里
- * 「同一排按钮高低不一」的来源。
- */
+/** 按钮。视觉全部走 apple-ui.css 的 `.ui-btn*`，这里只做变体映射与尺寸。
+ *  刻意不用 Tailwind 的 h-9 / rounded-md：设计系统的控件高度是 30px，
+ *  与 shadcn 默认的 36px 不是一套尺度，混用会让同排按钮高低不一。 */
 const buttonVariants = cva('ui-btn', {
   variants: {
     variant: {
@@ -61,8 +55,7 @@ function Button({
       data-slot="button"
       data-variant={variant ?? 'default'}
       data-size={size ?? 'default'}
-      // 非 submit 的按钮默认 type="button"：设计稿里大量按钮位于 <form> 内，
-      // 忘记写 type 会让「全量测试」变成一次表单提交 + 整页刷新。
+      // 非 submit 的按钮默认 type="button"：表单内的按钮忘了写 type 会变成一次提交 + 整页刷新。
       type={asChild ? undefined : (type ?? 'button')}
       className={cn(buttonVariants({ variant, size }), className)}
       {...props}

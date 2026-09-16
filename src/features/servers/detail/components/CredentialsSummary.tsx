@@ -11,7 +11,6 @@ export interface CredentialsSummaryProps {
 }
 
 export function CredentialsSummary({ server }: CredentialsSummaryProps) {
-  // ⚠ 设计稿原版把「无密钥池」当成 0 个密钥渲染；此处明确区分单密钥模式
   if (server.keyPool === false) {
     return (
       <div className="form-card">

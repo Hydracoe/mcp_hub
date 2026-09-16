@@ -5,31 +5,18 @@ import { cn } from '@/lib/utils'
 export type SortDir = 'asc' | 'desc'
 
 export interface SortHeadProps<K extends string> {
-  /** 表头文案。 */
   label: string
   /** 这一列对应的排序键。 */
   col: K
-  /** 当前排序列。 */
   sort: K
   dir: SortDir
-  /** 点这一列时回调。传 `undefined` 则这一列不可排，只渲染文案。 */
+  /** 传 `undefined` 则这一列不可排，只渲染文案。 */
   onSort?: (col: K) => void
   className?: string
   align?: 'left' | 'right'
 }
 
-/**
- * 可排序表头。
- *
- * 排序能力长在**表头**上，而不是在筛选栏再塞一个「排序方式」下拉：
- * 表格自己的顺序，控件就该在表格上；两处入口意味着两份状态要互相同步。
- *
- * 三种状态刻意画得不一样：
- *   - 未激活：箭头常驻但淡（`text-icon-muted`），让人知道这列能点
- *   - 激活升序：箭头朝上 + 实色
- *   - 激活降序：箭头朝下 + 实色
- * 只画激活态的话，未激活的列看起来和纯文本表头一模一样，没人会发现能点。
- */
+/** 可排序表头。控件长在表头上（不在筛选栏另放排序下拉，避免两份状态同步）；激活态只改箭头、不改文字色，未激活列常驻淡箭头提示可点。 */
 export function SortHead<K extends string>({
   label,
   col,
@@ -57,10 +44,7 @@ export function SortHead<K extends string>({
         onClick={() => onSort(col)}
         /* 提示词带上当前方向，读屏用户点之前就知道会发生什么 */
         title={active ? `当前${dir === 'asc' ? '升序' : '降序'}，点击切换为${dir === 'asc' ? '降序' : '升序'}` : `按${label}排序`}
-        className={cn(
-          'inline-flex cursor-pointer items-center gap-1 rounded-sm transition-colors hover:text-foreground',
-          active ? 'text-foreground' : 'text-icon-muted',
-        )}
+        className="inline-flex cursor-pointer items-center gap-1 rounded-sm transition-colors hover:text-foreground"
       >
         {label}
         <Icon

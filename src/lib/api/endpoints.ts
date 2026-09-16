@@ -1,4 +1,5 @@
 import { request } from './client'
+import { adaptProbeResult } from './types'
 import type {
   ApiKeyCreateResponse,
   ApiKeyView,
@@ -8,8 +9,6 @@ import type {
   CredentialListResponse,
   CredentialRequest,
   CredentialView,
-  EmbedConfig,
-  EmbedRebuildStatus,
   KeyEventItem,
   LogItem,
   LogListResponse,
@@ -17,19 +16,17 @@ import type {
   OverviewResponse,
   ProbeDraftResult,
   ProbeResult,
+  RawProbeResult,
   ServerDetail,
   ServerRequest,
   ServerSummary,
   TestAllResponse,
+  ToolChangeListResponse,
+  ToolChangeQuery,
   ToolEntry,
 } from './types'
 
-/**
- * 管理 API 的唯一调用入口。
- *
- * 页面里不出现裸 `fetch`：路径、查询参数名、请求体形状散在各处之后，
- * 后端改一个字段名就要全仓搜索。
- */
+/** 管理 API 唯一调用入口，页面禁止裸 fetch：路径/参数散落会让后端改名时要全仓搜。 */
 
 /* ── 概览 / 接入 ── */
 
@@ -53,12 +50,8 @@ export const createServer = (body: ServerRequest, opts?: { probe?: boolean; upse
 export const updateServer = (id: string, body: ServerRequest) =>
   request<ServerDetail>(`/api/servers/${id}`, { method: 'PUT', body })
 
-/**
- * 干跑探活：配置尚未创建，直接对请求体里的 Spec 做 L1–L3 + tools/list。
- *
- * 新增向导的「探活 → 勾选暴露」流程的入口。探活不落库，
- * 提交创建仍走 createServer。
- */
+/** 干跑探活：直接对请求体里的配置做 L1–L3 + tools/list，不落库。
+ *  新增向导「探活 → 勾选启用」的入口，正式创建走 createServer。 */
 export const probeServerDraft = (body: ServerRequest) =>
   request<ProbeDraftResult>('/api/servers/probe', { method: 'POST', body })
 
@@ -68,11 +61,15 @@ export const deleteServer = (id: string) =>
 export const setServerEnabled = (id: string, enabled: boolean) =>
   request<ServerDetail>(`/api/servers/${id}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' })
 
-export const testServer = (id: string) =>
-  request<ProbeResult>(`/api/servers/${id}/test`, { method: 'POST' })
+/** 单个 server 探活。后端直出原始 ProbeResult，这里折成 UI 的分层结构，
+ *  ProbePanel 依赖的 levels/totalMs 由适配层保证存在。 */
+export const testServer = async (id: string): Promise<ProbeResult> =>
+  adaptProbeResult(await request<RawProbeResult>(`/api/servers/${id}/test`, { method: 'POST' }))
 
-export const refreshServerTools = (id: string) =>
-  request<ProbeResult>(`/api/servers/${id}/refresh-tools`, { method: 'POST' })
+export const refreshServerTools = async (id: string): Promise<ProbeResult> =>
+  adaptProbeResult(
+    await request<RawProbeResult>(`/api/servers/${id}/refresh-tools`, { method: 'POST' }),
+  )
 
 export const testAllServers = () =>
   request<TestAllResponse>('/api/servers/test-all', { method: 'POST' })
@@ -84,6 +81,25 @@ export const listTools = (params?: { serverKey?: string; q?: string }) =>
     query: { serverKey: params?.serverKey, q: params?.q },
   })
 
+/** 启用 / 禁用单个工具。响应回整份 server 详情，界面拨完开关就地刷新。
+ *  工具名进路径，按 MCP 规范只含安全字符，仍统一编码以防万一。 */
+export const setToolEnabled = (serverId: string, toolName: string, enabled: boolean) =>
+  request<ServerDetail>(
+    `/api/servers/${serverId}/tools/${encodeURIComponent(toolName)}/${enabled ? 'enable' : 'disable'}`,
+    { method: 'POST' },
+  )
+
+/* ── 工具变更记录 ── */
+
+export const listToolChanges = (query: ToolChangeQuery = {}) =>
+  request<ToolChangeListResponse>('/api/tool-changes', {
+    query: {
+      serverId: query.serverId,
+      limit: query.limit,
+      offset: query.offset,
+    },
+  })
+
 /* ── 分类 ── */
 
 export const listCategories = () =>
@@ -92,7 +108,7 @@ export const listCategories = () =>
 export interface CategoryRequest {
   /** 中文名，界面展示。 */
   name: string
-  /** 英文名，进对外工具名的前缀段。 */
+  /** 英文名（slug），用于列表与筛选，不进对外工具名。 */
   slug: string
   description: string
 }
@@ -127,13 +143,7 @@ export const listLogs = (query: LogQuery) =>
 
 export const clearLogs = () => request<{ deleted: number }>('/api/logs', { method: 'DELETE' })
 
-/**
- * 密钥事件流。
- *
- * ⚠ 后端尚无此端点（缺口 B1，见 M5-缺口清单）。这里保留调用形状，
- * mock 模式下由前端模拟；真实后端返回 404 时界面要能降级成
- * 「该视图暂未开放」，而不是把整页打崩。
- */
+/** 密钥事件流。后端暂无此端点，返回 404 时界面要降级而非崩溃。 */
 export const listKeyEvents = (query: { serverId?: string; limit?: number } = {}) =>
   request<{ total: number; items: KeyEventItem[] }>('/api/logs/key-events', {
     query: { serverId: query.serverId, limit: query.limit ?? 100 },
@@ -184,40 +194,9 @@ export const createApiKey = (name: string) =>
 /** 删除即失效：后续用这把 key 访问 /mcp 会立刻拿到 401。 */
 export const deleteApiKey = (id: string) => request<void>(`/api/keys/${id}`, { method: 'DELETE' })
 
-/**
- * 启用 / 停用一把接入密钥（后端返回 204，无响应体）。
- *
- * 注意语义：停用是收紧不是放开 —— 库里只要存在过 key，`/mcp` 就
- * 强制鉴权，因此"全部停用"等于把端点锁死，而不是退回匿名访问。
- */
+/** 启用 / 停用一把接入密钥（后端返回 204，无响应体）。
+ *  停用是收紧不是放开：库里存在过 key 时 `/mcp` 强制鉴权，全部停用等于锁死端点，而非退回匿名访问。 */
 export const setApiKeyEnabled = (id: string, enabled: boolean) =>
   request<void>(`/api/keys/${id}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' })
-
-/* ── 嵌入检索配置（M7） ── */
-
-export const getEmbedConfig = () => request<EmbedConfig>('/api/embed-config')
-
-export const updateEmbedConfig = (body: EmbedConfig) =>
-  request<EmbedConfig>('/api/embed-config', { method: 'PUT', body })
-
-export const getEmbedRebuild = () =>
-  request<EmbedRebuildStatus>('/api/embed-config/rebuild')
-
-export const triggerEmbedRebuild = () =>
-  request<EmbedRebuildStatus>('/api/embed-config/rebuild', { method: 'POST' })
-
-/* ── 工具检索（M7） ── */
-
-export const searchTools = (params: {
-  q: string
-  mode?: 'keyword' | 'bm25' | 'hybrid'
-  category?: string
-  server?: string
-  tag?: string
-  k?: number
-}) =>
-  request<{ total: number; items: ToolEntry[]; degraded?: string }>('/api/tools/search', {
-    query: params,
-  })
 
 export type { LogItem }

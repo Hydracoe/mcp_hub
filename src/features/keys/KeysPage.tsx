@@ -12,17 +12,8 @@ import { formatInt } from '@/lib/format'
 import { KeysTable } from './components/KeysTable'
 import { ApiKeyCreateDialog } from './components/ApiKeyCreateDialog'
 
-/**
- * 接入密钥。
- *
- * 上游 AI 客户端调 `/mcp` 时出示的凭据，由网关自己签发。
- * 与侧边栏里的「密钥池」是两回事：那是网关**拿去调下游**的凭据，
- * 按 Server 隔离；这里是**上游调网关**的凭据，全局一份清单。
- *
- * ⚠ 这一页在 PRD 里没有独立章节（FR-4.x 只讲了接入配置的复制），
- * 但没有它 `/mcp` 就是一条死路：网关一旦建过 key 就强制鉴权，
- * 而用户只能手敲 curl 才能建出第一把。
- */
+/** 接入密钥：上游客户端调 /mcp 时出示、由网关签发的凭据（全局一份清单）。
+ *  与侧栏「密钥池」不同——那按 Server 隔离，是网关调下游用的。 */
 export function KeysPage() {
   const { data: overview } = useOverview()
   const { data, isLoading, error, refetch } = useApiKeys()
@@ -50,7 +41,6 @@ export function KeysPage() {
     <PageLayout
       title="接入密钥"
       version={overview?.version}
-      ready={overview?.ready}
       actions={
         <>
           <Button variant="ghost" size="icon-sm" aria-label="刷新" onClick={() => void refetch()}>
@@ -85,10 +75,6 @@ export function KeysPage() {
             empty: emptyState,
             footer: (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-separator px-4 py-2.5 text-[11.5px] text-muted-foreground">
-                <span>
-                  网关只保存密钥的 sha256，明文落不了库 —— 所以它只显示一次，丢了只能删掉重建。
-                </span>
-                <span>「最近使用」由调用方每次成功鉴权时回写，最多每分钟落一次库。</span>
               </div>
             ),
           }}
@@ -100,15 +86,8 @@ export function KeysPage() {
   )
 }
 
-/**
- * 鉴权态势。
- *
- * 这张卡片存在的理由：`/mcp` 的鉴权开关不是一个勾选框，而是
- * "库里有没有 key"这个事实本身（见 httpd.mcpAuth）。用户没有
- * 这层解释，就无法理解为什么建完第一把密钥、或者删掉最后一把，
- * 客户端的表现会突然变样。三种状态都说「现在谁能调」和「怎么做会变」，
- * 不用「强制鉴权 / 端点锁死」这类只有后端视角才懂的词。
- */
+/** 鉴权态势卡片：/mcp 的鉴权开关不是勾选框，而是「库里有没有 key」这个事实
+ *  （见 httpd.mcpAuth）——建第一把 / 删最后一把会突然改变客户端表现。 */
 function AuthPosture({ total, enabled }: { total: number; enabled: number }) {
   if (total === 0) {
     return (

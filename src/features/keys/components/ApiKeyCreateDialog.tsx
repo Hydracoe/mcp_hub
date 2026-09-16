@@ -18,23 +18,12 @@ interface ApiKeyCreateDialogProps {
   mutations: Mutations
 }
 
-/**
- * 新建接入密钥。
- *
- * 两段式：填名字 → 交付明文。之所以不合成一段，是因为明文
- * **不可重放**（库里只有 sha256），而"创建成功"的 toast 一闪就过去了，
- * 用户很容易在看清那串字符之前把它弄丢。
- *
- * 第二段刻意不给「取消」：那时候关掉弹框不是"放弃操作"，
- * 留一个取消按钮会让人以为这次创建还能撤回。
- */
+/** 新建接入密钥（两段式：填名 → 交付明文）。明文不可重放（库里只有 sha256），
+ *  故单独一屏交付；该屏不给「取消」，避免误以为创建可撤回。 */
 export function ApiKeyCreateDialog({ open, onOpenChange, mutations }: ApiKeyCreateDialogProps) {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
-  /**
-   * 明文只活在这次弹框会话的内存里：不写 localStorage、不进 URL、
-   * 也不交给 react-query 的缓存 —— 那会让明文一直留在内存里。
-   */
+  /** 明文只活在本次弹框的内存里，不写 localStorage / URL / react-query 缓存。 */
   const [created, setCreated] = useState<ApiKeyCreateResponse | null>(null)
 
   useEffect(() => {
