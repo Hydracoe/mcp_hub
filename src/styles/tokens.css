@@ -1,0 +1,351 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   tokens.css — 设计令牌（单一来源）
+   ───────────────────────────────────────────────────────────────────────────
+   原始内容来自设计稿每页内联的 <style id="theme-vars">（7 份逐字相同，共 75KB）。
+   抽成一份，并修正被外部产品污染的尺度。修正项见 tools/build-tokens.py。
+
+   为什么必须「未分层」：Tailwind v4 把主题变量放在 @layer theme 里，
+   而未分层样式优先级高于任何 @layer。所以本文件必须
+     · 不被任何 @layer 包裹
+     · 在 <link> 顺序上排在 tailwind.css 之后
+   才能反过来压住 Tailwind 的默认令牌（--spacing / --radius-* / --font-* …）。
+
+   加载顺序：tailwind.css → tokens.css → apple-ui.css → icons.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Pinguo design tokens
+ * Brand: Pinguo
+ * Domain: Consumer imaging product
+ * Style: Restrained, elegant, Apple-inspired
+ * Theme mode: light-dark
+ * Source language: zh
+ * Output language: en
+ *
+ * Color architecture (two layers):
+ *   1. Primitive palette - six categories. brand / background / text / icon
+ *      are each a 10-step scale (50 lightest to 900 darkest). state-success and
+ *      state-error are functional colors anchored on Apple system colors.
+ *      Anchors follow Apple Human Interface Guidelines system colors
+ *      (System Blue #007AFF, System Green #34C759, System Red #FF3B30,
+ *      system grays / label / background colors).
+ *   2. Semantic tokens - :root (light) and .dark map roles onto primitives.
+ *      Components and UI kits must only consume the semantic tokens below.
+ */
+
+/* @group-priority: brand, background, text, icon, state-success, state-error */
+
+:root {
+  
+  /* solo-design consumption aliases: explicit prefix for fill-html-head.mjs */
+  --apple-background: var(--background, #ffffff);
+  --apple-foreground: var(--foreground, #0f172a);
+  --apple-card: var(--card, var(--background));
+  --apple-card-foreground: var(--card-foreground, var(--foreground));
+  --apple-popover: var(--popover, var(--card));
+  --apple-popover-foreground: var(--popover-foreground, var(--card-foreground, var(--foreground)));
+  /* 补：此前被引用但从未定义，导致 border-radius / 侧边栏边框整条失效 */
+  --apple-radius: var(--radius);
+  --apple-sidebar-border: var(--sidebar-border);
+
+  /* 补：--apple-link 在设计稿里被引用却从未定义，而 var() 的兜底值
+     写的是 --apple-accent（一层近白的灰底）。于是「打开密钥管理 →」
+     这类链接文字落成 #f7f7fa，在白卡片上等于隐形。 */
+  --link: var(--brand-600);
+  --apple-link: var(--brand-600);
+  --apple-state-success-surface: var(--state-success-surface);
+  --apple-state-error-surface: var(--state-error-surface);
+  --apple-state-warning: var(--state-warning);
+  --apple-state-warning-surface: var(--state-warning-surface);
+  --apple-warning: var(--warning);
+  --apple-warning-foreground: var(--warning-foreground);
+  --apple-success-strong: var(--success-strong);
+  --apple-error-strong: var(--error-strong);
+
+  --apple-primary: var(--primary, #111827);
+  --apple-primary-foreground: var(--primary-foreground, #ffffff);
+  --apple-secondary: var(--secondary, var(--muted, var(--card)));
+  --apple-secondary-foreground: var(--secondary-foreground, var(--foreground));
+  --apple-muted: var(--muted, var(--card));
+  --apple-muted-foreground: var(--muted-foreground, var(--foreground));
+  --apple-accent: var(--accent, var(--secondary, var(--muted, var(--card))));
+  --apple-accent-foreground: var(--accent-foreground, var(--foreground));
+  --apple-destructive: var(--destructive, #ef4444);
+  --apple-destructive-foreground: var(--destructive-foreground, #ffffff);
+  --apple-border: var(--border, currentColor);
+  --apple-input: var(--input, var(--border));
+  --apple-ring: var(--ring, var(--primary));
+  --apple-chart-1: var(--chart-1, var(--primary));
+  --apple-chart-2: var(--chart-2, var(--secondary, var(--primary)));
+  --apple-chart-3: var(--chart-3, var(--accent, var(--primary)));
+  --apple-chart-4: var(--chart-4, var(--muted-foreground, var(--foreground)));
+  --apple-chart-5: var(--chart-5, var(--foreground));
+  --apple-sidebar: var(--sidebar, var(--background));
+  --apple-sidebar-foreground: var(--sidebar-foreground, var(--foreground));
+  --apple-sidebar-primary: var(--sidebar-primary, var(--primary));
+  --apple-sidebar-primary-foreground: var(--sidebar-primary-foreground, var(--primary-foreground));
+  --apple-sidebar-accent: var(--sidebar-accent, var(--accent, var(--muted, var(--card))));
+  --apple-sidebar-accent-foreground: var(--sidebar-accent-foreground, var(--accent-foreground, var(--foreground)));
+
+/* ===== PRIMITIVE PALETTE ===== */
+
+  /* brand */
+  --brand-50: #e8f2ff;
+  --brand-100: #cfe5ff;
+  --brand-200: #9fcbff;
+  --brand-300: #66abff;
+  --brand-400: #2e8dff;
+  --brand-500: #007aff; /* @primary */
+  --brand-600: #0064d6;
+  --brand-700: #004fad;
+  --brand-800: #003b82;
+  --brand-900: #00275a;
+
+  /* background */
+  --background-50: #ffffff;
+  --background-100: #f7f7fa;
+  --background-200: #f2f2f7;
+  --background-300: #e5e5ea;
+  --background-400: #d1d1d6;
+  --background-500: #aeaeb2;
+  --background-600: #8e8e93;
+  --background-700: #3a3a3c;
+  --background-800: #1c1c1e;
+  --background-900: #000000;
+
+  /* text */
+  --text-50: #f5f5f7;
+  --text-100: #e3e3e8;
+  --text-200: #c7c7cc;
+  --text-300: #aeaeb2;
+  --text-400: #8e8e93;
+  --text-500: #6e6e73;
+  --text-600: #48484a;
+  --text-700: #3c3c43;
+  --text-800: #1d1d1f;
+  --text-900: #000000;
+
+  /* icon */
+  --icon-50: #f5f5f7;
+  --icon-100: #e5e5ea;
+  --icon-200: #d1d1d6;
+  --icon-300: #c7c7cc;
+  --icon-400: #aeaeb2;
+  --icon-500: #8e8e93;
+  --icon-600: #6e6e73;
+  --icon-700: #48484a;
+  --icon-800: #2c2c2e;
+  --icon-900: #1d1d1f;
+
+  /* state-success */
+  --state-success: #34c759; /* @primary */
+  --state-success-dark: #30d158;
+  --state-success-surface: #e9f9ee;
+  --state-success-foreground: #ffffff;
+
+  /* state-error */
+  --state-error: #ff3b30; /* @primary */
+  --state-error-dark: #ff453a;
+  --state-error-surface: #ffecea;
+  --state-error-foreground: #ffffff;
+
+  /* state-warning — 补：degraded / cooling / 配额告警 此前用硬编码琥珀色凑合 */
+  --state-warning: #ff9500; /* @primary  Apple System Orange */
+  --state-warning-dark: #ff9f0a;
+  --state-warning-strong: #a8631a;      /* 浅色底上的文字用深色，保证对比度 */
+  --state-warning-surface: #fff4e6;
+  --state-warning-foreground: #ffffff;
+
+  /* state-*-strong — 补：浅色底上的文字色，此前硬编码 */
+  --state-success-strong: #1d8a3a;
+  --state-error-strong: #a31515;
+
+  /* ===== SEMANTIC ROLES ===== */
+
+  /* semantic */
+  --background: var(--background-50);
+  --foreground: var(--text-800);
+  --card: var(--background-50);
+  --card-foreground: var(--text-800);
+  --popover: var(--background-50);
+  --popover-foreground: var(--text-900);
+
+  --primary: var(--brand-500);
+  --primary-foreground: var(--background-50);
+  --secondary: var(--background-200);
+  --secondary-foreground: var(--text-800);
+  --muted: var(--background-200);
+  --muted-foreground: var(--text-400);
+  --accent: var(--background-100);
+  --accent-foreground: var(--text-800);
+  --destructive: var(--state-error);
+  --destructive-foreground: var(--state-error-foreground);
+  --success: var(--state-success);
+  --success-foreground: var(--state-success-foreground);
+  --border: var(--background-300);
+  --input: var(--background-400);
+  --ring: var(--brand-500);
+
+  --icon: var(--icon-900);
+  --icon-muted: var(--icon-500);
+
+  /* chart */
+  --warning: var(--state-warning);
+  --warning-foreground: var(--state-warning-foreground);
+  --success-strong: var(--state-success-strong);
+  --error-strong: var(--state-error-strong);
+
+  --chart-1: var(--state-success);
+  --chart-2: var(--brand-500);
+  --chart-3: #ff9500;
+  --chart-4: #5856d6;
+  --chart-5: #af52de;
+
+  /* sidebar */
+  --sidebar: var(--background-200);
+  --sidebar-foreground: var(--text-800);
+  --sidebar-primary: var(--brand-500);
+  --sidebar-primary-foreground: var(--background-50);
+  --sidebar-accent: var(--background-300);
+  --sidebar-accent-foreground: var(--text-800);
+  --sidebar-border: var(--background-300);
+  --sidebar-ring: var(--brand-500);
+
+  /* TYPOGRAPHY */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-serif: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, "Cascadia Mono", "Roboto Mono", monospace;
+  --tracking-normal: 0em;
+  /* RADIUS — 单调阶梯。修：原先 lg=19.2px 比 xl=12px 还圆，且 lg 用在导航项上，
+     导致「导航胶囊比卡片更圆」。现在小控件紧、大容器松，与 Apple 一致。 */
+  --radius: 0.875rem;      /* 14px 基准 */
+  --radius-xs: 0.25rem;    /* 4px  */
+  --radius-sm: 0.375rem;   /* 6px   导航项 / 小徽标 / 图标按钮 */
+  --radius-md: 0.5rem;     /* 8px   按钮 / 输入框 / 分段控件 */
+  --radius-lg: 0.625rem;   /* 10px  代码块 / 列表容器 */
+  --radius-xl: 0.875rem;   /* 14px  卡片 / 面板 */
+  --radius-2xl: 1.25rem;   /* 20px  大卡片 / 弹窗 */
+  --radius-3xl: 1.625rem;  /* 26px */
+  --apple-radius: var(--radius);
+  --apple-radius-xs: var(--radius-xs);
+  --apple-radius-sm: var(--radius-sm);
+  --apple-radius-md: var(--radius-md);
+  --apple-radius-lg: var(--radius-lg);
+  --apple-radius-xl: var(--radius-xl);
+  --apple-radius-2xl: var(--radius-2xl);
+  /* SHADOWS — 两段式：近距压边负责边界，远距扩散负责体量。
+     原值只有一段 1–2px 的浅影，卡片在白底上几乎浮不起来。 */
+  --shadow-2xs: 0 1px 1px rgba(0, 0, 0, 0.04);
+  --shadow-xs:  0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 6px -2px rgba(0, 0, 0, 0.06);
+  --shadow:     0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px -4px rgba(0, 0, 0, 0.07);
+  --shadow-md:  0 2px 6px rgba(0, 0, 0, 0.05), 0 8px 20px -6px rgba(0, 0, 0, 0.09);
+  --shadow-lg:  0 4px 12px rgba(0, 0, 0, 0.06), 0 16px 36px -10px rgba(0, 0, 0, 0.11);
+  --shadow-xl:  0 8px 24px rgba(0, 0, 0, 0.07), 0 24px 56px -12px rgba(0, 0, 0, 0.13);
+  --shadow-2xl: 0 12px 32px rgba(0, 0, 0, 0.09), 0 32px 72px -14px rgba(0, 0, 0, 0.15);
+
+  /* SPACING */
+  --spacing: 0.25rem;
+
+  /* solo-design shadow/spacing/font aliases */
+  --apple-shadow-2xs: var(--shadow-2xs);
+  --apple-shadow-xs: var(--shadow-xs);
+  --apple-shadow-sm: var(--shadow-sm);
+  --apple-shadow: var(--shadow);
+  --apple-shadow-md: var(--shadow-md);
+  --apple-shadow-lg: var(--shadow-lg);
+  --apple-shadow-xl: var(--shadow-xl);
+  --apple-shadow-2xl: var(--shadow-2xl);
+  --apple-spacing: var(--spacing);
+  --apple-font-sans: var(--font-sans);
+  --apple-font-mono: var(--font-mono);
+  --apple-tracking-normal: var(--tracking-normal);
+
+  /* ── 以下为 apple-ui.css 所需的补充令牌（原设计稿里没有） ── */
+
+  /* MATERIALS — Apple 的 vibrancy：半透明 + 模糊，用于侧边栏与工具栏 */
+  --material-sidebar: color-mix(in srgb, var(--background-100) 76%, transparent);
+  --material-toolbar: color-mix(in srgb, var(--background-50) 76%, transparent);
+  --material-blur: saturate(180%) blur(20px);
+
+  /* FILLS — Apple 的灰阶填充，用于次级按钮 / 分段控件 / 行悬停 */
+  --fill-quaternary: rgba(120, 120, 128, 0.06);
+  --fill-tertiary:   rgba(120, 120, 128, 0.10);
+  --fill-secondary:  rgba(120, 120, 128, 0.16);
+  --fill-primary:    rgba(120, 120, 128, 0.22);
+
+  /* SEPARATOR — 比 --border 更轻的分隔线，用于工具栏/侧边栏交界 */
+  --separator: rgba(60, 60, 67, 0.10);
+
+  /* SELECTION — 列表/导航选中态的染色 */
+  --selection: color-mix(in srgb, var(--brand-500) 12%, transparent);
+  --selection-strong: color-mix(in srgb, var(--brand-500) 18%, transparent);
+
+  /* MOTION — Apple 的缓动曲线与三档时长 */
+  --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+}
+
+/* ===== SEMANTIC ROLES - dark (primitive palette inherited) ===== */
+.dark {
+  --background: var(--background-900);
+  --foreground: var(--text-50);
+  --card: var(--background-800);
+  --card-foreground: var(--text-50);
+  --popover: var(--background-700);
+  --popover-foreground: var(--text-50);
+
+  --primary: var(--brand-400);
+  --primary-foreground: var(--background-900);
+  --secondary: var(--background-800);
+  --secondary-foreground: var(--text-50);
+  --muted: var(--background-800);
+  --muted-foreground: var(--text-400);
+  --accent: var(--background-700);
+  --accent-foreground: var(--text-50);
+  --destructive: var(--state-error-dark);
+  --destructive-foreground: var(--state-error-foreground);
+  --success: var(--state-success-dark);
+  --success-foreground: var(--state-success-foreground);
+  --border: var(--background-700);
+  --input: var(--background-700);
+  --ring: var(--brand-400);
+
+  --icon: var(--icon-50);
+  --icon-muted: var(--icon-500);
+
+  --chart-1: var(--state-success-dark);
+  --chart-2: var(--brand-400);
+  --chart-3: #ff9f0a;
+  --chart-4: #5e5ce6;
+  --chart-5: #bf5af2;
+
+  --sidebar: var(--background-800);
+  --sidebar-foreground: var(--text-50);
+  --sidebar-primary: var(--brand-400);
+  --sidebar-primary-foreground: var(--background-900);
+  --sidebar-accent: var(--background-700);
+  --sidebar-accent-foreground: var(--text-50);
+  --sidebar-border: var(--background-700);
+  --sidebar-ring: var(--brand-400);
+  --shadow-2xs: 0 1px 1px rgba(0, 0, 0, 0.30);
+  --shadow-xs:  0 1px 2px rgba(0, 0, 0, 0.34);
+  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.34), 0 2px 6px -2px rgba(0, 0, 0, 0.38);
+  --shadow:     0 1px 3px rgba(0, 0, 0, 0.38), 0 4px 12px -4px rgba(0, 0, 0, 0.42);
+  --shadow-md:  0 2px 6px rgba(0, 0, 0, 0.40), 0 8px 20px -6px rgba(0, 0, 0, 0.46);
+  --shadow-lg:  0 4px 12px rgba(0, 0, 0, 0.44), 0 16px 36px -10px rgba(0, 0, 0, 0.50);
+  --shadow-xl:  0 8px 24px rgba(0, 0, 0, 0.48), 0 24px 56px -12px rgba(0, 0, 0, 0.56);
+  --shadow-2xl: 0 12px 32px rgba(0, 0, 0, 0.52), 0 32px 72px -14px rgba(0, 0, 0, 0.62);
+
+  --material-sidebar: color-mix(in srgb, var(--background-800) 76%, transparent);
+  --material-toolbar: color-mix(in srgb, var(--background-800) 74%, transparent);
+  --fill-quaternary: rgba(235, 235, 245, 0.05);
+  --fill-tertiary:   rgba(235, 235, 245, 0.09);
+  --fill-secondary:  rgba(235, 235, 245, 0.14);
+  --fill-primary:    rgba(235, 235, 245, 0.20);
+  --separator: rgba(235, 235, 245, 0.11);
+  --selection: color-mix(in srgb, var(--brand-400) 22%, transparent);
+  --selection-strong: color-mix(in srgb, var(--brand-400) 30%, transparent);
+}
