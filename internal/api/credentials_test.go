@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/hydra/mcp-hub/internal/httpd"
-	"github.com/hydra/mcp-hub/internal/store"
+	"github.com/hydra/mcp-hub/internal/store/credentials"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -99,7 +99,6 @@ type credentialResp struct {
 	DisabledKind string `json:"disabledKind"`
 	CoolingForMS int64  `json:"coolingForMs"`
 	RPMLimit     int    `json:"rpmLimit"`
-	TPMLimit     int    `json:"tpmLimit"`
 	RPMUsed      int    `json:"rpmUsed"`
 	Picks        uint64 `json:"picks"`
 }
@@ -119,9 +118,10 @@ func TestCredentialLifecycle(t *testing.T) {
 	ds := startDownstream(t, "one")
 
 	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
-		"key":       "pool",
-		"transport": "streamable_http",
-		"url":       ds,
+		"key":        "pool",
+		"transport":  "streamable_http",
+		"url":        ds,
+		"categoryId": e.mustCategory(),
 	}, http.StatusCreated, nil)
 	sid := e.firstServerID()
 
@@ -132,7 +132,6 @@ func TestCredentialLifecycle(t *testing.T) {
 		"value":      "tok-alpha",
 		"authScheme": "bearer",
 		"rpmLimit":   100,
-		"tpmLimit":   50000,
 	}, http.StatusCreated, &first)
 
 	if first.ID == "" || first.Label != "主号" {
@@ -144,8 +143,8 @@ func TestCredentialLifecycle(t *testing.T) {
 	if len(first.HeaderKeys) != 1 || first.HeaderKeys[0] != "Authorization" {
 		t.Errorf("应给出注入头的键名供辨认: %v", first.HeaderKeys)
 	}
-	if first.RPMLimit != 100 || first.TPMLimit != 50000 {
-		t.Errorf("配额上限没有落库: rpm=%d tpm=%d", first.RPMLimit, first.TPMLimit)
+	if first.RPMLimit != 100 {
+		t.Errorf("配额上限没有落库: rpm=%d", first.RPMLimit)
 	}
 
 	// 第二种填法：直接给一组 headers（X-API-Key 这类非 Bearer 形态）。
@@ -160,7 +159,7 @@ func TestCredentialLifecycle(t *testing.T) {
 
 	// 轮换顺序：新加的在末尾。若新增插到 0，既有密钥的轮换优先级会
 	// 被静默改写——用户只是想再加一把，原来那把的配比却变了。
-	creds, err := e.store.ListCredentials(context.Background(), sid)
+	creds, err := e.store.Credentials.List(context.Background(), sid)
 	if err != nil {
 		t.Fatalf("回读密钥失败: %v", err)
 	}
@@ -191,7 +190,7 @@ func TestCredentialLifecycle(t *testing.T) {
 	if updated.Label != "主号（改名）" || updated.RPMLimit != 200 {
 		t.Errorf("编辑没有生效: %+v", updated)
 	}
-	saved, err := e.store.GetCredential(context.Background(), first.ID)
+	saved, err := e.store.Credentials.Get(context.Background(), first.ID)
 	if err != nil {
 		t.Fatalf("回读密钥失败: %v", err)
 	}
@@ -204,7 +203,7 @@ func TestCredentialLifecycle(t *testing.T) {
 		"label":   "主号（改名）",
 		"headers": map[string]string{"Authorization": "***"},
 	}, http.StatusOK, nil)
-	saved, _ = e.store.GetCredential(context.Background(), first.ID)
+	saved, _ = e.store.Credentials.Get(context.Background(), first.ID)
 	if got := saved.Headers["Authorization"]; got != "Bearer tok-alpha" {
 		t.Errorf("提交打码值后凭据被打坏了: %q", got)
 	}
@@ -268,9 +267,10 @@ func TestCredentialPlaintextNeverLeaks(t *testing.T) {
 	ds := startDownstream(t, "one")
 
 	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
-		"key":       "pool",
-		"transport": "streamable_http",
-		"url":       ds,
+		"key":        "pool",
+		"transport":  "streamable_http",
+		"url":        ds,
+		"categoryId": e.mustCategory(),
 	}, http.StatusCreated, nil)
 	sid := e.firstServerID()
 
@@ -304,9 +304,10 @@ func TestCredentialImportFromPaste(t *testing.T) {
 	ds := startDownstream(t, "one")
 
 	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
-		"key":       "pool",
-		"transport": "streamable_http",
-		"url":       ds,
+		"key":        "pool",
+		"transport":  "streamable_http",
+		"url":        ds,
+		"categoryId": e.mustCategory(),
 	}, http.StatusCreated, nil)
 	sid := e.firstServerID()
 
@@ -394,9 +395,10 @@ func TestCredentialStdioUnsupported(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 
 	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
-		"key":       "local",
-		"transport": "stdio",
-		"command":   "/bin/echo",
+		"key":        "local",
+		"transport":  "stdio",
+		"command":    "/bin/echo",
+		"categoryId": e.mustCategory(),
 	}, http.StatusCreated, nil)
 	sid := e.firstServerID()
 
@@ -429,9 +431,10 @@ func TestCredentialIsActuallyUsedWhichKeys(t *testing.T) {
 
 	e := newEnv(t, httpd.Options{})
 	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
-		"key":       "pool",
-		"transport": "streamable_http",
-		"url":       ds,
+		"key":        "pool",
+		"transport":  "streamable_http",
+		"url":        ds,
+		"categoryId": e.mustCategory(),
 	}, http.StatusCreated, nil)
 	sid := e.firstServerID()
 
@@ -444,6 +447,8 @@ func TestCredentialIsActuallyUsedWhichKeys(t *testing.T) {
 	}
 	// 让网关把工具列出来（这一步也会借走一把密钥）。
 	e.mustJSON(http.MethodPost, "/api/servers/"+sid+"/refresh-tools", nil, http.StatusOK, nil)
+	// 新工具默认禁用，显式启用后才能被 AI 调用。
+	e.enableAllTools()
 
 	gate.reset()
 	c := e.mcpClient()
@@ -469,9 +474,10 @@ func TestCredentialTestIsReadOnly(t *testing.T) {
 	ds := startDownstream(t, "one")
 
 	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
-		"key":       "pool",
-		"transport": "streamable_http",
-		"url":       ds,
+		"key":        "pool",
+		"transport":  "streamable_http",
+		"url":        ds,
+		"categoryId": e.mustCategory(),
 	}, http.StatusCreated, nil)
 	sid := e.firstServerID()
 
@@ -500,11 +506,11 @@ func TestCredentialTestIsReadOnly(t *testing.T) {
 
 	// 关键语义：测试不改状态。否则"点一下测试"会顺手把密钥禁用，
 	// 而用户的本意只是想知道它还能不能用。
-	saved, err := e.store.GetCredential(context.Background(), created.ID)
+	saved, err := e.store.Credentials.Get(context.Background(), created.ID)
 	if err != nil {
 		t.Fatalf("回读失败: %v", err)
 	}
-	if saved.State != store.CredStateActive || !saved.Enabled {
+	if saved.State != credentials.CredStateActive || !saved.Enabled {
 		t.Errorf("测试改变了密钥状态: state=%s enabled=%v", saved.State, saved.Enabled)
 	}
 
@@ -523,9 +529,10 @@ func TestCredentialBelongsToServer(t *testing.T) {
 
 	for _, key := range []string{"pool-a", "pool-b"} {
 		e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
-			"key":       key,
-			"transport": "streamable_http",
-			"url":       ds,
+			"key":        key,
+			"transport":  "streamable_http",
+			"url":        ds,
+			"categoryId": e.mustCategory(),
 		}, http.StatusCreated, nil)
 	}
 	var list serverListResp
@@ -542,7 +549,7 @@ func TestCredentialBelongsToServer(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("跨 server 删除 = %d, want 404", resp.StatusCode)
 	}
-	if _, err := e.store.GetCredential(context.Background(), credA.ID); err != nil {
+	if _, err := e.store.Credentials.Get(context.Background(), credA.ID); err != nil {
 		t.Errorf("跨 server 的请求把密钥删掉了: %v", err)
 	}
 }
@@ -555,9 +562,10 @@ func TestCredentialIDInCallLogs(t *testing.T) {
 
 	e := newEnv(t, httpd.Options{Logger: zap.NewNop()})
 	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
-		"key":       "pool",
-		"transport": "streamable_http",
-		"url":       ds,
+		"key":        "pool",
+		"transport":  "streamable_http",
+		"url":        ds,
+		"categoryId": e.mustCategory(),
 	}, http.StatusCreated, nil)
 	sid := e.firstServerID()
 
@@ -566,6 +574,7 @@ func TestCredentialIDInCallLogs(t *testing.T) {
 		"label": "only", "value": "tok",
 	}, http.StatusCreated, &created)
 	e.mustJSON(http.MethodPost, "/api/servers/"+sid+"/refresh-tools", nil, http.StatusOK, nil)
+	e.enableAllTools()
 
 	callTool(t, e.mcpClient(), "pool__ping")
 
@@ -598,9 +607,10 @@ func TestOverviewCountsUnusableKeys(t *testing.T) {
 	ds := startDownstream(t, "one")
 
 	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
-		"key":       "pool",
-		"transport": "streamable_http",
-		"url":       ds,
+		"key":        "pool",
+		"transport":  "streamable_http",
+		"url":        ds,
+		"categoryId": e.mustCategory(),
 	}, http.StatusCreated, nil)
 	sid := e.firstServerID()
 
@@ -631,6 +641,70 @@ func TestOverviewCountsUnusableKeys(t *testing.T) {
 	}
 	if ov.Credentials.Usable != 1 {
 		t.Errorf("可用密钥数 = %d, want 1：停用的那把不该算作可用", ov.Credentials.Usable)
+	}
+}
+
+// --- 同值密钥：K6/K7 拍板"不允许"，保存时拦截 ---
+
+// 同一份凭据既不允许在一个 server 里配两把（白占轮换名额），
+// 也不允许配到第二个 server（限流压力集中、用量归属搅浑）。
+// 头名按 HTTP 惯例不区分大小写。
+func TestCredentialDuplicateHeadersRejected(t *testing.T) {
+	e := newEnv(t, httpd.Options{})
+	ds := startDownstream(t, "one")
+
+	for _, key := range []string{"pool-a", "pool-b"} {
+		e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
+			"key":        key,
+			"transport":  "streamable_http",
+			"url":        ds,
+			"categoryId": e.mustCategory(),
+		}, http.StatusCreated, nil)
+	}
+	var list serverListResp
+	e.get("/api/servers", &list)
+	idA, idB := list.Items[0].ID, list.Items[1].ID
+
+	var first credentialResp
+	e.mustJSON(http.MethodPost, "/api/servers/"+idA+"/credentials", map[string]any{
+		"label": "主号", "value": "tok-x", "authScheme": "bearer",
+	}, http.StatusCreated, &first)
+
+	// K6：同 server，同一把钥再来一次 → 409。
+	resp, raw := e.call(http.MethodPost, "/api/servers/"+idA+"/credentials", map[string]any{
+		"label": "副本", "value": "tok-x", "authScheme": "bearer",
+	})
+	if resp.StatusCode != http.StatusConflict || !bytes.Contains(raw, []byte("credential_duplicate")) {
+		t.Errorf("同 server 同值 = %d, want 409 credential_duplicate\n响应: %s", resp.StatusCode, raw)
+	}
+
+	// 头名大小写不同、值相同 → 仍算同值（HTTP 头不区分大小写）。
+	resp, raw = e.call(http.MethodPost, "/api/servers/"+idA+"/credentials", map[string]any{
+		"label":   "换名头",
+		"headers": map[string]string{"aUtHoRiZaTiOn": "Bearer tok-x"},
+	})
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("头名大小写变体 = %d, want 409\n响应: %s", resp.StatusCode, raw)
+	}
+
+	// K7：同一份凭据配到第二个 server → 409。
+	resp, raw = e.call(http.MethodPost, "/api/servers/"+idB+"/credentials", map[string]any{
+		"label": "跨服务器", "value": "tok-x", "authScheme": "bearer",
+	})
+	if resp.StatusCode != http.StatusConflict || !bytes.Contains(raw, []byte("credential_duplicate")) {
+		t.Errorf("跨 server 同值 = %d, want 409 credential_duplicate\n响应: %s", resp.StatusCode, raw)
+	}
+
+	// 被拒的请求不能留下半条记录。
+	var listA credentialListResp
+	e.get("/api/servers/"+idA+"/credentials", &listA)
+	if listA.Total != 1 {
+		t.Errorf("server A 密钥数 = %d, want 1：被拒的保存不该落库", listA.Total)
+	}
+	var listB credentialListResp
+	e.get("/api/servers/"+idB+"/credentials", &listB)
+	if listB.Total != 0 {
+		t.Errorf("server B 密钥数 = %d, want 0", listB.Total)
 	}
 }
 

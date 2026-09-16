@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS tool_changes;
+ALTER TABLE tools ALTER COLUMN enabled SET DEFAULT 1;

@@ -3,12 +3,14 @@ package downstream
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// ErrorKind 是探活失败的分类。
+// ErrorKind 是下游失败的分类。
 //
-// 分类必须由错误类型推导（errors.Is / errors.As），不得依赖字符串匹配——
-// 唯一例外见 Recorder 的注释。
+// 分类必须由错误类型推导（errors.Is / errors.As），不靠字符串匹配。
+// 唯一例外是"额度耗尽 vs 限流"，供应商只在响应体文案里区分，见 quotaMarkers。
 type ErrorKind string
 
 const (
@@ -26,9 +28,9 @@ const (
 	KindUpstreamError ErrorKind = "UPSTREAM_ERROR"
 	KindNotMCP        ErrorKind = "NOT_MCP"
 
-	// 限流与配额。单列出来是因为它们与"下游坏了"有本质区别：
-	// 服务完全正常，只是这一把凭据不被允许继续打。混进 UNKNOWN 的话，
-	// 用户对着一个 429 只能看到"未知错误"，既不知道该等还是该换密钥。
+	// 限流与配额。单列是因为它们与"下游坏了"本质不同：服务正常，只是这把
+	// 凭据不被允许继续打。混进 UNKNOWN，用户对着 429 只会看到"未知错误"，
+	// 既不知道该等还是该换密钥。
 	KindRateLimited    ErrorKind = "RATE_LIMITED"
 	KindQuotaExhausted ErrorKind = "QUOTA_EXHAUSTED"
 
@@ -41,16 +43,14 @@ const (
 	KindExitEarly        ErrorKind = "EXIT_EARLY"
 	KindHandshakeTimeout ErrorKind = "HANDSHAKE_TIMEOUT"
 
-	// 生命周期相关。与上面几类的区别：这些不是下游"坏了"，
-	// 而是网关自己的意图导致调用未完成。混进 UNKNOWN 会让
-	// "我主动停用"看起来像"下游故障"。
+	// 生命周期相关：不是下游坏了，而是网关自己的意图导致调用未完成。
+	// 混进 UNKNOWN 会让"我主动停用"看起来像"下游故障"。
 	KindDraining ErrorKind = "SERVER_DRAINING"
 	KindCanceled ErrorKind = "CANCELED"
 
-	// KindNoUsableKey 表示密钥池里没有一把能用的密钥。
-	//
-	// 它既不是下游的错，也不是某一把密钥的错——但它必须有个名字，
-	// 否则用户看到"服务降级"会去查网络，而真正要查的是密钥与账号。
+	// KindNoUsableKey：密钥池里没有一把能用的。既不是下游的错，也不是某一
+	// 把密钥的错，但必须有名字——否则用户看到"服务降级"会去查网络，
+	// 而真正该查的是密钥与账号。
 	KindNoUsableKey ErrorKind = "NO_USABLE_KEY"
 
 	KindUnknown ErrorKind = "UNKNOWN"
@@ -102,7 +102,7 @@ const (
 type ProbeResult struct {
 	OK bool `json:"ok"`
 
-	// 协商结果。写入 servers 表缓存，后续调用直接沿用，避免每次试错两次。
+	// 协商结果，写入 servers 表缓存，后续调用直接沿用，不必每次试错两次。
 	ProtocolVersion string   `json:"protocolVersion,omitempty"`
 	ServerName      string   `json:"serverName,omitempty"`
 	ServerVersion   string   `json:"serverVersion,omitempty"`
@@ -113,7 +113,7 @@ type ProbeResult struct {
 	ToolCount int        `json:"toolCount"`
 	Tools     []ToolInfo `json:"tools,omitempty"`
 
-	// 分段耗时。定位"慢在哪一段"。
+	// 分段耗时，用于定位"慢在哪一段"。
 	Latency StageLatency `json:"latency"`
 
 	// 失败信息
@@ -123,8 +123,8 @@ type ProbeResult struct {
 	Stderr    string    `json:"stderr,omitempty"` // 仅 stdio
 	CheckedAt time.Time `json:"checkedAt"`
 
-	// HTTP 观测。带上它们是为了让密钥判决能复用探活的结论：
-	// 探活与在线调用看到同一套判据，界面才不会自相矛盾。
+	// HTTP 观测。带上它们是为了让密钥判决复用探活结论，探活与在线调用
+	// 看到同一套判据，界面才不会自相矛盾。
 	StatusCode  int           `json:"statusCode,omitempty"`
 	RetryAfter  time.Duration `json:"retryAfter,omitempty"`
 	BodySnippet string        `json:"-"`
@@ -146,6 +146,32 @@ type StageLatency struct {
 	Total     int64 `json:"totalMs"`
 }
 
+// ToolsToInfo 把下游工具定义压成可持久化的形态。
+func ToolsToInfo(tools []mcp.Tool) []ToolInfo {
+	out := make([]ToolInfo, 0, len(tools))
+	for _, t := range tools {
+		out = append(out, ToolInfo{
+			Name:        t.Name,
+			Description: t.Description,
+			InputSchema: marshalSchema(t.InputSchema),
+		})
+	}
+	return out
+}
+
+// marshalSchema 序列化工具入参 schema，失败返回 nil（不影响探活结论）。
+//
+// 保真度边界：走的是 mcp-go 的结构化往返，顶层 oneOf / anyOf / $ref 这类
+// 关键字不保留（properties 内部是 map[string]any，不受影响）。要做到逐字节
+// 透传得自己发原始 JSON-RPC，约 200 行协议代码，收益只在罕见的入参形态上。
+func marshalSchema(s mcp.ToolInputSchema) json.RawMessage {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
 // fail 就地标记探活失败。
 func (r *ProbeResult) fail(stage Stage, kind ErrorKind, err error) {
 	r.OK = false
@@ -158,8 +184,8 @@ func (r *ProbeResult) fail(stage Stage, kind ErrorKind, err error) {
 
 // capture 把一次 HTTP 观测中与判决相关的字段带进结果。
 //
-// 只带这三样：状态码用来区分 401 与 403，Retry-After 是退避的权威来源，
-// body 片段用来区分"限流"与"额度耗尽"。其余观测字段对用户没有意义。
+// 只带三样：状态码区分 401/403，Retry-After 是退避的权威来源，body 片段
+// 区分"限流"与"额度耗尽"。其余观测字段对用户没有意义。
 func (r *ProbeResult) capture(obs Observation) {
 	r.StatusCode = obs.StatusCode
 	r.RetryAfter = obs.RetryAfter

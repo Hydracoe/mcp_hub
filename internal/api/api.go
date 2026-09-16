@@ -21,7 +21,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hydra/mcp-hub/internal/downstream"
 	"github.com/hydra/mcp-hub/internal/hub"
-	"github.com/hydra/mcp-hub/internal/store"
+	"github.com/hydra/mcp-hub/internal/hub/pool"
+	"github.com/hydra/mcp-hub/internal/store/credentials"
+	"github.com/hydra/mcp-hub/internal/store/servers"
+	"github.com/hydra/mcp-hub/internal/store/storeutil"
 	"go.uber.org/zap"
 )
 
@@ -85,8 +88,10 @@ func (a *API) Register(r gin.IRouter) {
 	// server 管理
 	g.GET("/servers", a.handleListServers)
 	g.POST("/servers", a.handleCreateServer)
-	g.POST("/servers/import", a.handleImportServers)
 	g.POST("/servers/test-all", a.handleTestAll)
+	// 干跑探活：配置尚未落库，直接对请求体里的 Spec 试 L1–L3 + tools/list。
+	// 字面量段与 ":id" 参数段共存，"probe" 不会被当成 id。
+	g.POST("/servers/probe", a.handleProbeServer)
 	g.GET("/servers/:id", a.handleGetServer)
 	g.PUT("/servers/:id", a.handleUpdateServer)
 	g.DELETE("/servers/:id", a.handleDeleteServer)
@@ -94,6 +99,11 @@ func (a *API) Register(r gin.IRouter) {
 	g.POST("/servers/:id/disable", a.handleEnableServer(false))
 	g.POST("/servers/:id/test", a.handleTestServer)
 	g.POST("/servers/:id/refresh-tools", a.handleRefreshTools)
+
+	// 单工具启用 / 禁用与工具变更记录。
+	g.POST("/servers/:id/tools/:tool/enable", a.handleSetToolEnabled(true))
+	g.POST("/servers/:id/tools/:tool/disable", a.handleSetToolEnabled(false))
+	g.GET("/tool-changes", a.handleListToolChanges)
 
 	// 密钥池（M4）。gin 的路由树里字面量段与参数段可以共存，
 	// 且字面量优先——"import" 不会被 ":cid" 吃掉。
@@ -123,11 +133,10 @@ func (a *API) Register(r gin.IRouter) {
 	g.POST("/keys/:id/enable", a.handleEnableAPIKey(true))
 	g.POST("/keys/:id/disable", a.handleEnableAPIKey(false))
 
-	// 嵌入检索配置（PRD §4.7.5）。
-	g.GET("/embed-config", a.handleGetEmbedConfig)
-	g.PUT("/embed-config", a.handleUpdateEmbedConfig)
-	g.GET("/embed-config/rebuild", a.handleGetEmbedRebuild)
-	g.POST("/embed-config/rebuild", a.handleTriggerEmbedRebuild)
+	// 嵌入检索（PRD §4.7.5）没有配置接口：model / 维度 / 服务地址都来自
+	// 环境变量，改配置就是改 .env 重启。它也就没有"读配置"的必要——
+	// 管理接口只暴露工具与分类这类运行时数据；向量重建的进度打在进程
+	// 日志里（见 serve 的启动对账）。
 }
 
 // guard 是管理端点的统一入口检查。
@@ -180,18 +189,22 @@ func badRequest(format string, args ...any) error {
 // failFor 把领域错误翻译成 HTTP 状态码。
 func failFor(c *gin.Context, err error) {
 	var reqErr *requestError
-	var unavail *hub.UnavailableError
+	var unavail *pool.UnavailableError
 	var noKey *downstream.ErrNoUsableKey
 
 	switch {
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, storeutil.ErrNotFound):
 		abortErr(c, http.StatusNotFound, "not_found", "目标不存在")
-	case errors.Is(err, store.ErrKeyTaken):
+	case errors.Is(err, servers.ErrKeyTaken):
 		abortErr(c, http.StatusConflict, "key_taken", err.Error())
-	case errors.Is(err, store.ErrCredentialExists):
+	case errors.Is(err, credentials.ErrCredentialExists):
 		abortErr(c, http.StatusConflict, "credential_exists", err.Error())
+	case errors.Is(err, hub.ErrDuplicateCredential):
+		abortErr(c, http.StatusConflict, "credential_duplicate", err.Error())
 	case errors.Is(err, hub.ErrKeyPoolUnsupported):
 		abortErr(c, http.StatusBadRequest, "key_pool_unsupported", err.Error())
+	case errors.Is(err, hub.ErrServerDisabled):
+		abortErr(c, http.StatusBadRequest, "server_disabled", err.Error())
 	case errors.As(err, &noKey):
 		// 所有密钥此刻都不可用。这是"暂时不行"，不是"请求错了"：
 		// 503 + retryAfter 让客户端知道可以原样重试，而不是去改配置。

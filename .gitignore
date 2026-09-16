@@ -19,20 +19,16 @@ go.work.sum
 # 依赖（默认不提交，需要离线构建时由 make vendor 生成）
 /vendor/
 
-# 本地数据库
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
-*.sqlite
-*.sqlite3
-
-# 日志
+# 日志与 make dev 的运行时文件（日志/pid）
 *.log
+/logs/
 
 # 本地环境变量与密钥
 .env
 .env.*
+# 模板要先忽略再放行：上面的 .env.* 会连 .env.example 一起挡掉，
+# 而模板恰恰是唯一该进版本库的那个（Config as Documentation）。
+!.env.example
 
 # macOS
 .DS_Store
@@ -42,3 +38,4 @@ go.work.sum
 *.swp
 *.swo
 *~
+.codegraph/

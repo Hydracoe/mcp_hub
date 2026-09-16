@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -22,6 +21,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hydra/mcp-hub/internal/api"
 	"github.com/hydra/mcp-hub/internal/hub"
+	"github.com/hydra/mcp-hub/internal/hub/callctx"
+	"github.com/hydra/mcp-hub/internal/hub/registry"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
 )
@@ -43,6 +44,14 @@ type Options struct {
 	// 这个开关必须现成可用——"先暴露出去、鉴权以后再加"从来
 	// 都不是一个好计划。
 	APIKey string
+
+	// GinMode 是 HTTP 框架（gin）的运行模式：debug / release / test。
+	//
+	// 默认 release：开发模式每次启动都会往 stdout 打一段中间件提示，
+	// 而这个进程的 stdout 要留给用户看启动横幅。
+	// 值由配置层给（MCPHUB_GIN_MODE，gin 自己的 GIN_MODE 同义），
+	// 这里不再自己读环境变量。
+	GinMode string
 }
 
 // Server 是网关的 HTTP 服务。
@@ -62,6 +71,17 @@ type Server struct {
 	boundAddr atomic.Value
 }
 
+// resolveGinMode 把配置值落成 gin 认的模式名：留空按 release 算。
+//
+// 开发模式每次启动都会往 stdout 打一段中间件提示，而这个进程的 stdout
+// 要留给用户看启动横幅，所以"没配"必须是 release 而不是 gin 自己的 debug。
+func resolveGinMode(mode string) string {
+	if mode == "" {
+		return gin.ReleaseMode
+	}
+	return mode
+}
+
 // New 构造 HTTP 服务但还不开始监听。
 func New(svc *hub.Service, opts Options) *Server {
 	if opts.Logger == nil {
@@ -71,12 +91,9 @@ func New(svc *hub.Service, opts Options) *Server {
 		opts.Addr = ":9090"
 	}
 
-	// 默认走 release 模式。开发模式每次启动都会往 stdout 打一段
-	// 中间件提示，而这个进程的 stdout 是要留给用户看启动横幅的。
-	// 需要调试时设 GIN_MODE=debug 即可，不额外加开关。
-	if os.Getenv(gin.EnvGinMode) == "" {
-		gin.SetMode(gin.ReleaseMode)
-	}
+	// 模式由调用方（配置层）决定；没给就按 release 算，
+	// 保持"启动横幅是 stdout 上唯一输出"这条约定。
+	gin.SetMode(resolveGinMode(opts.GinMode))
 
 	mcpHandler := mcpserver.NewStreamableHTTPServer(
 		svc.Aggregator().MCP(),
@@ -212,11 +229,10 @@ func (s *Server) handleReadyz(c *gin.Context) {
 
 // StatusResponse 是管理界面用的聚合状态。
 type StatusResponse struct {
-	Ready     bool             `json:"ready"`
-	ToolCount int              `json:"toolCount"`
-	Servers   []hub.ServerView `json:"servers"`
-	Conflicts []string         `json:"conflicts,omitempty"`
-	BuiltAt   int64            `json:"builtAt"`
+	Ready     bool                  `json:"ready"`
+	ToolCount int                   `json:"toolCount"`
+	Servers   []registry.ServerView `json:"servers"`
+	BuiltAt   int64                 `json:"builtAt"`
 }
 
 func (s *Server) handleStatus(c *gin.Context) {
@@ -227,7 +243,6 @@ func (s *Server) handleStatus(c *gin.Context) {
 		Ready:     ready,
 		ToolCount: snap.ToolCount(),
 		Servers:   snap.Servers(),
-		Conflicts: snap.Conflicts(),
 		BuiltAt:   snap.BuiltAt(),
 	})
 }
@@ -236,12 +251,15 @@ func (s *Server) handleStatus(c *gin.Context) {
 
 // mcpAuth 校验外部 AI 客户端的接入 API key。
 //
-// 策略是渐进收紧：库里没有任何启用中的 key 时放行（本地开发、
-// 现有部署零配置不受影响）；一旦创建过 key，匿名请求一律 401——
-// "创建第一把 key"这个动作本身就是启用鉴权的开关。
+// 策略是渐进收紧：库里一把 key 都没有时放行（本地开发、现有部署
+// 零配置不受影响）；一旦创建过 key，匿名请求一律 401——"创建第一把
+// key"这个动作本身就是启用鉴权的开关。
+//
+// 判断依据是"存在"而不是"启用中"（见 hub.APIKeysRequired）：全部停用
+// 意味着把端点锁死，而不是退回匿名开放——停用是收紧，不是关闭鉴权。
 //
 // 通过校验后把 key id 写进 request ctx，聚合器落调用日志时能归因
-// 到具体调用方。每请求两次小查询（计数 + hash 查找），SQLite 本地
+// 到具体调用方。每请求两次小查询（计数 + hash 查找），PostgreSQL 本地
 // 读，不是热点。
 func (s *Server) mcpAuth() gin.HandlerFunc {
 	present := func(c *gin.Context) string {
@@ -284,7 +302,9 @@ func (s *Server) mcpAuth() gin.HandlerFunc {
 			return
 		}
 
-		c.Request = c.Request.WithContext(hub.WithCallerAPIKey(c.Request.Context(), key.ID))
+		// 名字一并注入：鉴权这里已经拿到完整的 apikeys.APIKey，
+		// 落日志时就不必再查一次库（也避免把历史改写成"现在"的名字）。
+		c.Request = c.Request.WithContext(callctx.WithCaller(c.Request.Context(), key.ID, key.Name))
 		c.Next()
 	}
 }

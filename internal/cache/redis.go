@@ -10,7 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Redis 是分布式实现，生产形态。
+// Redis 是缓存的唯一后端，实现 Store 接口。
 //
 // 语义严格按包级注释里的契约落地：
 //   - ttl > 0 交给 Redis 的 EXPIRE；ttl <= 0 不设过期。
@@ -31,11 +31,6 @@ type Redis struct {
 
 // RedisOptions 是打开 Redis 缓存的参数。
 type RedisOptions struct {
-	// URL 是 redis:// 或 rediss:// 连接串，例如：
-	//
-	//	redis://127.0.0.1:6379/0
-	//	redis://:password@10.0.0.5:6379/2
-	//	rediss://host:6380/0  （TLS）
 	URL string
 	// KeyPrefix 是全局 key 前缀，留空用 mcp-hub:。
 	KeyPrefix string
@@ -44,9 +39,6 @@ type RedisOptions struct {
 }
 
 // NewRedis 打开 Redis 缓存并用一次 Ping 验证连通性。
-//
-// Ping 失败就返回错误而不是带病启动：缓存连不上不该靠静默降级
-// 消化，那只会把"Redis 配错了"变成"缓存好像没生效"。
 func NewRedis(ctx context.Context, opts RedisOptions) (*Redis, error) {
 	if opts.URL == "" {
 		return nil, errors.New("Redis 缓存需要 redis:// 连接串")

@@ -5,13 +5,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/hydra/mcp-hub/internal/cache/cachetest"
 	"github.com/hydra/mcp-hub/internal/httpd"
 	"github.com/hydra/mcp-hub/internal/hub"
 	"github.com/hydra/mcp-hub/internal/store"
+	"github.com/hydra/mcp-hub/internal/store/storetest"
 	"go.uber.org/zap"
 )
 
@@ -22,18 +23,18 @@ import (
 // 不显式钉住，就会在客户端侧变成"某个请求偶尔 301"这种最难查的形态。
 // internal/api 的测试打的是业务语义，覆盖不到这些。
 
-// newTestServer 起一个真实的服务实例：真 SQLite、真 hub，只是不占端口。
+// newTestServer 起一个真实的服务实例：真 PostgreSQL、真 hub，只是不占端口。
 // 不配置任何下游——路由行为不需要下游参与。
 func newTestServer(t *testing.T, opts httpd.Options) *httptest.Server {
 	t.Helper()
 
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	st, err := store.Open(storetest.DSN(t))
 	if err != nil {
 		t.Fatalf("打开数据库失败: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
 
-	svc := hub.NewService(st, nil)
+	svc := hub.NewServiceWithCache(st, nil, cachetest.New())
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if opts.Logger == nil {

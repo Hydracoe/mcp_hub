@@ -1,13 +1,17 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/hydra/mcp-hub/internal/downstream"
-	"github.com/hydra/mcp-hub/internal/hub"
-	"github.com/hydra/mcp-hub/internal/store"
+	"github.com/hydra/mcp-hub/internal/hub/pool"
+	"github.com/hydra/mcp-hub/internal/store/credentials"
+	"github.com/hydra/mcp-hub/internal/store/logs"
+	"github.com/hydra/mcp-hub/internal/store/servers"
 )
 
 // --- 输出结构 ---
@@ -22,6 +26,11 @@ type serverSummary struct {
 
 	Enabled bool   `json:"enabled"`
 	Status  string `json:"status"` // healthy | degraded | offline | unknown
+
+	// AutoEnable 是"上游新增工具直接放行"的开关（O5）。界面上它要显眼：
+	// 打开的 server 会让上游新增的工具不经人工确认就暴露给 AI，
+	// 用户得能一眼看出哪些 server 开着这个。
+	AutoEnable bool `json:"autoEnable"`
 
 	// AuthMode 是生效的鉴权形态（AuthModeOr 推断后的值）：
 	// none=免鉴权，header=需要请求头鉴权。界面据此区分
@@ -42,12 +51,11 @@ type serverSummary struct {
 
 	// ToolCount 是缓存里的工具数（下游声明的全部）。
 	ToolCount int `json:"toolCount"`
-	// ExposedToolCount 是过滤后真正进入聚合池的数量。
-	// 与 ToolCount 不等，就说明过滤规则正在生效。
+	// EnabledToolCount 是人工启用的工具数（未过工具级开关）。
+	EnabledToolCount int `json:"enabledToolCount"`
+	// ExposedToolCount 是此刻真正进入聚合池的数量（已启用且 server 已启用）。
+	// server 停用或列表未刷新时可以小于 EnabledToolCount。
 	ExposedToolCount int `json:"exposedToolCount"`
-
-	ToolFilterMode string   `json:"toolFilterMode"`
-	ToolFilterList []string `json:"toolFilterList,omitempty"`
 
 	// 密钥池概况。KeyPool 为 false 表示该 server 走单密钥模式
 	// （沿用 config.headers），界面上要把这件事说清楚，
@@ -57,9 +65,6 @@ type serverSummary struct {
 	UsableKeyCount   int  `json:"usableKeyCount"`
 	CoolingKeyCount  int  `json:"coolingKeyCount,omitempty"`
 	DisabledKeyCount int  `json:"disabledKeyCount,omitempty"`
-
-	// EstTokensPerCall 是 TPM 的预估回退值，0 表示不计量。
-	EstTokensPerCall int `json:"estTokensPerCall,omitempty"`
 
 	// Draining 表示这个 server 已经从聚合列表撤下，但还有调用在收尾。
 	//
@@ -72,7 +77,8 @@ type serverSummary struct {
 	DrainingSince    int64 `json:"drainingSince,omitempty"`
 
 	LastCheckAt   int64  `json:"lastCheckAt,omitempty"`
-	LastLatencyMS int64  `json:"lastLatencyMs,omitempty"`
+	// 不加 omitempty：探活失败时延迟为 0，省略掉会让界面误判成"从未探活"。
+	LastLatencyMS int64 `json:"lastLatencyMs"`
 	LastErrorKind string `json:"lastErrorKind,omitempty"`
 	LastError     string `json:"lastError,omitempty"`
 	LastErrorHint string `json:"lastErrorHint,omitempty"`
@@ -94,22 +100,34 @@ type serverConfigView struct {
 	TimeoutMS       int64             `json:"timeoutMs"`
 	ProtocolVersion string            `json:"protocolVersion,omitempty"`
 	LegacyOnly      bool              `json:"legacyOnly"`
+}
 
-	// EstTokensPerCall 是 TPM 的预估回退值。0 表示不计量——
-	// 界面必须显示"未计量"而不是 "0 / 100k"。
-	EstTokensPerCall int `json:"estTokensPerCall,omitempty"`
+// toolItemView 是工具缓存里一个工具的完整视图（含人工开关状态）。
+type toolItemView struct {
+	Name        string          `json:"name"`
+	ExposedName string          `json:"exposedName"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
+	// Enabled 是工具级人工开关；禁用后不进聚合端点、不可被检索。
+	Enabled bool `json:"enabled"`
+	// Exposed 表示此刻是否真正进入聚合池（Enabled 且 server 已启用）。
+	// Available 是下游可达性。
+	Exposed   bool `json:"exposed"`
+	Available bool `json:"available"`
 }
 
 // serverDetail 是详情页所需的全部信息。
 type serverDetail struct {
 	serverSummary
 	Config serverConfigView `json:"config"`
-	Tools  []string         `json:"tools,omitempty"` // 下游原始工具名
+	Tools  []string         `json:"tools,omitempty"` // 下游原始工具名（兼容旧界面）
+	// ToolItems 是带开关状态的完整工具清单，详情页的工具管理用它。
+	ToolItems []toolItemView `json:"toolItems,omitempty"`
 }
 
 // logItem 是调用日志列表一行。
 //
-// 持久层的 store.LogEntry 用的是 Go 导出字段名，直接序列化出去
+// 持久层的 logs.LogEntry 用的是 Go 导出字段名，直接序列化出去
 // 会变成 "ID"/"ServerKey" 这种和全 API camelCase 契约不一致的形状。
 type logItem struct {
 	ID           string    `json:"id"`
@@ -124,14 +142,23 @@ type logItem struct {
 	Error        string    `json:"error,omitempty"`
 	CredentialID string    `json:"credentialId,omitempty"`
 
+	// CredentialLabel 是该密钥**当前**的展示名（查询时批量回填）。
+	// 与 APIKeyName 的调用时快照不同：标签可改，历史行跟着显示新名字；
+	// 稳定的归因锚点仍是 credentialId，密钥已删除时 label 为空、界面回退显示 id。
+	CredentialLabel string `json:"credentialLabel,omitempty"`
+
 	// 调用方与请求现场（均已在落库时截断）。查看参数与结果
 	// 是日志页的核心诉求——"复现这次调用"比统计数字有用得多。
-	APIKeyID string `json:"apiKeyId,omitempty"`
-	Args     string `json:"args,omitempty"`
-	Result   string `json:"result,omitempty"`
+	//
+	// APIKeyName 是**调用当时**的名字快照：key 后来改了名或被删除，
+	// 历史行照旧显示当时的名字，不会跟着变、也不会变成空。
+	APIKeyID   string `json:"apiKeyId,omitempty"`
+	APIKeyName string `json:"apiKeyName,omitempty"`
+	Args       string `json:"args,omitempty"`
+	Result     string `json:"result,omitempty"`
 }
 
-func toLogItem(e store.LogEntry) logItem {
+func toLogItem(e logs.LogEntry) logItem {
 	return logItem{
 		ID:           e.ID,
 		TS:           e.TS,
@@ -145,8 +172,44 @@ func toLogItem(e store.LogEntry) logItem {
 		Error:        e.Error,
 		CredentialID: e.CredentialID,
 		APIKeyID:     e.APIKeyID,
+		APIKeyName:   e.APIKeyName,
 		Args:         e.Args,
 		Result:       e.Result,
+	}
+}
+
+// fillCredentialLabels 把一页日志里引用到的密钥展示名批量补齐。
+//
+// 查询失败不让整页日志跟着挂：标签是展示增强，缺了就回退显示 id。
+func fillCredentialLabels(ctx context.Context, st *credentials.Store, items []logItem) {
+	ids := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, it := range items {
+		if it.CredentialID == "" {
+			continue
+		}
+		if _, dup := seen[it.CredentialID]; dup {
+			continue
+		}
+		seen[it.CredentialID] = struct{}{}
+		ids = append(ids, it.CredentialID)
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	creds, err := st.GetByIDs(ctx, ids)
+	if err != nil {
+		return
+	}
+	labels := make(map[string]string, len(creds))
+	for _, c := range creds {
+		labels[c.ID] = c.LabelOrFallback()
+	}
+	for i := range items {
+		if label, ok := labels[items[i].CredentialID]; ok {
+			items[i].CredentialLabel = label
+		}
 	}
 }
 
@@ -176,11 +239,15 @@ type serverRequest struct {
 	ProtocolVersion string `json:"protocolVersion"`
 	LegacyOnly      bool   `json:"legacyOnly"`
 
-	ToolFilterMode string   `json:"toolFilterMode"`
-	ToolFilterList []string `json:"toolFilterList"`
+	// AutoEnable 是"上游新增工具直接放行"的 per-server 开关（O5）。
+	// 为空表示"不指定"：新增时默认关闭（新工具须人工启用），编辑时保留原值。
+	// 打开前请确认上游可信——它会让上游新增的工具不经人工确认就暴露给 AI。
+	AutoEnable *bool `json:"autoEnable"`
 
-	// EstTokensPerCall 是 TPM 的预估回退值，0 表示不计量。
-	EstTokensPerCall int `json:"estTokensPerCall"`
+	// EnabledTools 是创建时的初始启用名单：创建向导探活后勾选的工具。
+	// 只在首次创建时生效——首次探活落库后名单即消费完毕，之后的启停
+	// 全部走 /tools/:name/enable|disable。编辑请求带它会被忽略。
+	EnabledTools []string `json:"enabledTools,omitempty"`
 
 	// 元数据（PRD §4.7）。
 	Description string   `json:"description"`
@@ -195,7 +262,7 @@ type serverRequest struct {
 //
 // prev 是编辑前的配置：新增时为零值。它的用途只有一个——
 // 把回显用的掩码换回真实密钥。
-func (req serverRequest) toConfig(prev *store.Server) (store.Config, error) {
+func (req serverRequest) toConfig(prev *servers.Server) (servers.Config, error) {
 	spec := downstream.Spec{
 		Key:             strings.TrimSpace(req.Key),
 		Name:            strings.TrimSpace(req.Name),
@@ -222,13 +289,7 @@ func (req serverRequest) toConfig(prev *store.Server) (store.Config, error) {
 	}
 
 	if err := spec.Validate(); err != nil {
-		return store.Config{}, badRequest("配置不合法: %v", err)
-	}
-
-	mode := store.ToolFilterMode(req.ToolFilterMode).Normalize()
-	list := store.CleanToolNames(req.ToolFilterList)
-	if err := mode.Validate(list); err != nil {
-		return store.Config{}, badRequest("%v", err)
+		return servers.Config{}, badRequest("配置不合法: %v", err)
 	}
 
 	enabled := true
@@ -239,15 +300,28 @@ func (req serverRequest) toConfig(prev *store.Server) (store.Config, error) {
 		enabled = *req.Enabled
 	}
 
-	return store.Config{
-		Spec:             spec,
-		Enabled:          enabled,
-		ToolFilterMode:   mode,
-		ToolFilterList:   list,
-		EstTokensPerCall: max(req.EstTokensPerCall, 0),
-		Description:      strings.TrimSpace(req.Description),
-		Tags:             req.Tags,
-		CategoryID:       strings.TrimSpace(req.CategoryID),
+	// 引导名单只在创建时有意义：编辑请求即使带了这个字段也不落库。
+	var enabledTools []string
+	if prev == nil {
+		enabledTools = servers.CleanToolNames(req.EnabledTools)
+	}
+
+	autoEnable := false
+	if prev != nil {
+		autoEnable = prev.AutoEnable
+	}
+	if req.AutoEnable != nil {
+		autoEnable = *req.AutoEnable
+	}
+
+	return servers.Config{
+		Spec:         spec,
+		Enabled:      enabled,
+		AutoEnable:   autoEnable,
+		EnabledTools: enabledTools,
+		Description:  strings.TrimSpace(req.Description),
+		Tags:         req.Tags,
+		CategoryID:   strings.TrimSpace(req.CategoryID),
 	}, nil
 }
 
@@ -266,7 +340,7 @@ type keyStats struct {
 // toSummary 把一个存储行折算成列表视图。
 //
 // drain 非空表示这个 server 已撤下但仍有调用在收尾。
-func toSummary(sv store.Server, cachedTools int, exposedTools int, drain *hub.DrainingInfo, keys keyStats, catName string) serverSummary {
+func toSummary(sv servers.Server, cachedTools, enabledTools, exposedTools int, drain *pool.DrainingInfo, keys keyStats, catName string) serverSummary {
 	out := serverSummary{
 		ID:               sv.Spec.ID,
 		Key:              sv.Spec.Key,
@@ -274,6 +348,7 @@ func toSummary(sv store.Server, cachedTools int, exposedTools int, drain *hub.Dr
 		Transport:        string(sv.Spec.Transport),
 		Target:           targetOf(sv.Spec),
 		Enabled:          sv.Enabled,
+		AutoEnable:       sv.AutoEnable,
 		Status:           sv.Status,
 		AuthMode:         sv.Spec.AuthModeOr(),
 		ProtocolEra:      sv.ProtocolEra,
@@ -286,9 +361,8 @@ func toSummary(sv store.Server, cachedTools int, exposedTools int, drain *hub.Dr
 		CategoryID:       sv.CategoryID,
 		Category:         catName,
 		ToolCount:        cachedTools,
+		EnabledToolCount: enabledTools,
 		ExposedToolCount: exposedTools,
-		ToolFilterMode:   string(sv.ToolFilterMode),
-		ToolFilterList:   sv.ToolFilterList,
 		LastLatencyMS:    sv.LastLatencyMS,
 		LastErrorKind:    string(sv.LastErrorKind),
 		LastError:        sv.LastError,
@@ -300,7 +374,6 @@ func toSummary(sv store.Server, cachedTools int, exposedTools int, drain *hub.Dr
 		UsableKeyCount:   keys.Usable,
 		CoolingKeyCount:  keys.Cooling,
 		DisabledKeyCount: keys.Disabled + keys.Stopped,
-		EstTokensPerCall: sv.EstTokensPerCall,
 	}
 	applyDraining(&out, drain)
 	if sv.Status == "unknown" && sv.LastErrorKind == downstream.KindNone {
@@ -317,7 +390,7 @@ func toSummary(sv store.Server, cachedTools int, exposedTools int, drain *hub.Dr
 }
 
 // applyDraining 把停用收尾进度填进摘要视图。
-func applyDraining(out *serverSummary, drain *hub.DrainingInfo) {
+func applyDraining(out *serverSummary, drain *pool.DrainingInfo) {
 	if drain == nil {
 		return
 	}
@@ -327,16 +400,15 @@ func applyDraining(out *serverSummary, drain *hub.DrainingInfo) {
 }
 
 // toDetail 在摘要之上补齐可编辑配置。
-func toDetail(sv store.Server, cachedTools int, exposedTools int, toolNames []string, drain *hub.DrainingInfo, keys keyStats, catName string) serverDetail {
+func toDetail(sv servers.Server, cachedTools, enabledTools, exposedTools int, toolNames []string, toolItems []toolItemView, drain *pool.DrainingInfo, keys keyStats, catName string) serverDetail {
 	cfg := serverConfigView{
-		URL:              sv.Spec.URL,
-		Command:          sv.Spec.Command,
-		Args:             sv.Spec.Args,
-		AuthMode:         sv.Spec.AuthModeOr(),
-		TimeoutMS:        sv.Spec.TimeoutOr().Milliseconds(),
-		ProtocolVersion:  sv.Spec.ProtocolVersion,
-		LegacyOnly:       sv.Spec.LegacyOnly,
-		EstTokensPerCall: sv.EstTokensPerCall,
+		URL:             sv.Spec.URL,
+		Command:         sv.Spec.Command,
+		Args:            sv.Spec.Args,
+		AuthMode:        sv.Spec.AuthModeOr(),
+		TimeoutMS:       sv.Spec.TimeoutOr().Milliseconds(),
+		ProtocolVersion: sv.Spec.ProtocolVersion,
+		LegacyOnly:      sv.Spec.LegacyOnly,
 	}
 	if len(sv.Spec.Headers) > 0 {
 		cfg.Headers = maskMap(sv.Spec.Headers)
@@ -347,9 +419,10 @@ func toDetail(sv store.Server, cachedTools int, exposedTools int, toolNames []st
 	}
 
 	return serverDetail{
-		serverSummary: toSummary(sv, cachedTools, exposedTools, drain, keys, catName),
+		serverSummary: toSummary(sv, cachedTools, enabledTools, exposedTools, drain, keys, catName),
 		Config:        cfg,
 		Tools:         toolNames,
+		ToolItems:     toolItems,
 	}
 }
 

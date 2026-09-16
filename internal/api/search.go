@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/hydra/mcp-hub/internal/hub"
+	"github.com/hydra/mcp-hub/internal/hub/retrieval"
 )
 
 // handleSearchTools 是管理界面的检索入口（PRD §4.7.7）。
@@ -24,7 +24,7 @@ func (a *API) handleSearchTools(c *gin.Context) {
 		}
 	}
 
-	hits, err := a.svc.SearchTools(c.Request.Context(), hub.SearchQuery{
+	hits, err := a.svc.SearchTools(c.Request.Context(), retrieval.SearchQuery{
 		Query:      q.Get("query"),
 		Mode:       q.Get("mode"),
 		Category:   q.Get("category"),
@@ -39,7 +39,7 @@ func (a *API) handleSearchTools(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, map[string]any{
 		"count":   len(hits),
-		"facets":  hub.FacetsOf(hits),
+		"facets":  retrieval.FacetsOf(hits),
 		"results": hits,
 	})
 }

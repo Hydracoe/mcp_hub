@@ -13,9 +13,8 @@ import (
 
 // bodySnippetBytes 是响应体被截取保留的字节数。
 //
-// 只够识别 "insufficient_quota" / "exceeded your current quota" 这类标记。
-// 保留更多没有意义：这些响应体动辄几十 KB，全额缓冲会把它变成
-// 一次内存放大攻击的入口。
+// 只够识别 "insufficient_quota" 这类标记。保留更多没有意义：这些响应体动辄
+// 几十 KB，全额缓冲等于给内存放大攻击开个入口。
 const bodySnippetBytes = 512
 
 // Observation 是 Recorder 捕获到的一次 HTTP 往返事实。
@@ -27,28 +26,26 @@ type Observation struct {
 
 	// RetryAfter 是下游在 429/503 上声明的等待时长，已解析。
 	//
-	// 它比自己猜的指数退避更权威：供应商知道自己什么时候会放行，
+	// 它比自己猜的指数退避更权威：供应商知道自己什么时候放行，
 	// 网关瞎猜只会要么白等、要么再撞一次限流。
 	RetryAfter time.Duration
 
 	// BodySnippet 是错误响应体的前若干字节，用于区分"限流"与"额度耗尽"。
 	//
-	// 多数供应商这两种情况都回 429，只在 body 里用 insufficient_quota
-	// 这类标记区分。仅凭状态码判断会把"该换密钥"误判成"等一会儿就行"，
-	// 于是一把已经没钱的密钥会被无限退避重试。
+	// 多数供应商这两种情况都回 429，只在 body 里用 insufficient_quota 这类
+	// 标记区分。只看状态码会把"该换密钥"误判成"等一会儿就行"，
+	// 于是一把没钱的密钥被无限退避重试。
 	BodySnippet string
 }
 
-// obsSlotKey 是观测槽位在 context 中的键。用私有类型避免与其他
-// 包可能写入的键冲突。
+// obsSlotKey 是观测槽位在 context 中的键。私有类型，避免与其他包的键冲突。
 type obsSlotKey struct{}
 
 // ObservationSlot 承载一次调用的观测结果。
 //
-// 存在的理由：Recorder 原先只保留"最近一次往返"，在探活这种串行
-// 场景下一直是对的。但密钥池下调用是并发的——A 收到的 429 会被读成
-// B 的观测结果，症状是把无辜的密钥封掉，而且看起来像供应商的错。
-// 改为每次调用自带一个槽位，归因就不再依赖时序。
+// Recorder 原先只保留"最近一次往返"，在串行的探活场景下一直是对的；但密钥池
+// 下调用是并发的——A 收到的 429 会被读成 B 的观测，症状是把无辜的密钥封掉，
+// 而且看起来像供应商的错。改为每次调用自带槽位后，归因不再依赖时序。
 type ObservationSlot struct {
 	mu  sync.Mutex
 	obs Observation
@@ -62,13 +59,6 @@ func (s *ObservationSlot) Get() Observation {
 	return s.obs
 }
 
-// Captured 报告是否真的捕获到了一次往返。
-func (s *ObservationSlot) Captured() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.set
-}
-
 func (s *ObservationSlot) store(obs Observation) {
 	s.mu.Lock()
 	s.obs = obs
@@ -78,8 +68,8 @@ func (s *ObservationSlot) store(obs Observation) {
 
 // WithObservation 在 ctx 上挂一个观测槽位。
 //
-// 层数取一次调用内最后一次往返：一次 tools/call 在传输层可能经历
-// 多次 HTTP 往返（协商、重试），最终决定成败的是最后一次。
+// 槽位取一次调用内最后一次往返：一次 tools/call 在传输层可能经历多次 HTTP
+// 往返（协商、重试），决定成败的是最后一次。
 func WithObservation(ctx context.Context) (context.Context, *ObservationSlot) {
 	slot := &ObservationSlot{}
 	return context.WithValue(ctx, obsSlotKey{}, slot), slot
@@ -94,16 +84,11 @@ func ObservationFrom(ctx context.Context) *ObservationSlot {
 	return slot
 }
 
-// Recorder 是一个 http.RoundTripper，记录往返的状态码、原始错误与
-// 限流信号。
+// Recorder 是一个 http.RoundTripper，记录往返的状态码、原始错误与限流信号。
 //
-// 存在的理由：mcp-go 把 HTTP 状态码与网络错误压成字符串
-// （transport/streamable_http.go 中 "request failed with status %d"），
-// errors.As 取不到状态码。而错误必须按类型分类，见 ErrorKind 的约束。
-// 在 RoundTripper 这一层，状态码与 *url.Error 都还是结构化的。
-//
-// 并发安全：若请求的 ctx 上挂了观测槽位（WithObservation），结果写进
-// 槽位，互不干扰；同时仍更新 last 供探活这类串行路径使用。
+// mcp-go 把状态码与网络错误压成字符串（"request failed with status %d"），
+// errors.As 取不回来，而错误必须按类型分类——在 RoundTripper 这一层它们还是
+// 结构化的。并发安全：挂了观测槽位就写槽位，同时仍更新 last 供串行路径用。
 type Recorder struct {
 	Base http.RoundTripper
 
@@ -113,21 +98,17 @@ type Recorder struct {
 
 // NewRecorder 构造一个带私有连接池的观测 RoundTripper。
 //
-// 不能让它回落 http.DefaultTransport：默认 MaxIdleConnsPerHost 只有 2，
-// 而单个下游的并发上限是 DefaultMaxInflight（16）。一波 16 并发过后
-// 只有 2 条连接能进空闲池，剩下的全部关闭，下一波只能重新做
-// TCP/TLS 握手——高并发下延迟与握手开销都被无谓放大。
-//
-// 每个下游一个私有 Transport：空闲池容量与并发额度对齐，停用时
-// 也能整池 CloseIdleConnections 回收，不与其他下游串扰。
+// 不能回落到 http.DefaultTransport：默认 MaxIdleConnsPerHost 只有 2，而单个下游的
+// 并发上限是 16，一波并发过后大部分连接被关掉，下一波只能重做 TCP/TLS 握手。
+// 每个下游一个私有 Transport：池容量与并发额度对齐，停用时整池回收。
 func NewRecorder() *Recorder {
 	return &Recorder{Base: newHTTPTransport()}
 }
 
 // newHTTPTransport 产出与下游并发额度对齐的连接池。
 //
-// 从 DefaultTransport 克隆而不是手写一份：TLS 握手超时、
-// Expect-Continue、代理读取这些默认值都要保留，只覆盖池容量。
+// 从 DefaultTransport 克隆而不是手写一份：TLS 握手超时、Expect-Continue、
+// 代理读取这些默认值都要保留，只覆盖池容量。
 func newHTTPTransport() *http.Transport {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.MaxIdleConnsPerHost = DefaultMaxInflight
@@ -136,9 +117,8 @@ func newHTTPTransport() *http.Transport {
 
 // CloseIdleConnections 立即回收底层连接池中的空闲连接。
 //
-// 连接停用或探活结束时调用：mcp-go 的 client.Close 只关自己的流，
-// 不保证回收 Transport 空闲池里的 socket，不主动关它们就要挂满
-// 整个 IdleConnTimeout（默认 90s）。
+// mcp-go 的 client.Close 只关自己的流，不保证回收 Transport 空闲池里的 socket，
+// 不主动关就要挂满整个 IdleConnTimeout（默认 90s）。
 func (r *Recorder) CloseIdleConnections() {
 	if closer, ok := r.Base.(interface{ CloseIdleConnections() }); ok {
 		closer.CloseIdleConnections()
@@ -181,18 +161,11 @@ func (r *Recorder) Last() Observation {
 	return r.last
 }
 
-// Reset 清空观测记录，在一轮探活开始前调用。
-func (r *Recorder) Reset() {
-	r.mu.Lock()
-	r.last = Observation{}
-	r.mu.Unlock()
-}
-
-// parseRetryAfter 解析 Retry-After 头，同时接受秒数与 HTTP-date。
+// parseRetryAfter 解析 Retry-After 头，秒数与 HTTP-date 都接受——RFC 7231
+// 允许两种，实际供应商两种都在用。
 //
-// 两种格式都要认：RFC 7231 允许两种，实际供应商两种都在用。
-// 解析失败返回 0（由调用方退回指数退避），而不是某个默认值——
-// 猜一个时长比不猜更糟，因为它会让"下游说 30s 后好"被改成别的数字。
+// 解析失败返回 0（由调用方退回指数退避），而不是某个默认值：猜一个时长
+// 比不猜更糟，它会把"下游说 30s 后好"悄悄改成别的数字。
 func parseRetryAfter(raw string, now time.Time) time.Duration {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -215,14 +188,11 @@ func parseRetryAfter(raw string, now time.Time) time.Duration {
 	return 0
 }
 
-// peekErrorBody 读取错误响应的开头若干字节，并把响应体还原回去。
+// peekErrorBody 读取错误响应的开头若干字节，并把响应体按段透传还原回去。
 //
-// 只在状态码 >= 400 且非事件流时读：正常响应可能是 SSE 长连接，
-// 缓冲它会直接破坏流式语义，而需要看 body 的判据（限流 vs 额度耗尽）
-// 本来就只出现在错误响应上。
-//
-// 还原用 MultiReader 而不是全部读入内存：后者会把这个观察点
-// 变成一次无上限的内存分配。
+// 只在状态码 >= 400 且非事件流时读：正常响应可能是 SSE 长连接，缓冲它会破坏流式
+// 语义，而需要看 body 的判据（限流 vs 额度耗尽）只出现在错误响应上。不整体读入
+// 内存——那会把这个观察点变成一次无上限的内存分配。
 func peekErrorBody(resp *http.Response) string {
 	if resp.StatusCode < http.StatusBadRequest || resp.Body == nil {
 		return ""

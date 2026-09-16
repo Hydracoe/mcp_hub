@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hydra/mcp-hub/internal/downstream"
 	"github.com/hydra/mcp-hub/internal/hub"
-	"github.com/hydra/mcp-hub/internal/store"
+	"github.com/hydra/mcp-hub/internal/store/credentials"
 )
 
 // credentialView 是一把密钥的对外视图。
@@ -36,14 +36,9 @@ type credentialView struct {
 	ConsecutiveLimited int   `json:"consecutiveLimited,omitempty"`
 
 	RPMLimit int `json:"rpmLimit"`
-	TPMLimit int `json:"tpmLimit"`
 
-	RPMUsed int `json:"rpmUsed"`
-	TPMUsed int `json:"tpmUsed"`
-	// TPMMetered 为 false 时界面必须显示"未计量"，而不是 "0 / 100k"。
-	// 一个假的 0 会让人以为配额一切正常。
-	TPMMetered bool  `json:"tpmMetered"`
-	WindowEnd  int64 `json:"windowEnd,omitempty"`
+	RPMUsed   int   `json:"rpmUsed"`
+	WindowEnd int64 `json:"windowEnd,omitempty"`
 
 	Picks      uint64 `json:"picks"`
 	LastUsedAt int64  `json:"lastUsedAt,omitempty"`
@@ -67,7 +62,6 @@ type credentialRequest struct {
 	HeaderName string `json:"headerName"` // authScheme=header 时的头名
 
 	RPMLimit int `json:"rpmLimit"`
-	TPMLimit int `json:"tpmLimit"`
 }
 
 // credentialImportRequest 是批量粘贴的请求体。
@@ -79,7 +73,6 @@ type credentialImportRequest struct {
 	Lines []string `json:"lines"`
 
 	RPMLimit int `json:"rpmLimit"`
-	TPMLimit int `json:"tpmLimit"`
 }
 
 // --- 端点到编排 ---
@@ -136,7 +129,6 @@ func (a *API) handleCreateCredential(c *gin.Context) {
 		Label:    req.Label,
 		Headers:  headers,
 		RPMLimit: req.RPMLimit,
-		TPMLimit: req.TPMLimit,
 	})
 	if err != nil {
 		failFor(c, err)
@@ -174,7 +166,6 @@ func (a *API) handleUpdateCredential(c *gin.Context) {
 		Label:    req.Label,
 		Headers:  headers,
 		RPMLimit: req.RPMLimit,
-		TPMLimit: req.TPMLimit,
 	}); err != nil {
 		failFor(c, err)
 		return
@@ -210,7 +201,7 @@ func (a *API) setCredentialEnabled(c *gin.Context, enabled bool) {
 func (a *API) handleTestCredential(c *gin.Context) {
 	serverID, credID := c.Param("id"), c.Param("cid")
 
-	sv, err := a.svc.Store().GetServer(c.Request.Context(), serverID)
+	sv, err := a.svc.Store().Servers.Get(c.Request.Context(), serverID)
 	if err != nil {
 		failFor(c, err)
 		return
@@ -260,7 +251,6 @@ func (a *API) handleImportCredentials(c *gin.Context) {
 	}
 	for i := range specs {
 		specs[i].RPMLimit = req.RPMLimit
-		specs[i].TPMLimit = req.TPMLimit
 	}
 
 	created, err := a.svc.ImportCredentials(c.Request.Context(), serverID, specs)
@@ -309,7 +299,7 @@ func (a *API) credentialByID(ctx context.Context, serverID, credID string) crede
 
 // --- 转换 ---
 
-func toCredentialView(c store.Credential, st downstream.KeyStatus) credentialView {
+func toCredentialView(c credentials.Credential, st downstream.KeyStatus) credentialView {
 	out := credentialView{
 		ID:          c.ID,
 		Label:       c.LabelOrFallback(),
@@ -319,7 +309,6 @@ func toCredentialView(c store.Credential, st downstream.KeyStatus) credentialVie
 		Enabled:     c.Enabled,
 		State:       string(downstream.KeyActive),
 		RPMLimit:    c.RPMLimit,
-		TPMLimit:    c.TPMLimit,
 		CreatedAt:   c.CreatedAt.UnixMilli(),
 		UpdatedAt:   c.UpdatedAt.UnixMilli(),
 	}
@@ -328,7 +317,7 @@ func toCredentialView(c store.Credential, st downstream.KeyStatus) credentialVie
 	// 时落到持久状态：界面宁可显示"已弃用"的旧结论，
 	// 也不要显示一个看起来一切正常的空壳。
 	if st.ID == "" {
-		out.State = c.State
+		out.State = string(c.State)
 		out.DisabledKind = string(c.DisabledKind)
 		if !c.DisabledAt.IsZero() {
 			out.DisabledAt = c.DisabledAt.UnixMilli()
@@ -351,8 +340,6 @@ func toCredentialView(c store.Credential, st downstream.KeyStatus) credentialVie
 	}
 	out.ConsecutiveLimited = st.ConsecutiveLimited
 	out.RPMUsed = st.RPMUsed
-	out.TPMUsed = st.TPMUsed
-	out.TPMMetered = st.TPMMetered
 	out.Picks = st.Picks
 	out.LastError = st.LastError
 	if !st.WindowEnd.IsZero() {

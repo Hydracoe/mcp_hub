@@ -19,10 +19,27 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// classify 把一次失败的探活归入 ErrorKind。
+// classifyFor 按传输类型选分类器。stdio 没有网络层与 HTTP 语义，失败原因
+// 来自进程生命周期，不能复用网络分类器。
+func classifyFor(spec Spec, err error, obs Observation) ErrorKind {
+	if spec.Transport == TransportStdio {
+		return classifySpawn(err)
+	}
+	return classify(err, obs)
+}
+
+// lastObs 取观测器的最近一次往返，rec 为 nil 时返回零值。
+func lastObs(rec *Recorder) Observation {
+	if rec == nil {
+		return Observation{}
+	}
+	return rec.Last()
+}
+
+// classify 把一次失败归入 ErrorKind。
 //
-// 判定顺序即诊断顺序：先看是否超时，再看网络层，再看 HTTP 语义，
-// 最后才落到协议层。这样"网络不通"不会被误报成"协议不兼容"。
+// 判定顺序即诊断顺序：超时 → 网络层 → HTTP 语义 → 协议层。这样"网络不通"
+// 不会先被误报成"协议不兼容"。
 func classify(err error, obs Observation) ErrorKind {
 	if err == nil {
 		return KindNone
@@ -31,11 +48,8 @@ func classify(err error, obs Observation) ErrorKind {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return KindTimeout
 	}
-
-	// 被主动取消：停用收尾超时后强制关闭会走到这里。
-	// 单列一类是为了让日志里能一眼看出"是我们关的"，而不是下游的毛病——
-	// 混进 UNKNOWN 的话，用户只会看到一堆"未知错误"，
-	// 完全无从把它和几分钟前那次停用操作联系起来。
+	// 被主动取消：停用收尾超时后强制关闭会走到这里。单列一类，日志里才能
+	// 一眼看出"是我们关的"，而不是下游的毛病。
 	if errors.Is(err, context.Canceled) {
 		return KindCanceled
 	}
@@ -44,15 +58,13 @@ func classify(err error, obs Observation) ErrorKind {
 		return kind
 	}
 
-	// HTTP 语义。只在响应确实异常时采信状态码：探活是串行的，Recorder
-	// 记录的"最近一次"即失败的那一次；若状态码是 2xx，说明失败发生在
-	// 响应体处理阶段，应交给下面的协议层判断。
+	// HTTP 语义。只在响应确实异常时采信状态码：状态码是 2xx 说明失败发生在
+	// 响应体处理阶段，交给下面的协议层判断。
 	if obs.Err == nil && obs.StatusCode >= http.StatusBadRequest {
 		switch {
 		case obs.StatusCode == http.StatusTooManyRequests:
-			// 429 有两种截然不同的含义，只有 body 能区分它们。
-			// 判错的代价不对称：把额度耗尽当成限流，会让一把已经
-			// 没钱的密钥被无限退避重试；反过来则会把一把还能用的
+			// 429 有两种含义，只有 body 能区分。判错的代价不对称：把额度耗尽
+			// 当成限流，会让一把没钱的密钥被无限退避重试；反过来会把还能用的
 			// 密钥直接弃用。
 			if quotaExhaustedIn(obs.BodySnippet) {
 				return KindQuotaExhausted
@@ -69,10 +81,9 @@ func classify(err error, obs Observation) ErrorKind {
 		}
 	}
 
-	// 2xx 但内容类型不是 MCP 支持的格式——典型场景是把普通网页地址
-	// 当成 MCP 端点填了进来：状态码 200，返回的却是 HTML。
-	// mcp-go 对这种情况只给出字符串错误，因此改在这里用结构化的
-	// Content-Type 判断，避免依赖错误文案。
+	// 2xx 但不是 MCP 支持的媒体类型——典型是把普通网页地址填成了 MCP 端点：
+	// 状态码 200，返回的是 HTML。mcp-go 对这种情况只给字符串错误，所以在这里
+	// 用结构化的 Content-Type 判断。
 	if obs.Err == nil &&
 		obs.StatusCode >= http.StatusOK && obs.StatusCode < http.StatusMultipleChoices &&
 		!isMCPContentType(obs.ContentType) {
@@ -87,8 +98,7 @@ func classify(err error, obs Observation) ErrorKind {
 		return KindProtocolMismatch
 	}
 
-	// 服务返回了 HTTP 200，但响应体不是合法 JSON-RPC——
-	// 典型场景是把普通网页地址当成 MCP 端点填了进来。
+	// 200 但响应体不是合法 JSON-RPC，同样是"这地址不是 MCP 端点"。
 	var syntaxErr *json.SyntaxError
 	var typeErr *json.UnmarshalTypeError
 	if errors.As(err, &syntaxErr) || errors.As(err, &typeErr) {
@@ -98,15 +108,11 @@ func classify(err error, obs Observation) ErrorKind {
 	return KindUnknown
 }
 
-// quotaMarkers 是各家供应商在"额度/余额用尽"时给出的响应体标记。
+// quotaMarkers 是各家在"额度/余额用尽"时给出的响应体标记。
 //
-// 这是一处刻意保留的字符串匹配：供应商的额度信号**只**存在于响应体
-// 文案里，协议层没有对应的结构化字段。判定逻辑集中在此，一旦某家
-// 改了措辞，只需在这里加一条，不必去动调度逻辑。
-//
-// 匹配一律转小写后按子串找。少了会退化成"无限退避重试"，
-// 多了会把额度耗尽的密钥当成限流——因此只放明确指向"没钱/额度"的词，
-// 不放过 is not available 这类含糊说法。
+// 全包唯一一处刻意保留的字符串匹配：额度信号只存在于响应体文案里，协议层没有
+// 对应字段。集中在此，某家改了措辞只需加一条；只放明确指向"没钱/额度"的词——
+// 少了会退化成无限退避重试，多了会把额度耗尽当成限流。
 var quotaMarkers = []string{
 	"insufficient_quota",
 	"quota exceeded",
@@ -140,8 +146,7 @@ func quotaExhaustedIn(body string) bool {
 
 // isMCPContentType 报告该 Content-Type 是否为 MCP 传输可用的类型。
 //
-// Streamable HTTP 只在两种媒体类型下承载 JSON-RPC：
-// application/json 与 text/event-stream。
+// Streamable HTTP 只在 application/json 与 text/event-stream 下承载 JSON-RPC。
 // 空值不做判断——部分 server 不声明，交给后续解析定夺。
 func isMCPContentType(raw string) bool {
 	if raw == "" {
@@ -169,9 +174,9 @@ func classifyNetwork(err error) ErrorKind {
 	if errors.As(err, &certVerifyErr) {
 		return KindTLSFail
 	}
+	// 连上了端口，但对端回的不是 TLS 握手数据——多半是 HTTP 端口。
 	var recordErr tls.RecordHeaderError
 	if errors.As(err, &recordErr) {
-		// 连上了端口，但对端回的不是 TLS 握手数据——多半是 HTTP 端口。
 		return KindTLSFail
 	}
 	var unknownAuthority x509.UnknownAuthorityError
