@@ -40,7 +40,6 @@ export function CredentialFormDialog({
   const [headerName, setHeaderName] = useState('')
   const [headersText, setHeadersText] = useState('')
   const [rpmLimit, setRpmLimit] = useState('')
-  const [tpmLimit, setTpmLimit] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -52,7 +51,6 @@ export function CredentialFormDialog({
     setHeaderName('')
     setHeadersText('')
     setRpmLimit('')
-    setTpmLimit('')
     setError('')
   }, [open, initial])
 
@@ -97,14 +95,6 @@ export function CredentialFormDialog({
         return null
       }
       req.rpmLimit = n
-    }
-    if (tpmLimit.trim()) {
-      const n = Number(tpmLimit)
-      if (!Number.isInteger(n) || n < 0) {
-        setError('tpmLimit 必须是非负整数')
-        return null
-      }
-      req.tpmLimit = n
     }
     return req
   }
@@ -210,31 +200,17 @@ export function CredentialFormDialog({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <Label>rpmLimit</Label>
-          <Input
-            type="number"
-            min={0}
-            step={1}
-            value={rpmLimit}
-            onChange={(e) => setRpmLimit(e.target.value)}
-            placeholder="不限"
-            className="mt-1.5"
-          />
-        </div>
-        <div>
-          <Label>tpmLimit</Label>
-          <Input
-            type="number"
-            min={0}
-            step={1}
-            value={tpmLimit}
-            onChange={(e) => setTpmLimit(e.target.value)}
-            placeholder="不限"
-            className="mt-1.5"
-          />
-        </div>
+      <div>
+        <Label>rpmLimit</Label>
+        <Input
+          type="number"
+          min={0}
+          step={1}
+          value={rpmLimit}
+          onChange={(e) => setRpmLimit(e.target.value)}
+          placeholder="不限"
+          className="mt-1.5"
+        />
       </div>
 
     </FormDialog>

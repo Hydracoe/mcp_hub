@@ -34,7 +34,6 @@ export function CredentialImportDialog({ open, onOpenChange, mutations }: Props)
   const [scheme, setScheme] = useState<Scheme>('bearer')
   const [headerName, setHeaderName] = useState('')
   const [rpmLimit, setRpmLimit] = useState('')
-  const [tpmLimit, setTpmLimit] = useState('')
   const [result, setResult] = useState<{ created: number; items: CredentialView[] } | null>(null)
 
   const lines = raw
@@ -54,7 +53,6 @@ export function CredentialImportDialog({ open, onOpenChange, mutations }: Props)
         authScheme: scheme,
         headerName: scheme === 'header' ? headerName.trim() : undefined,
         rpmLimit: rpmLimit ? Number(rpmLimit) : undefined,
-        tpmLimit: tpmLimit ? Number(tpmLimit) : undefined,
       },
       {
         onSuccess: (data) => {
@@ -145,29 +143,16 @@ export function CredentialImportDialog({ open, onOpenChange, mutations }: Props)
         每把密钥会被展开成 <code className="code-chip">{headerPreview}</code>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="cred-import-rpm">RPM 上限</Label>
-          <Input
-            id="cred-import-rpm"
-            type="number"
-            inputMode="numeric"
-            value={rpmLimit}
-            onChange={(e) => setRpmLimit(e.target.value)}
-            placeholder="留空 = 不限"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="cred-import-tpm">TPM 上限</Label>
-          <Input
-            id="cred-import-tpm"
-            type="number"
-            inputMode="numeric"
-            value={tpmLimit}
-            onChange={(e) => setTpmLimit(e.target.value)}
-            placeholder="留空 = 不限"
-          />
-        </div>
+      <div className="max-w-xs space-y-1.5">
+        <Label htmlFor="cred-import-rpm">RPM 上限</Label>
+        <Input
+          id="cred-import-rpm"
+          type="number"
+          inputMode="numeric"
+          value={rpmLimit}
+          onChange={(e) => setRpmLimit(e.target.value)}
+          placeholder="留空 = 不限"
+        />
       </div>
 
       {result ? (

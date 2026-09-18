@@ -41,9 +41,6 @@ export interface ServerSummary {
   disabledKeyCount?: number
   keySuccessRate?: number
 
-  /** TPM 预估回退值。0 表示不计量——界面要显示「未计量」而非 0。 */
-  estTokensPerCall?: number
-
   /** 已从聚合列表撤下，但还有调用在收尾。与 status 是两回事。 */
   draining: boolean
   drainingInflight?: number
@@ -73,7 +70,6 @@ export interface ServerConfigView {
   timeoutMs: number
   protocolVersion?: string
   legacyOnly: boolean
-  estTokensPerCall?: number
 }
 
 /** 详情页工具清单中的一个工具（带人工开关状态）。 */
@@ -116,7 +112,6 @@ export interface ServerRequest {
   legacyOnly?: boolean
   /** 创建时的初始启用名单（向导勾选）。仅首次创建生效，编辑请求忽略。 */
   enabledTools?: string[]
-  estTokensPerCall?: number
   description?: string
   tags?: string[]
   categoryId?: string

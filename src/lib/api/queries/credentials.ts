@@ -54,7 +54,6 @@ export function useCredentialMutations(serverId: string) {
       authScheme?: 'bearer' | 'x-api-key' | 'header'
       headerName?: string
       rpmLimit?: number
-      tpmLimit?: number
     }) => api.importCredentials(serverId, vars),
     onSuccess: invalidate,
   })

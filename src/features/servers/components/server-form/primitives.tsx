@@ -99,7 +99,7 @@ export function SegmentedToggle<T extends string>({
   )
 }
 
-/** 带单位后缀的数字输入（Timeout 的 ms、estTokensPerCall 的 tokens）。 */
+/** 带单位后缀的数字输入（如 Timeout 的 ms）。 */
 export function NumberField({
   unit,
   className,

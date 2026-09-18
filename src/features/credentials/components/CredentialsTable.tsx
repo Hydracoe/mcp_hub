@@ -121,7 +121,7 @@ export function CredentialsTable({ items, frame, mutations, onEdit }: Credential
         open={Boolean(resetId)}
         onOpenChange={(o) => !o && setResetId(null)}
         title="重置配额"
-        description="将这把密钥的 rpm / tpm 当前用量清零，冷却也会一并解除。"
+        description="将这把密钥的 rpm 当前用量清零，冷却也会一并解除。"
         confirmText="重置"
         pending={mutations.resetQuota.isPending}
         onConfirm={confirmReset}
@@ -144,7 +144,6 @@ interface RowProps {
 function CredentialRow({ c, mutations, onEdit, onTest, testing, testResult, onDelete, onReset }: RowProps) {
   const remain = c.coolingUntil ? c.coolingUntil - Date.now() : c.coolingForMs
   const rpm = `${formatInt(c.rpmUsed)} / ${c.rpmLimit ? formatInt(c.rpmLimit) : '不限'}`
-  const tpm = c.tpmMetered ? `${formatInt(c.tpmUsed)} / ${c.tpmLimit ? formatInt(c.tpmLimit) : '不限'}` : '未计量'
 
   return (
     <TableRow>
@@ -182,7 +181,6 @@ function CredentialRow({ c, mutations, onEdit, onTest, testing, testResult, onDe
       </TableCell>
       <TableCell>
         <div className="font-mono tabular-nums">{rpm}</div>
-        <div className="font-mono tabular-nums text-muted-foreground">{tpm}</div>
       </TableCell>
       <TableCell>
         <div className="font-mono tabular-nums">轮询 {formatInt(c.picks)}</div>

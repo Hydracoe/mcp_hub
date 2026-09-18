@@ -46,11 +46,6 @@ export function validateAuth(f: ServerFormState): FieldErrors {
 
   if (!f.categoryId) e.categoryId = '必选：分类决定工具名前缀段'
 
-  if (f.estTokensPerCall.trim()) {
-    const n = Number(f.estTokensPerCall)
-    if (!Number.isInteger(n) || n < 0) e.estTokensPerCall = '必须是非负整数'
-  }
-
   if (f.transport !== 'stdio' && f.needsKey) {
     const hasEmptyName = f.headerRows.some((r) => !r.k.trim() && r.v.trim())
     const hasAnyName = f.headerRows.some((r) => r.k.trim())

@@ -36,7 +36,6 @@ export interface ServerFormState {
   /* ── 鉴权与元信息 ── */
   needsKey: boolean
   headerRows: HeaderRow[]
-  estTokensPerCall: string
   description: string
   tagsText: string
   categoryId: string
@@ -70,7 +69,6 @@ export const EMPTY_SERVER_FORM: ServerFormState = {
   timeoutMs: 30000,
   needsKey: true,
   headerRows: [{ k: '', v: '' }],
-  estTokensPerCall: '',
   description: '',
   tagsText: '',
   categoryId: '',
@@ -171,7 +169,6 @@ export const toCreateRequest = (f: ServerFormState): ServerRequest => {
     body.enabledTools = selected
   }
 
-  if (f.estTokensPerCall.trim()) body.estTokensPerCall = Number(f.estTokensPerCall)
   if (f.description.trim()) body.description = f.description.trim()
   if (f.tagsText.trim()) body.tags = splitCsv(f.tagsText)
   body.categoryId = f.categoryId

@@ -39,7 +39,6 @@ export function useCredentialsPage() {
       cooling: items.filter((c) => c.state === 'cooling').length,
       disabled: items.filter((c) => !c.enabled || c.state === 'disabled').length,
       unavailable: items.filter((c) => c.state !== 'active').length,
-      hasUnmetered: items.some((c) => !c.tpmMetered),
     }),
     [items],
   )

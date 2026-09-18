@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { Category } from '@/lib/api/types'
 
-import { Callout, FieldHint, NumberField, Row, SegmentedToggle } from './primitives'
+import { Callout, FieldHint, Row, SegmentedToggle } from './primitives'
 import type { ServerFormState } from './form-model'
 import type { FieldErrors } from './validation'
 
@@ -93,28 +93,13 @@ export function Step2Auth({ f, set, errs, categories }: Props) {
             </div>
           ) : (
             <Callout>
-              直连 Server：网关不注入任何凭据，密钥池禁用，TPM 预估不适用。之后可随时切换。
+              直连 Server：网关不注入任何凭据，密钥池禁用。之后可随时切换。
             </Callout>
           )}
         </>
       ) : (
         <Callout>stdio 下游不支持密钥池，凭据随子进程环境变量传入，此处无需配置。</Callout>
       )}
-
-      {showHeaders ? (
-        <div>
-          <Label>estTokensPerCall</Label>
-          <NumberField
-            unit="tokens"
-            value={f.estTokensPerCall}
-            onChange={(e) => set('estTokensPerCall', e.target.value)}
-            placeholder="例如 5000"
-            aria-invalid={Boolean(errs.estTokensPerCall)}
-            className="max-w-70"
-          />
-          <FieldHint message={errs.estTokensPerCall} fallback="未计量 TPM 时用于三级回退估算" />
-        </div>
-      ) : null}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>

@@ -26,7 +26,6 @@ export interface ServerFormState {
   timeoutMs: number
   protocolVersion: string
   legacyOnly: boolean
-  estTokensPerCall: number
 }
 
 const splitLines = (text: string) =>
@@ -70,7 +69,6 @@ export function createInitialForm(server: ServerDetail): ServerFormState {
     timeoutMs: c.timeoutMs,
     protocolVersion: c.protocolVersion ?? '',
     legacyOnly: c.legacyOnly,
-    estTokensPerCall: c.estTokensPerCall ?? 0,
   }
 }
 
@@ -87,7 +85,6 @@ export function buildServerRequest(s: ServerFormState): ServerRequest {
     timeoutMs: s.timeoutMs,
     protocolVersion: s.protocolVersion.trim() || undefined,
     legacyOnly: s.legacyOnly,
-    estTokensPerCall: s.estTokensPerCall > 0 ? s.estTokensPerCall : undefined,
   }
 
   if (s.transport === 'stdio') {

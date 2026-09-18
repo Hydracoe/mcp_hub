@@ -28,7 +28,7 @@ const ERROR_HINTS: Record<string, string> = {
   TLS_FAIL: '检查下游证书与协议（http / https）是否匹配。',
   TIMEOUT: '下游响应超时，可尝试调大 timeoutMs 或排查下游慢调用。',
   AUTH_REQUIRED: '该下游需要鉴权，请在密钥里补充对应的 header。',
-  RATE_LIMITED: '触发限流，密钥进入冷却并将自动恢复；必要时调大 rpm / tpm。',
+  RATE_LIMITED: '触发限流，密钥进入冷却并将自动恢复；必要时调大 rpm。',
   QUOTA_EXHAUSTED: '配额耗尽，需更换或补充可用密钥。',
   NO_USABLE_KEY: '密钥池无可用密钥（全部冷却 / 弃用），请补充可用密钥。',
   SERVER_DRAINING: 'Server 正在下线（draining），等待在途调用收尾。',

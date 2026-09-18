@@ -108,13 +108,9 @@ function CredRow({ cred }: { cred: CredentialView }) {
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground">···{cred.fingerprint}</span>
           ) : null}
         </div>
-        {cred.tpmMetered ? (
-          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
-            {formatInt(cred.rpmUsed)}/{formatInt(cred.rpmLimit)} rpm · {formatInt(cred.tpmUsed)}/{formatInt(cred.tpmLimit)} tpm
-          </p>
-        ) : (
-          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">未计量</p>
-        )}
+        <p className="mt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+          {formatInt(cred.rpmUsed)}/{cred.rpmLimit ? formatInt(cred.rpmLimit) : '不限'} rpm
+        </p>
       </div>
       <CredentialStateBadge state={cred.state} disabledKind={cred.disabledKind} enabled={cred.enabled} />
     </li>

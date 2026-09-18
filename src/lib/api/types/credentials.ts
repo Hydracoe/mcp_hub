@@ -21,12 +21,8 @@ export interface CredentialView {
   consecutiveLimited?: number
 
   rpmLimit: number
-  tpmLimit: number
 
   rpmUsed: number
-  tpmUsed: number
-  /** false 时界面必须显示「未计量」，而不是 "0 / 100k"。 */
-  tpmMetered: boolean
   windowEnd?: number
 
   picks: number
@@ -58,7 +54,6 @@ export interface CredentialRequest {
   authScheme?: 'bearer' | 'x-api-key' | 'header'
   headerName?: string
   rpmLimit?: number
-  tpmLimit?: number
 }
 
 export interface CredentialImportRequest {
@@ -67,5 +62,4 @@ export interface CredentialImportRequest {
   /** 一行一把，"名称=值" 或直接给值。 */
   lines: string[]
   rpmLimit?: number
-  tpmLimit?: number
 }

@@ -135,27 +135,6 @@ export function ServerForm({ form, setForm, categories }: ServerFormProps) {
           <p className="form-hint">默认 30s。单个 server 卡死不影响其他 server</p>
         </div>
       </FormSection>
-
-      <FormSection title="TPM 预估">
-        <Label htmlFor="sf-tpm">estTokensPerCall</Label>
-        <div className="relative max-w-xs">
-          <Input
-            id="sf-tpm"
-            type="number"
-            className="pr-16 font-mono"
-            value={form.estTokensPerCall}
-            onChange={(e) => update({ estTokensPerCall: Number(e.target.value) || 0 })}
-          />
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
-            tokens
-          </span>
-        </div>
-        <p className="form-hint">
-          {form.estTokensPerCall > 0
-            ? '未计量 TPM 时用于三级回退估算'
-            : '0 = 未计量，界面显示「未计量」而非 0'}
-        </p>
-      </FormSection>
     </div>
   )
 }
