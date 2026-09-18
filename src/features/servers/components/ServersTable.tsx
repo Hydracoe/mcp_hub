@@ -5,6 +5,7 @@ import type { TableFrameProps } from '@/components/common/TableFrame'
 import { SortHead, type SortDir } from '@/components/common/SortHead'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Icon } from '@/components/common/Icon'
 import {
   DrainingBadge,
@@ -16,16 +17,18 @@ import { formatPercent, formatRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { ServerSummary } from '@/lib/api/types'
 
-/** 7 列宽表。table-fixed + 每列定宽，避免列宽随排序/翻页换批行而跳动。 */
-const COLS = 7
+/** 8 列宽表。table-fixed + 每列定宽，避免列宽随排序/翻页换批行而跳动。 */
+const COLS = 8
 
 /** 列宽一律用百分比，总和恒为 100%——定宽 px 会让表格在任意窗口都多出一条
  *  永远关不掉的横向滚动条。代价是窄窗口表头被截断（有 overflow 兜底）。
- *  传输列要装下最长的 streamable_http，压缩名称列给它让位。 */
+ *  传输列要装下最长的 streamable_http，压缩名称列给它让位；
+ *  可见性列只放一个图标，3% 足够。 */
 const COL_W = [
-  'w-[19%]', // 名称 / Key
-  'w-[10%]', // 传输
-  'w-[13%]', // 状态
+  'w-[18%]', // 名称 / Key
+  'w-[3%]', // AI 可见性（仅图标）
+  'w-[9%]', // 传输
+  'w-[12%]', // 状态
   'w-[14%]', // 工具
   'w-[13%]', // 密钥
   'w-[13%]', // 延迟 / 检查
@@ -69,12 +72,13 @@ export function ServersTable(props: Props) {
       head={
         <TableRow>
           {head('名称 / Key', 'name', 0)}
-          <TableHead className={COL_W[1]}>传输</TableHead>
-          {head('状态', 'status', 2)}
-          {head('工具', 'tools', 3)}
-          {head('密钥', 'keys', 4)}
-          {head('延迟 / 检查', 'latency', 5)}
-          <TableHead className={cn(COL_W[6], 'text-right')}>操作</TableHead>
+          <TableHead className={COL_W[1]} aria-label="AI 可见性" />
+          <TableHead className={COL_W[2]}>传输</TableHead>
+          {head('状态', 'status', 3)}
+          {head('工具', 'tools', 4)}
+          {head('密钥', 'keys', 5)}
+          {head('延迟 / 检查', 'latency', 6)}
+          <TableHead className={cn(COL_W[7], 'text-right')}>操作</TableHead>
         </TableRow>
       }
     >
@@ -101,6 +105,22 @@ function ServerRow({ s, onToggleEnabled, togglingId, onTest, testingId, onOpenTo
         <div className="truncate font-mono cell-sub text-muted-foreground" title={s.key}>
           {s.key}
         </div>
+      </TableCell>
+
+      {/* AI 可见性：启用中但 0 个生效工具时亮 eye-off，hover 说明原因。 */}
+      <TableCell>
+        {s.enabled && s.enabledToolCount === 0 ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="inline-flex" aria-label="AI 不可见">
+                <Icon name="eye-off" size={15} className="text-warning-strong" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              AI 不可见：Server 启用中但没有任何生效工具（停用期间工具被级联禁用，重新启用不自动恢复）
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
       </TableCell>
 
       <TableCell>
@@ -137,10 +157,15 @@ function ServerRow({ s, onToggleEnabled, togglingId, onTest, testingId, onOpenTo
       </TableCell>
 
       <TableCell>
-        {typeof s.lastLatencyMs === 'number' ? (
+        {/* 「从未探活」只看 lastCheckAt：探活失败时延迟为 0，不能据此误判成没测过。 */}
+        {s.lastCheckAt ? (
           <div>
-            <span className="font-mono tabular-nums text-foreground">{s.lastLatencyMs}ms</span>
-            {s.lastCheckAt ? <div className="font-mono cell-sub text-muted-foreground">{formatRelative(s.lastCheckAt)}</div> : null}
+            {typeof s.lastLatencyMs === 'number' && s.lastLatencyMs > 0 ? (
+              <span className="font-mono tabular-nums text-foreground">{s.lastLatencyMs}ms</span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+            <div className="font-mono cell-sub text-muted-foreground">{formatRelative(s.lastCheckAt)}</div>
           </div>
         ) : (
           <span className="text-muted-foreground">尚未探活</span>
@@ -191,6 +216,8 @@ function toolSummary(s: ServerSummary): string {
 
 function toolTitle(s: ServerSummary): string {
   const parts = [toolSummary(s)]
+  if (s.enabled && s.enabledToolCount === 0)
+    parts.push('Server 启用中但没有生效工具：停用期间工具被级联禁用，重新启用不自动恢复，AI 侧完全看不到')
   if (typeof s.toolSuccessRate === 'number') parts.push(`成功率 ${formatPercent(s.toolSuccessRate)}`)
   return parts.join(' · ')
 }

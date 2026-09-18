@@ -23,6 +23,8 @@ interface CredentialFormDialogProps {
   onOpenChange: (open: boolean) => void
   initial: CredentialView | null
   mutations: Mutations
+  /** 当前 server 已有的密钥：提交前查重，同一 server 内标签不允许重复（与后端唯一索引同口径）。 */
+  existing?: CredentialView[]
 }
 
 /** 新增/编辑密钥表单。不在弹框里显示 server（归属由页面级 ServerPicker 决定）；
@@ -32,6 +34,7 @@ export function CredentialFormDialog({
   onOpenChange,
   initial,
   mutations,
+  existing = [],
 }: CredentialFormDialogProps) {
   const [label, setLabel] = useState('')
   const [mode, setMode] = useState<'value' | 'headers'>('value')
@@ -61,7 +64,15 @@ export function CredentialFormDialog({
       setError('请填写 Label')
       return null
     }
-    const req: CredentialRequest = { label: label.trim() }
+    // 同一 server 内标签唯一（后端有部分唯一索引兜底，这里提前拦下给出内联提示）。
+    // 编辑时排除自身；比对用 trim 后的值，与提交值一致。
+    const name = label.trim()
+    const dup = existing.find((c) => c.id !== initial?.id && c.label === name)
+    if (dup) {
+      setError(`该 Server 下已有同名标签「${name}」，密钥标签不能重复`)
+      return null
+    }
+    const req: CredentialRequest = { label: name }
     if (mode === 'value') {
       if (value) {
         req.value = value

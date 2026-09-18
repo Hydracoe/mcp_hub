@@ -164,10 +164,8 @@ function CredentialRow({ c, mutations, onEdit, onTest, testing, testResult, onDe
       <TableCell>
         {/* 状态列只做「读」：徽章 + 停用原因。启停是动作，放操作列，
             和测试/编辑/删除并排 —— 混在状态格里会被当成状态的一部分。 */}
+        {/* 停用原因已并入徽章文案（中文），不再重复渲染副行。 */}
         <CredentialStateBadge state={c.state} disabledKind={c.disabledKind} enabled={c.enabled} />
-        {c.disabledKind ? (
-          <div className="mt-1 cell-sub text-error-strong">{c.disabledKind}</div>
-        ) : null}
       </TableCell>
       <TableCell>
         {c.state === 'cooling' ? (

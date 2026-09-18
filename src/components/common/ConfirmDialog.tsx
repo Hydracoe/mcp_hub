@@ -1,15 +1,16 @@
 import type { ReactNode } from 'react'
 
+import { Button } from '@/components/ui/button'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Icon } from './Icon'
 import { Spinner } from './States'
 
 export interface ConfirmDialogProps {
@@ -25,7 +26,8 @@ export interface ConfirmDialogProps {
   onConfirm: () => void
 }
 
-/** 确认对话框。默认聚焦「取消」，破坏性操作走红色描边按钮。 */
+/** 确认对话框。与 FormDialog 共用同一套弹框皮肤（Header → Body → Footer，
+ *  次要靠左、主操作靠右），破坏性操作走红色描边按钮 + 警示图标。 */
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -38,29 +40,35 @@ export function ConfirmDialog({
   onConfirm,
 }: ConfirmDialogProps) {
   return (
-    <AlertDialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
-      <AlertDialogContent size="sm">
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription asChild>
+    <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
+      <DialogContent size="sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Icon
+              name={destructive ? 'triangle-alert' : 'circle-info'}
+              size={15}
+              className={destructive ? 'text-warning-strong' : 'text-icon-muted'}
+            />
+            {title}
+          </DialogTitle>
+        </DialogHeader>
+
+        <DialogBody>
+          <DialogDescription asChild>
             <div className="text-[12.5px] leading-relaxed text-muted-foreground">{description}</div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>{cancelText}</AlertDialogCancel>
-          <AlertDialogAction
-            variant={destructive ? 'destructive' : 'default'}
-            disabled={pending}
-            onClick={(e) => {
-              e.preventDefault()
-              onConfirm()
-            }}
-          >
-            {pending ? <Spinner /> : null}
+          </DialogDescription>
+        </DialogBody>
+
+        <DialogFooter>
+          <Button variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>
+            {cancelText}
+          </Button>
+          <Button variant={destructive ? 'destructive' : 'primary'} disabled={pending} onClick={onConfirm}>
+            {pending ? <Spinner size={13} /> : null}
             {confirmText}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

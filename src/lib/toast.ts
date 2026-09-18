@@ -25,6 +25,9 @@ function codeTitle(code: string): string {
       return '对象不存在'
     case 'key_taken':
       return '命名冲突'
+    case 'credential_exists':
+    case 'credential_duplicate':
+      return '密钥标签已被占用'
     case 'category_taken':
       return '中文名已被占用'
     case 'invalid_request':

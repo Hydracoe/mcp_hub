@@ -124,6 +124,7 @@ export function CredentialsPage() {
           onOpenChange={dialogs.setFormOpen}
           initial={dialogs.editing}
           mutations={mutations}
+          existing={items}
         />
       ) : null}
 

@@ -5,10 +5,16 @@ import type { CredentialState, DisabledKind } from './common'
 export interface ServerStats {
   total: number
   enabled: number
+  /** 人工停用的 server 数。不参与健康分桶：停用后不再探活，
+   *  status 是停用前的冻结值，数进 healthy/offline 都会失真。 */
+  disabled: number
   healthy: number
   degraded: number
   offline: number
   unknown: number
+  /** 启用中但没有任何启用工具的 server 数（停用期间工具被级联禁用，
+   *  重新启用不自动恢复）——需要人工逐个放行工具或停用 server。 */
+  enabledNoTools: number
 }
 
 export interface ToolStats {

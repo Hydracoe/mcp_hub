@@ -28,7 +28,8 @@ export function RuntimeMeta({ server }: RuntimeMetaProps) {
     {
       key: 'latency',
       label: '最近延迟',
-      value: server.lastLatencyMs != null ? formatDuration(server.lastLatencyMs) : '—',
+      // 0 = 探活失败，没量到延迟；与"从未探活"的 — 同样处理。
+      value: server.lastLatencyMs != null && server.lastLatencyMs > 0 ? formatDuration(server.lastLatencyMs) : '—',
     },
     {
       key: 'status',

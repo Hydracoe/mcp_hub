@@ -121,8 +121,17 @@ export function LogDetailSheet({ log, open, onOpenChange }: Props) {
                     </span>
                   )}
                 </Field>
-                <Field label="下游密钥（credentialId）">
-                  <MonoText>{log.credentialId ?? '—'}</MonoText>
+                <Field label="下游密钥">
+                  {log.credentialId ? (
+                    <div className="space-y-0.5">
+                      {log.credentialLabel ? (
+                        <div className="text-foreground">{log.credentialLabel}</div>
+                      ) : null}
+                      <MonoText>{log.credentialId}</MonoText>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </Field>
               </dl>
 

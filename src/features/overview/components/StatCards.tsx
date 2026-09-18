@@ -22,28 +22,28 @@ export function StatCards({ overview }: { overview: OverviewResponse }) {
             <DotStat tone="success" label="healthy" value={formatInt(servers.healthy)} />
             <DotStat tone="warning" label="degraded" value={formatInt(servers.degraded)} />
             <DotStat tone="error" label="offline" value={formatInt(servers.offline)} />
+            <DotStat tone="neutral" label="disabled" value={formatInt(servers.disabled)} />
           </>
         }
-        footnote={`总数 ${formatInt(servers.total)} · ${formatInt(servers.degraded)} 台降级需关注`}
+        footnote={`总数 ${formatInt(servers.total)} · ${formatInt(servers.degraded)} 台降级需关注 · 停用 ${formatInt(servers.disabled)} 台不计入健康`}
       />
 
       <MetricCard
-        label="工具总数"
+        label="工具"
         icon={<Icon name="wrench" size={16} className="text-icon-muted" />}
         value={formatInt(tools.total)}
-        suffix={`/ ${formatInt(tools.cached ?? tools.total)}`}
+        suffix="启用中"
         detail={
           <>
             <span className="text-muted-foreground">
               下游声明 <span className="text-foreground">{formatInt(tools.cached ?? tools.total)}</span>
             </span>
-            <span className="text-foreground">生效中 {formatInt(tools.total)}</span>
             <span className="inline-flex items-center gap-1 rounded-md bg-fill-tertiary px-1.5 py-0.5 text-foreground">
               {formatInt(tools.hidden ?? 0)} 未启用
             </span>
           </>
         }
-        footnote="未启用 = 人工禁用，或 Server 未探活 / 已停用"
+        footnote="启用中 = 此刻暴露给 AI 的工具；未启用 = 人工禁用，或所属 Server 已停用"
       />
 
       <MetricCard

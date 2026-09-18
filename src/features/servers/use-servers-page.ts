@@ -34,7 +34,9 @@ export const serverSortKey = (sort: string) => {
     case 'keys':
       return (s: ServerSummary) => s.usableKeyCount
     case 'latency':
-      return (s: ServerSummary) => s.lastLatencyMs ?? Number.MAX_SAFE_INTEGER
+      // 0 = 探活失败（没量到延迟），排到"最慢"一档，而不是当成最快。
+      return (s: ServerSummary) =>
+        (s.lastLatencyMs ?? 0) > 0 ? (s.lastLatencyMs as number) : Number.MAX_SAFE_INTEGER
     default:
       return (s: ServerSummary) => s.name
   }

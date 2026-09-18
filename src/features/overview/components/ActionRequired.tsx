@@ -55,6 +55,22 @@ export function ActionRequired({ overview }: { overview: OverviewResponse }) {
     })
   }
 
+  // 重新启用 server 不会自动恢复被级联禁用的工具——这种"看起来开着、
+  // AI 侧却全空"的空转状态不会自愈，必须有人决定：放行工具，或停用 server。
+  const enabledNoTools = servers.enabledNoTools ?? 0
+  if (enabledNoTools > 0) {
+    items.push({
+      key: 'enabled-no-tools',
+      icon: 'plug',
+      tone: 'warning',
+      count: enabledNoTools,
+      title: 'Server 启用中但无生效工具',
+      description: '停用期间工具被级联禁用，重新启用不会自动恢复。逐个启用工具，或直接停用 server。',
+      to: '/servers',
+      cta: '去处理',
+    })
+  }
+
   if (credentials.disabled > 0) {
     items.push({
       key: 'disabled-keys',

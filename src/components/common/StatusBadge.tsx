@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge'
+import { disabledKindLabel } from '@/lib/verdicts'
 import type { CredentialState, DisabledKind, ServerStatus } from '@/lib/api/types'
 
 /** 状态徽标。语义色集中在这一个文件里与文案挂钩，改配色只动这里。 */
@@ -36,6 +37,7 @@ const CRED_STATE: Record<CredentialState, { label: string; variant: 'success' | 
   disabled: { label: '已弃用', variant: 'error' },
 }
 
+/** 弃用原因（KeyVerdict）的中文文案在 lib/verdicts.ts，与后端判决枚举同义。 */
 export function CredentialStateBadge({
   state,
   disabledKind,
@@ -48,7 +50,14 @@ export function CredentialStateBadge({
   if (!enabled && state !== 'disabled') return <Badge variant="neutral">已停用</Badge>
   const cfg = CRED_STATE[state] ?? CRED_STATE.active
   // 弃用时把原因直接写进徽标：用户要的是「为什么不能用了」，而非「它不能用了」。
-  return <Badge variant={cfg.variant}>{state === 'disabled' && disabledKind ? disabledKind : cfg.label}</Badge>
+  if (state === 'disabled' && disabledKind) {
+    return (
+      <Badge variant={cfg.variant} title={disabledKind}>
+        {disabledKindLabel(disabledKind)}
+      </Badge>
+    )
+  }
+  return <Badge variant={cfg.variant}>{cfg.label}</Badge>
 }
 
 const ERROR_KIND_VARIANT: Record<string, 'warning' | 'error' | 'neutral'> = {

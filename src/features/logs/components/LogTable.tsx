@@ -39,11 +39,11 @@ const COL_W = [
   'w-[10%]', // Server
   'w-[13%]', // 工具
   'w-[10%]', // 调用方
-  'w-[9%]', // 耗时
+  'w-[6%]', // 耗时
   'w-[9%]', // 状态
-  'w-[9%]', // 错误分类
-  'w-[17%]', // 错误
-  'w-[9%]', // 下游密钥
+  'w-[11%]', // 错误分类
+  'w-[15%]', // 错误
+  'w-[12%]', // 下游密钥
 ]
 
 /** 调用日志表。失败行整行染红边（`.is-error`）。
@@ -136,9 +136,21 @@ export function LogTable({ items, onRowClick, sort, dir, onSort, frame }: Props)
                 <Dash />
               )}
             </TableCell>
-            {/* 只显示网关自己那把密钥 id（下游密钥池），上游调用方已独立成列 */}
+            {/* 显示密钥标签（后端按当前密钥表回填）；标签缺失（已删除）回退 id，
+                悬停给出 id 便于对回密钥池里的行。 */}
             <TableCell>
-              <MonoText title={log.credentialId}>{log.credentialId ?? '—'}</MonoText>
+              {log.credentialId ? (
+                <span
+                  className="block truncate text-foreground"
+                  title={log.credentialLabel ? `${log.credentialLabel} · ${log.credentialId}` : log.credentialId}
+                >
+                  {log.credentialLabel ?? log.credentialId}
+                </span>
+              ) : (
+                <span className="text-muted-foreground" title="该 server 未启用密钥池（单密钥模式）">
+                  —
+                </span>
+              )}
             </TableCell>
           </TableRow>
         )

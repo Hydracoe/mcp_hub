@@ -29,6 +29,7 @@ export const ICON_NAMES = [
   'code',
   'copy',
   'download',
+  'eye-off',
   'external-link',
   'file',
   'file-json',

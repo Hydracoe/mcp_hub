@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { CredentialStateBadge } from '@/components/common/StatusBadge'
+import { disabledKindLabel } from '@/lib/verdicts'
 import { EmptyState } from '@/components/common/States'
 import { Icon } from '@/components/common/Icon'
 import { formatCountdown, formatRelative } from '@/lib/format'
@@ -30,8 +31,11 @@ function KeyRow({ detail, base }: { detail: KeyDetail; base: number }) {
         {isCooling ? (
           <span className="font-mono text-warning-strong">{formatCountdown(remain)}</span>
         ) : (
-          <span className="truncate text-muted-foreground">
-            {detail.disabledKind ?? '—'}
+          <span
+            className="truncate text-muted-foreground"
+            title={[detail.disabledKind, detail.disabledNote].filter(Boolean).join(' · ')}
+          >
+            {disabledKindLabel(detail.disabledKind) || '—'}
             {detail.disabledNote ? ` · ${detail.disabledNote}` : ''}
           </span>
         )}

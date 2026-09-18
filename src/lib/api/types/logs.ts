@@ -13,6 +13,8 @@ export interface LogItem {
   errorKind?: ErrorKind
   error?: string
   credentialId?: string
+  /** 下游密钥当前的展示标签（查询时后端批量回填）。密钥已删除时为空，回退显示 credentialId。 */
+  credentialLabel?: string
   /** 调用方（上游接入密钥）的 id，非明文。匿名调用为空。 */
   apiKeyId?: string
   /** 调用方名字的快照（调用时那把密钥叫什么）。改名或删除都不影响历史行。 */

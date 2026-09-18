@@ -1,11 +1,13 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Icon } from '@/components/common/Icon'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { Dash } from '@/components/common/KeyValue'
-import { useSetToolEnabled } from '@/lib/api/queries'
+import { useServers, useSetToolEnabled } from '@/lib/api/queries'
 import { toastError, toastSuccess } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { formatInt, formatPercent } from '@/lib/format'
@@ -24,8 +26,12 @@ export function ToolGrid({
   onViewSchema: (tool: ToolEntry) => void
 }) {
   const setEnabled = useSetToolEnabled()
+  // 判断"是不是该 server 最后一个已启用工具"要用 server 级的计数，
+  // 本页的 ToolEntry 只带单工具状态，从 servers 列表（已在轮询）取。
+  const { data: servers } = useServers()
+  const [confirming, setConfirming] = useState<ToolEntry | null>(null)
 
-  const toggle = (tool: ToolEntry, next: boolean) =>
+  const doSetTool = (tool: ToolEntry, next: boolean) =>
     setEnabled.mutate(
       { serverId: tool.serverId, toolName: tool.name, enabled: next },
       {
@@ -34,89 +40,132 @@ export function ToolGrid({
       },
     )
 
+  const toggle = (tool: ToolEntry, next: boolean) => {
+    if (!next && isLastEnabledTool(tool)) {
+      setConfirming(tool)
+      return
+    }
+    doSetTool(tool, next)
+  }
+
+  const isLastEnabledTool = (tool: ToolEntry) => {
+    if (tool.enabled === false) return false
+    const sv = servers?.items.find((s) => s.id === tool.serverId)
+    return !!sv && sv.enabled && sv.enabledToolCount === 1
+  }
+
   return (
-    <div className="tool-grid">
-      {items.map((t) => {
-        // 未启用的用虚线边框标出来：一眼扫过去能看出
-        // "这一屏里有几个是没生效的"，不用逐个读徽标。
-        const hidden = t.enabled === false
-        const busy =
-          setEnabled.isPending &&
-          setEnabled.variables?.serverId === t.serverId &&
-          setEnabled.variables?.toolName === t.name
+    <>
+      <div className="tool-grid">
+        {items.map((t) => {
+          // 未启用的用虚线边框标出来：一眼扫过去能看出
+          // "这一屏里有几个是没生效的"，不用逐个读徽标。
+          const hidden = t.enabled === false
+          const busy =
+            setEnabled.isPending &&
+            setEnabled.variables?.serverId === t.serverId &&
+            setEnabled.variables?.toolName === t.name
 
-        return (
-          <article
-            key={`${t.serverId}:${t.exposedName}`}
-            className={cn('ui-card flex flex-col p-4', hidden && 'border-dashed')}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h3
-                  className="truncate font-mono text-[13px] font-semibold text-foreground"
-                  title={t.exposedName}
-                >
-                  {t.exposedName}
-                </h3>
-                <p className="mt-0.5 truncate font-mono text-[11px] text-icon-muted" title={t.name}>
-                  下游名 {t.name}
-                </p>
-              </div>
-              <StatusBadge tool={t} />
-            </div>
-
-            {/* 两行封顶：描述高度是卡片高矮不齐的另一个来源，超长靠悬停（title）。 */}
-            <p
-              className="mt-2.5 line-clamp-2 min-h-[2.4em] text-[12px] leading-relaxed text-muted-foreground"
-              title={t.description ?? undefined}
+          return (
+            <article
+              key={`${t.serverId}:${t.exposedName}`}
+              className={cn('ui-card flex flex-col p-4', hidden && 'border-dashed')}
             >
-              {t.description ?? '下游未提供描述。'}
-            </p>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h3
+                    className="truncate font-mono text-[13px] font-semibold text-foreground"
+                    title={t.exposedName}
+                  >
+                    {t.exposedName}
+                  </h3>
+                  <p className="mt-0.5 truncate font-mono text-[11px] text-icon-muted" title={t.name}>
+                    下游名 {t.name}
+                  </p>
+                </div>
+                <StatusBadge tool={t} />
+              </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-muted-foreground">
-              <Link
-                to={`/servers/${t.serverId}`}
-                className="inline-flex items-center gap-1 font-mono text-link hover:underline"
+              {/* 两行封顶：描述高度是卡片高矮不齐的另一个来源，超长靠悬停（title）。 */}
+              <p
+                className="mt-2.5 line-clamp-2 min-h-[2.4em] text-[12px] leading-relaxed text-muted-foreground"
+                title={t.description ?? undefined}
               >
-                <Icon name="server" size={12} />
-                {t.serverKey}
-              </Link>
-              {t.category ? <span className="chip chip-quiet">{t.category}</span> : null}
-            </div>
+                {t.description ?? '下游未提供描述。'}
+              </p>
 
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11.5px] tabular-nums text-muted-foreground">
-              <span>
-                调用 <span className="text-foreground">{formatInt(t.callCount)}</span>
-              </span>
-              <span>
-                成功率{' '}
-                <span className="text-foreground">
-                  {typeof t.successRate === 'number' ? formatPercent(t.successRate) : <Dash />}
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-muted-foreground">
+                <Link
+                  to={`/servers/${t.serverId}`}
+                  className="inline-flex items-center gap-1 font-mono text-link hover:underline"
+                >
+                  <Icon name="server" size={12} />
+                  {t.serverKey}
+                </Link>
+                {t.category ? <span className="chip chip-quiet">{t.category}</span> : null}
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11.5px] tabular-nums text-muted-foreground">
+                <span>
+                  调用 <span className="text-foreground">{formatInt(t.callCount)}</span>
                 </span>
-              </span>
-            </div>
+                <span>
+                  成功率{' '}
+                  <span className="text-foreground">
+                    {typeof t.successRate === 'number' ? formatPercent(t.successRate) : <Dash />}
+                  </span>
+                </span>
+              </div>
 
-            {/* mt-auto 贴底：配合外层 flex-col，让一行三张卡片即使内容高矮
+              {/* mt-auto 贴底：配合外层 flex-col，让一行三张卡片即使内容高矮
                 不齐，操作按钮也落在同一条线上。 */}
-            <div className="mt-auto flex items-center justify-between gap-2 border-t border-separator pt-3">
-              <Button variant="outline" size="xs" onClick={() => onViewSchema(t)}>
-                <Icon name="code" size={12} />
-                Schema
-              </Button>
-              <label className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
-                {t.enabled === false ? '已禁用' : '已启用'}
-                <Switch
-                  checked={t.enabled !== false}
-                  disabled={busy}
-                  onCheckedChange={(next) => toggle(t, next)}
-                  aria-label={`${t.enabled === false ? '启用' : '禁用'}工具 ${t.exposedName}`}
-                />
-              </label>
-            </div>
-          </article>
-        )
-      })}
-    </div>
+              <div className="mt-auto flex items-center justify-between gap-2 border-t border-separator pt-3">
+                <Button variant="outline" size="xs" onClick={() => onViewSchema(t)}>
+                  <Icon name="code" size={12} />
+                  Schema
+                </Button>
+                <label className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
+                  {t.enabled === false ? '已禁用' : '已启用'}
+                  <Switch
+                    checked={t.enabled !== false}
+                    disabled={busy}
+                    onCheckedChange={(next) => toggle(t, next)}
+                    aria-label={`${t.enabled === false ? '启用' : '禁用'}工具 ${t.exposedName}`}
+                  />
+                </label>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (open) return
+          // 取消（含 Esc）不执行任何动作。
+          setConfirming(null)
+        }}
+        title="禁用后该 server 将自动停用"
+        description={
+          <>
+            「{confirming?.exposedName}」是 server{' '}
+            <span className="font-mono">{confirming?.serverKey}</span>{' '}
+            最后一个已启用工具。禁用后该 server 没有任何可用工具，将被自动停用：
+            探活停止、不再计入健康统计；工具清单与配置保留，随时可重新启用。
+          </>
+        }
+        confirmText="禁用工具并停用 server"
+        cancelText="取消"
+        destructive
+        pending={setEnabled.isPending}
+        onConfirm={() => {
+          const tool = confirming
+          setConfirming(null)
+          if (tool) doSetTool(tool, false)
+        }}
+      />
+    </>
   )
 }
 

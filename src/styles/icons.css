@@ -129,6 +129,10 @@
   -webkit-mask-image: url("../assets/icons/apple/download.svg");
   mask-image: url("../assets/icons/apple/download.svg");
 }
+[data-icon="eye-off"] {
+  -webkit-mask-image: url("../assets/icons/apple/eye-off.svg");
+  mask-image: url("../assets/icons/apple/eye-off.svg");
+}
 [data-icon="external-link"] {
   -webkit-mask-image: url("../assets/icons/apple/external-link.svg");
   mask-image: url("../assets/icons/apple/external-link.svg");

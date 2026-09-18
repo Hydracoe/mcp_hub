@@ -1,4 +1,7 @@
+import { useState } from 'react'
+
 import { Icon } from '@/components/common/Icon'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -24,6 +27,8 @@ export function ToolsInventory({ server }: ToolsInventoryProps) {
   const { data, isLoading } = useTools({ serverKey: server.key })
   const refresh = useRefreshTools()
   const setEnabled = useSetToolEnabled()
+  // 禁用"最后一个已启用工具"前先确认；记下是哪个工具。
+  const [confirming, setConfirming] = useState<ServerToolItem | null>(null)
 
   // 真相源是详情里的 toolItems（带人工开关状态）；未探活、后端还没给
   // 明细时，退回原始名列表（此时没有状态可展示）。
@@ -37,7 +42,7 @@ export function ToolsInventory({ server }: ToolsInventoryProps) {
   const exposedCount = server.exposedToolCount ?? enabledCount
   const disabledCount = Math.max(0, declared - enabledCount)
 
-  const toggle = (item: ServerToolItem, next: boolean) => {
+  const doSetTool = (item: ServerToolItem, next: boolean) => {
     setEnabled.mutate(
       { serverId: server.id, toolName: item.name, enabled: next },
       {
@@ -45,6 +50,16 @@ export function ToolsInventory({ server }: ToolsInventoryProps) {
         onError: (err) => toastError(err, next ? '启用失败' : '禁用失败'),
       },
     )
+  }
+
+  const toggle = (item: ServerToolItem, next: boolean) => {
+    // 禁用最后一个已启用工具：server 将对 AI 完全不可见，先问一句
+    // 要不要连 server 一起停（级联禁用全部工具）。
+    if (!next && server.enabled && enabledCount === 1 && item.enabled) {
+      setConfirming(item)
+      return
+    }
+    doSetTool(item, next)
   }
 
   return (
@@ -157,6 +172,32 @@ export function ToolsInventory({ server }: ToolsInventoryProps) {
           （生效中 = 已启用且 server 已启用）。
         </p>
       </div>
+
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (open) return
+          // 取消（含 Esc）不执行任何动作。
+          setConfirming(null)
+        }}
+        title="禁用后该 server 将自动停用"
+        description={
+          <>
+            「{confirming?.name}」是 server <span className="font-mono">{server.key}</span>{' '}
+            最后一个已启用工具。禁用后该 server 没有任何可用工具，将被自动停用：
+            探活停止、不再计入健康统计；工具清单与配置保留，随时可重新启用。
+          </>
+        }
+        confirmText="禁用工具并停用 server"
+        cancelText="取消"
+        destructive
+        pending={setEnabled.isPending}
+        onConfirm={() => {
+          const item = confirming
+          setConfirming(null)
+          if (item) doSetTool(item, false)
+        }}
+      />
     </div>
   )
 }
