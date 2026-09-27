@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/hydra/mcp-hub/internal/downstream"
-	"github.com/hydra/mcp-hub/internal/store"
 	"github.com/hydra/mcp-hub/internal/store/servers"
 )
 
@@ -48,7 +47,7 @@ func newProbeCmd() *cobra.Command {
 	fs.StringVar(&o.protocolVersion, "protocol-version", "", "固定协议版本，留空自动协商")
 	fs.BoolVar(&o.asJSON, "json", false, "输出原始 JSON")
 	fs.StringVar(&o.command, "command", "", "stdio 可执行文件")
-	fs.StringVar(&o.db, "db", "", "数据库：postgres:// 连接串；指定则把探活结果落库")
+	fs.StringVar(&o.db, "db", "", dbFlagUsage+"；指定则把探活结果落库")
 	fs.Var(&o.headers, "header", `HTTP 头，可重复，格式 "Key: Value"`)
 	fs.StringArrayVar(&o.args, "arg", nil, "stdio 参数，可重复")
 	return cmd
@@ -92,7 +91,7 @@ func runProbe(o probeOptions) int {
 
 // persistResult 把探活结果连同配置写进数据库。
 func persistResult(dbPath string, spec downstream.Spec, res *downstream.ProbeResult) error {
-	st, err := store.Open(dbPath)
+	st, err := openStore(dbPath)
 	if err != nil {
 		return err
 	}

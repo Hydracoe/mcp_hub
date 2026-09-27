@@ -52,6 +52,17 @@ type Options struct {
 	// 值由配置层给（MCPHUB_GIN_MODE，gin 自己的 GIN_MODE 同义），
 	// 这里不再自己读环境变量。
 	GinMode string
+
+	// Static 是管理界面的静态资源处理器，挂在路由表最后作为兜底。
+	//
+	// 这是"把界面内嵌进二进制"的挂载点：给一个 SPA 处理器，
+	// 未命中 /api、/mcp、/healthz 的请求就落到界面。为 nil 时完全不挂，
+	// 这些路径得到干净的 404——"没带界面"本身就是一种合法形态
+	// （纯 API 部署、库形态、还没跑 `make ui`）。
+	//
+	// 路由本包不关心它从哪来（go:embed / 磁盘 / 内存），只关心
+	// 它绝不会抢在具体路由前面——见 routes() 里的说明。
+	Static http.Handler
 }
 
 // Server 是网关的 HTTP 服务。
@@ -166,6 +177,66 @@ func (s *Server) routes() {
 	// 管理接口挂在同一台引擎上：它们与 MCP 端点共享进程与状态，
 	// 分开两个端口只会多一个需要配置、需要解释的东西。
 	s.api.Register(s.engine)
+
+	// 静态界面必须是**最后**一块拼图，用 gin 的 NoRoute 而不是通配路由。
+	//
+	// 三点原因，缺一不可：
+	//   - 顺序：它不认识路径语义，只认识文件。若挂在前面（或注册成
+	//     "/" 通配），/api/servers 这类请求会先落到它手里，然后得到一个
+	//     index.html —— 前端拿到 HTML 当 JSON 解，报错信息会指向完全
+	//     无关的地方。
+	//   - 不能用 catch-all：gin 的路由树不允许 `/*any` 与 `/healthz`、
+	//     /api 这些根级路由共存（注册时直接 panic）。NoRoute 是唯一
+	//     能兜底又不抢路由的位置。
+	//   - 语义：NoRoute 只在"路由树里确实没有这条路由"时才触发。
+	//     它天然不参与方法匹配，所以 POST /api/servers 仍然得到 405，
+	//     而不是被 SPA 回退吞掉。
+	if s.opts.Static != nil {
+		s.engine.NoRoute(func(c *gin.Context) {
+			// 保留命名空间下的未命中不归界面管。
+			//
+			// 这是 NoRoute 兜底最容易出问题的地方：/api/does-not-exist
+			// 在路由树里没有对应节点，于是会落到这里。若回退成 index.html，
+			// 客户端拿到的是 200 + HTML——它会先尝试解析、失败，
+			// 然后报一个指向 JSON 解析器的错误，而真正的事实是"这个接口
+			// 不存在"。200 还让"拼错了路径"在监控里完全隐形。
+			//
+			// 这里什么都不写就返回：gin 的 serveError 会补上它自己的
+			// 默认 404，与"没挂界面"时的响应完全一致。
+			if reservedPath(c.Request.URL.Path) {
+				return
+			}
+
+			// 重置状态码是必须的，不是防御性代码。
+			//
+			// gin 进入 NoRoute 的路径是 serveError(c, 404, ...)：它**先**
+			// 把 writermem.status 预置成 404，再调 c.Next()。而 gin 的
+			// responseWriter 只在"尚未写响应"时才接受新的状态码——
+			// 静态处理器若只是 set 头 + Write（http.ServeFile 之外最常见的
+			// 写法，我们自己的 SPA 回退就是这样）就会带着 404 发出，
+			// 于是"刷新页面"变成"页面有内容却仍是 404"，浏览器按错误处理，
+			// 问题还更难查。
+			//
+			// 改回 200 只是把默认值复原；静态处理器随后可以用 WriteHeader
+			// 覆盖成任何它想要的状态（未命中文件时 404）。
+			c.Status(http.StatusOK)
+			s.opts.Static.ServeHTTP(c.Writer, c.Request)
+		})
+	}
+}
+
+// reservedPath 报告某个路径是否属于"接口命名空间"，界面不该接管它。
+//
+// 判断用整段匹配而不是前缀字符串比较："/apifoo" 不是 /api 的子路径，
+// 它应该照常回退到界面（前端确实可能有一个这样的路由）。
+// 只有 "/api" 本身和 "/api/..." 才算。
+func reservedPath(p string) bool {
+	for _, prefix := range []string{"/api", "/mcp", "/sse", "/message", "/healthz", "/readyz"} {
+		if p == prefix || strings.HasPrefix(p, prefix+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // Start 开始监听并阻塞，直到服务器关闭。

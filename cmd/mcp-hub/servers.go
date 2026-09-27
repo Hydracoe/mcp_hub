@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/hydra/mcp-hub/internal/downstream"
-	"github.com/hydra/mcp-hub/internal/store"
 )
 
 func newServersCmd() *cobra.Command {
@@ -20,20 +19,12 @@ func newServersCmd() *cobra.Command {
 			return codeToErr(runServers(dbPath))
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "数据库：postgres:// 连接串；缺省读配置项 MCPHUB_DB（.env 或进程环境变量）")
+	cmd.Flags().StringVar(&dbPath, "db", "", dbFlagUsage)
 	return cmd
 }
 
 func runServers(dbPath string) int {
-	if dbPath == "" {
-		dbPath = StringConfig(envDB)
-	}
-	if dbPath == "" {
-		fmt.Fprintln(os.Stderr, "需要数据库：设 MCPHUB_DB，或用 --db 指定")
-		return 2
-	}
-
-	st, err := store.Open(dbPath)
+	st, err := openStore(dbPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "打开数据库失败: %v\n", err)
 		return 3

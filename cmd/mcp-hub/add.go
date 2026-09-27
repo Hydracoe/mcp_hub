@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/hydra/mcp-hub/internal/downstream"
-	"github.com/hydra/mcp-hub/internal/store"
 	"github.com/hydra/mcp-hub/internal/store/servers"
 	"github.com/hydra/mcp-hub/internal/store/storeutil"
 )
@@ -64,7 +63,7 @@ func newAddCmd() *cobra.Command {
 	fs.BoolVar(&o.disabled, "disabled", false, "写入配置但先不启用")
 	fs.BoolVar(&o.noProbe, "no-probe", false, "只写配置，不探活")
 	fs.StringVar(&o.category, "category", "", "分类 id（新增必填，见 list-categories）")
-	fs.StringVar(&o.db, "db", "", "数据库：postgres:// 连接串；缺省读配置项 MCPHUB_DB（.env 或进程环境变量）")
+	fs.StringVar(&o.db, "db", "", dbFlagUsage)
 	fs.Var(&o.headers, "header", `HTTP 头，可重复，格式 "Key: Value"`)
 	fs.StringArrayVar(&o.args, "arg", nil, "stdio 参数，可重复")
 	fs.StringArrayVar(&o.envs, "env", nil, `stdio 环境变量，可重复，格式 "KEY=VALUE"`)
@@ -92,15 +91,7 @@ func runAdd(o addOptions) int {
 		fmt.Fprintf(os.Stderr, "配置错误: %v\n", err)
 		return 2
 	}
-	if o.db == "" {
-		o.db = StringConfig(envDB)
-	}
-	if o.db == "" {
-		fmt.Fprintln(os.Stderr, "需要 PostgreSQL 连接串：用 --db 指定，或设置环境变量 MCPHUB_DB")
-		return 2
-	}
-
-	st, err := store.Open(o.db)
+	st, err := openStore(o.db)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "打开数据库失败: %v\n", err)
 		return 3

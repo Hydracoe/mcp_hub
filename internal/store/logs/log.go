@@ -86,10 +86,27 @@ type LogEntry struct {
 // Store 是 call_logs 表的读写入口。
 type Store struct {
 	db *gorm.DB
+
+	// searchClause 是自由文本搜索的 WHERE 子句，构造时按方言拼好。
+	// 拼一次而不是每次查询拼：它只取决于方言的 LIKE 运算符名。
+	searchClause string
+}
+
+// Options 是构造参数。
+type Options struct {
+	// LikeOp 是"大小写不敏感匹配"的运算符名：PG 是 ILIKE，SQLite 是 LIKE。
+	// 留空按 LIKE 算——大小写敏感只是少匹配几条，不会给出错误结果。
+	LikeOp string
 }
 
 // New 构造 logs 包的读写入口。
-func New(db *gorm.DB) *Store { return &Store{db: db} }
+func New(db *gorm.DB, opts Options) *Store {
+	op := strings.TrimSpace(opts.LikeOp)
+	if op == "" {
+		op = "LIKE"
+	}
+	return &Store{db: db, searchClause: searchClause(op)}
+}
 
 // Append 写入一条调用日志。
 func (s *Store) Append(ctx context.Context, e LogEntry) error {
@@ -168,11 +185,21 @@ var logSortColumns = map[LogSort]string{
 // 空串在查询参数里一律表示"不筛"，所以"只要匿名"必须用非空字面量表达。
 const LogCallerAnonymous = "anonymous"
 
-// logSearchClause 是自由文本搜索的 WHERE 子句。
+// searchClause 拼出自由文本搜索的 WHERE 子句。
 // 只搜"身份"字段（调用方 / Server / 工具 / 密钥），刻意不搜 8KB 的
 // args / result——用户找的是"哪次调用"，不是返回体里的词。
-// 列名写死在这里，没有注入面；GIN 索引等真扫不动时再加。
-const logSearchClause = `(tool_name ILIKE ? ESCAPE '\' OR exposed_name ILIKE ? ESCAPE '\' OR server_key ILIKE ? ESCAPE '\' OR credential_id ILIKE ? ESCAPE '\' OR api_key_name ILIKE ? ESCAPE '\')`
+//
+// likeOp 由方言给（见 store.Dialect.LikeOp）：PostgreSQL 不区分大小写
+// 必须写 ILIKE，SQLite 的 LIKE 对 ASCII 本就不区分（中文本就是精确匹配）。
+// 它是本包内部拼进去的枚举值，不是用户输入，没有注入面。
+func searchClause(likeOp string) string {
+	cols := []string{"tool_name", "exposed_name", "server_key", "credential_id", "api_key_name"}
+	parts := make([]string, 0, len(cols))
+	for _, c := range cols {
+		parts = append(parts, c+" "+likeOp+` ? ESCAPE '\'`)
+	}
+	return "(" + strings.Join(parts, " OR ") + ")"
+}
 
 // maxLogSearchRunes 是搜索词的长度上限（按 rune 截断，不劈多字节字符）。
 const maxLogSearchRunes = 128
@@ -198,7 +225,7 @@ type LogQuery struct {
 	Status   string // ok | error
 	Kind     downstream.ErrorKind
 
-	// Q 是自由文本搜索（见 logSearchClause）。空串或全空白表示不筛。
+	// Q 是自由文本搜索（见 searchClause）。空串或全空白表示不筛。
 	Q string
 
 	// APIKeyID 按调用方筛。传 LogCallerAnonymous 时筛匿名调用。
@@ -220,7 +247,7 @@ const maxLogLimit = 500
 
 // apply 把筛选条件挂到查询上。统计与取页各调一次（GORM 条件会累积，
 // 复用同一句柄会把 WHERE 拼两遍）。
-func (q LogQuery) apply(tx *gorm.DB) *gorm.DB {
+func (q LogQuery) apply(tx *gorm.DB, searchClause string) *gorm.DB {
 	if q.ServerID != "" {
 		tx = tx.Where("server_id = ?", q.ServerID)
 	}
@@ -231,7 +258,7 @@ func (q LogQuery) apply(tx *gorm.DB) *gorm.DB {
 		tx = tx.Where("error_kind = ?", string(q.Kind))
 	}
 	if pattern := likePattern(q.Q); pattern != "" {
-		tx = tx.Where(logSearchClause, pattern, pattern, pattern, pattern, pattern)
+		tx = tx.Where(searchClause, pattern, pattern, pattern, pattern, pattern)
 	}
 	if q.APIKeyID != "" {
 		caller := q.APIKeyID
@@ -272,7 +299,7 @@ func (q LogQuery) order() []clause.OrderByColumn {
 // List 返回符合条件的日志与总条数（返回总数供分页判断"还有没有下一页"）。
 func (s *Store) List(ctx context.Context, q LogQuery) ([]LogEntry, int, error) {
 	var total int64
-	if err := q.apply(s.db.WithContext(ctx).Model(&logRow{})).
+	if err := q.apply(s.db.WithContext(ctx).Model(&logRow{}), s.searchClause).
 		Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("统计调用日志失败: %w", err)
 	}
@@ -290,7 +317,7 @@ func (s *Store) List(ctx context.Context, q LogQuery) ([]LogEntry, int, error) {
 	}
 
 	// 排序必须在 SQL 层做完再取页，否则翻页顺序会变。
-	tx := q.apply(s.db.WithContext(ctx).Model(&logRow{}))
+	tx := q.apply(s.db.WithContext(ctx).Model(&logRow{}), s.searchClause)
 	for _, c := range q.order() {
 		tx = tx.Order(c)
 	}

@@ -3,15 +3,17 @@
 //
 // 每张表（组）的读写逻辑在各自的子包里——servers、credentials、apikeys、
 // logs、categories、embeddings，共享的哨兵错误与行映射辅助在 storeutil。
-// 本包只做三件事：连接管理、schema 迁移、装配。
+// 本包只做四件事：选方言、连接管理、schema 迁移、装配。
+//
+// 后端差异全部收在 Dialect 接口里（见 dialect.go）。除 dialect_*.go 之外，
+// 本包与子包都不该出现 postgres / sqlite 这类字面量——那是配置层与装配层的事。
 package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"log"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,23 +25,40 @@ import (
 	"github.com/hydra/mcp-hub/internal/store/servers"
 	"github.com/hydra/mcp-hub/internal/store/toolchanges"
 
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
 
 // Options 是打开数据库的参数。
 type Options struct {
-	// DSN 是 postgres://… 连接串。
+	// Driver 是后端名：auto / postgres / sqlite。留空等于 auto，
+	// 按 DSN 的形态推断（postgres:// 前缀即 postgres，其余即 sqlite）。
+	Driver string
+
+	// DSN 是连接串：postgres://… 或 SQLite 文件路径。
+	// SQLite 下留空则用 DataDir 里的默认文件名。
 	DSN string
+
+	// DataDir 是"调用方认为数据该放哪"的目录。
+	//
+	// 这一项存在的唯一理由是：桌面端的数据属于应用（应落在系统的
+	// Application Support 目录），命令行工具的数据属于当前工作目录。
+	// store 不认识任何一种部署形态，所以由入口把它传进来。
+	// 非 SQLite 后端忽略本项。
+	DataDir string
+
 	// Log 留空则关闭 GORM 自身的 SQL 日志。
 	Log *slog.Logger
 }
 
+// DefaultSQLiteFileName 是 SQLite 后端的默认库文件名。
+const DefaultSQLiteFileName = "mcp-hub.db"
+
 // Store 是持久层入口：一个连接池 + 各领域的子 Store。
 // 上层按领域走对应字段，如 st.Servers.Upsert(...)、st.Credentials.List(...)。
 type Store struct {
-	db *gorm.DB
+	db      *gorm.DB
+	dialect Dialect
 
 	Servers     *servers.Store
 	Credentials *credentials.Store
@@ -50,19 +69,43 @@ type Store struct {
 	ToolChanges *toolchanges.Store
 }
 
-// Open 打开（必要时创建）数据库并同步 schema。DSN 必须指向 PostgreSQL。
-func Open(dsn string) (*Store, error) { return OpenWith(Options{DSN: dsn}) }
+// Dialect 返回实际使用的方言，供装配层记录"跑在哪个后端上"。
+func (s *Store) Dialect() Dialect { return s.dialect }
 
-// OpenWith 打开数据库并同步 schema。
+// DB 暴露底层 ORM 句柄：迁移、健康检查这类"不属于任何领域"的事需要它。
+func (s *Store) DB() *gorm.DB { return s.db }
+
+// Open 打开（必要时创建）数据库并同步 schema。
+// 后端按 DSN 形态推断——postgres:// 前缀即 PostgreSQL，其余按 SQLite 文件路径。
+func Open(dsn string) (*Store, error) {
+	return OpenWith(Options{DSN: dsn})
+}
+
+// OpenWith 打开数据库并同步 schema。这是装配层唯一需要调用的入口。
 func OpenWith(opts Options) (*Store, error) {
-	lower := strings.ToLower(strings.TrimSpace(opts.DSN))
-	if !strings.HasPrefix(lower, "postgres://") && !strings.HasPrefix(lower, "postgresql://") {
-		return nil, fmt.Errorf("DSN 必须是 postgres:// 连接串，收到 %q", opts.DSN)
+	dialect, err := ResolveDialect(opts.Driver, opts.DSN)
+	if err != nil {
+		return nil, err
 	}
 
-	db, err := gorm.Open(postgres.Open(opts.DSN), &gorm.Config{
+	dsn := strings.TrimSpace(opts.DSN)
+	if dsn == "" && dialect.Name() == DriverSQLite {
+		// SQLite 允许零配置：没给路径就用 DataDir 下的默认文件。
+		dir := strings.TrimSpace(opts.DataDir)
+		if dir == "" {
+			return nil, fmt.Errorf("SQLite 后端需要给出库文件路径（MCPHUB_DB），或由调用方提供数据目录")
+		}
+		dsn = filepath.Join(dir, DefaultSQLiteFileName)
+	}
+	dsn, err = dialect.Normalize(dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := gorm.Open(dialect.Open(dsn), &gorm.Config{
 		Logger: newLogger(opts.Log),
 		// 把唯一约束/外键冲突翻译成 gorm.ErrDuplicatedKey / gorm.ErrForeignKeyViolated。
+		// 翻译本身由各方言实现（SQLite 那层是自定义的，见 dialect_sqlite.go）。
 		TranslateError: true,
 		// 单条 INSERT 的行数上限：工具可能上千条，一次拼完会撞驱动的绑定参数上限。
 		CreateBatchSize: 200,
@@ -75,7 +118,7 @@ func OpenWith(opts Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("获取连接池失败: %w", err)
 	}
-	tunePool(sqlDB)
+	dialect.TunePool(sqlDB)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -84,33 +127,28 @@ func OpenWith(opts Options) (*Store, error) {
 		return nil, fmt.Errorf("连接数据库失败: %w", err)
 	}
 
-	// pgvector 可选：装不上也能启动，hybrid 检索按降级阶梯退回。
-	if _, err := sqlDB.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS vector"); err != nil {
-		log.Printf("store: pgvector 扩展不可用，hybrid 检索将降级: %v", err)
-	}
+	// 补充初始化只在方言内部处置：PG 探测 pgvector、SQLite 什么都不用做。
+	// 它不阻断启动（内部只记日志），因为缺少向量能力只影响检索质量。
+	_ = dialect.AfterOpen(ctx, sqlDB)
 
-	if err := runMigrations(opts.DSN); err != nil {
+	if err := dialect.Migrate(sqlDB, dsn); err != nil {
 		sqlDB.Close()
 		return nil, err
 	}
 
 	return &Store{
 		db:          db,
+		dialect:     dialect,
 		Servers:     servers.New(db),
 		Credentials: credentials.New(db),
 		APIKeys:     apikeys.New(db),
-		Logs:        logs.New(db),
 		Categories:  categories.New(db),
-		Embeddings:  embeddings.New(db),
 		ToolChanges: toolchanges.New(db),
+		// 这两个子 Store 的构造需要方言信息：日志查询的 LIKE 运算符名、
+		// 向量检索走 SQL 还是 Go。装配点在这里，调用方不必知道。
+		Logs:       logs.New(db, logs.Options{LikeOp: dialect.LikeOp()}),
+		Embeddings: embeddings.New(db, embeddings.Options{NativeVectorSearch: dialect.NativeVectorSearch()}),
 	}, nil
-}
-
-// tunePool 配置连接池。PG 连接是进程外资源，池子开太大只是把压力转嫁给数据库。
-func tunePool(sqlDB *sql.DB) {
-	sqlDB.SetMaxOpenConns(16)
-	sqlDB.SetMaxIdleConns(8)
-	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
 }
 
 // Close 关闭数据库。

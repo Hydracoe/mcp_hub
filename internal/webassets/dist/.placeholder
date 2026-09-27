@@ -1,0 +1,11 @@
+这个文件的存在只是为了 go:embed：embed 不接受空目录，而没有前端产物时
+dist/ 里就什么都不该有。它不会被服务出去，也不是占位页。
+
+要往里放真实产物：
+    make ui        # 构建 ../mcp-hub-admin 并拷贝 dist
+    make build     # 或 make build-all，会把这一步带上
+
+要清掉产物：
+    make ui-clean
+
+判断当前二进制里带没带界面：internal/webassets.Available()

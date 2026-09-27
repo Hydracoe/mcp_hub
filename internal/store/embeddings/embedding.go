@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/hydra/mcp-hub/internal/search/rank"
 	"github.com/hydra/mcp-hub/internal/store/storeutil"
 
 	"gorm.io/gorm"
@@ -73,19 +75,52 @@ type Generation struct {
 // Store 是 tool_embeddings 表的读写入口。
 type Store struct {
 	db *gorm.DB
+
+	// nativeVector 表示 SQL 侧有原生向量距离算子（pgvector）。
+	// false 时检索退回 Go 侧内存计算——两条路径在无索引的表上数学等价，
+	// 差别只是算在哪：数据库进程还是本进程。
+	nativeVector bool
+}
+
+// Options 是构造参数。
+type Options struct {
+	// NativeVectorSearch 由 store.Dialect 给：PG 在装了 pgvector 时为 true，
+	// SQLite 恒为 false。
+	NativeVectorSearch bool
 }
 
 // New 构造 embeddings 包的读写入口。
-func New(db *gorm.DB) *Store { return &Store{db: db} }
+func New(db *gorm.DB, opts Options) *Store {
+	return &Store{db: db, nativeVector: opts.NativeVectorSearch}
+}
 
 // Search 对已落库的向量做相似度检索（hybrid 检索的向量一路）。
 // 只查指定代：维度对不上会直接报错，语义空间不同则是悄悄错。
 // 只查启用且可用的 server：此刻调不通的工具排进结果，AI 只会再撞一次错。
-// 三表连接按表名写原生 SQL——为了一个只读查询引入跨包依赖不值得。
+//
+// 两条路径的取舍：
+//   - 有 pgvector 时把距离计算交给数据库（SQL 里的 `<=>` 是余弦距离）；
+//   - 没有时把候选读进内存自己算余弦相似度。
+//
+// 之所以敢在 Go 侧做全表计算：tool_embeddings 上**没有任何向量索引**，
+// 所以数据库那条 `ORDER BY distance LIMIT n` 本来也是精确全表扫描——
+// 换执行位置不改变结果，只改变算力归属。工具量级（几千）下这是毫秒级。
 func (s *Store) Search(ctx context.Context, model string, dims int, spec string, query []float64, topK int) ([]EmbeddingHit, error) {
 	if topK <= 0 {
 		topK = 20
 	}
+	if s.nativeVector {
+		return s.searchNative(ctx, model, dims, spec, query, topK)
+	}
+	return s.searchInMemory(ctx, model, dims, spec, query, topK)
+}
+
+// searchNative 走 SQL 侧的向量算子。
+//
+// 三表连接的意义只是"提前缩小扫描量"：真正决定"能不能被搜到"的是
+// 检索层内存索引里的 byID 过滤（见 hub/retrieval）。这里保留 JOIN
+// 是为了让数据库少读几行，不是正确性所必需。
+func (s *Store) searchNative(ctx context.Context, model string, dims int, spec string, query []float64, topK int) ([]EmbeddingHit, error) {
 	vec, err := json.Marshal(query)
 	if err != nil {
 		return nil, fmt.Errorf("序列化查询向量失败: %w", err)
@@ -113,6 +148,55 @@ func (s *Store) Search(ctx context.Context, model string, dims int, spec string,
 		out = append(out, EmbeddingHit{ToolID: r.ToolID, Distance: r.Distance})
 	}
 	return out, nil
+}
+
+// searchInMemory 把指定代的向量读进内存算余弦相似度。
+//
+// 刻意不做"只读可搜工具"的过滤：那需要 JOIN tools / servers，而这层过滤
+// 检索层已经免费拥有（内存索引的 byID 只装过滤后的工具）。在这里再筛一次
+// 是多一次 JOIN、少一次复用——过滤条件重复写两遍还会各自漂移。
+func (s *Store) searchInMemory(ctx context.Context, model string, dims int, spec string, query []float64, topK int) ([]EmbeddingHit, error) {
+	var rows []embeddingRow
+	err := s.db.WithContext(ctx).
+		Where("model = ? AND dims = ? AND spec = ?", model, dims, spec).
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("读取工具向量失败: %w", err)
+	}
+
+	hits := make([]EmbeddingHit, 0, len(rows))
+	for _, r := range rows {
+		var vec []float64
+		if err := json.Unmarshal([]byte(r.Vector), &vec); err != nil {
+			// 单行解码失败不该让整次检索失败：这一行跳过即可，
+			// 它对应的工具只是搜不到，其余照常。
+			continue
+		}
+		sim, err := rank.Cosine(query, vec)
+		if err != nil {
+			// 维度不一致通常是配置换代中途的半成品行，同上跳过。
+			continue
+		}
+		// pgvector 的 <=> 是余弦**距离**（1 - 相似度），排序方向相反。
+		// 这里换算成距离，让两条路径对调用方给出同一套语义。
+		hits = append(hits, EmbeddingHit{ToolID: r.ToolID, Distance: 1 - sim})
+	}
+
+	slices.SortFunc(hits, func(a, b EmbeddingHit) int {
+		switch {
+		case a.Distance < b.Distance:
+			return -1
+		case a.Distance > b.Distance:
+			return 1
+		default:
+			// 距离相同时按 tool_id 定序，保证结果可复现。
+			return strings.Compare(a.ToolID, b.ToolID)
+		}
+	})
+	if len(hits) > topK {
+		hits = hits[:topK]
+	}
+	return hits, nil
 }
 
 // Save 批量 upsert 向量，供 RAG 增量重建使用。

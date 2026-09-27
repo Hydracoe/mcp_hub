@@ -4,13 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/hydra/mcp-hub/internal/config"
 )
 
 // main 只做三件事：加载配置文件、执行命令、统一处理退出码。
 func main() {
 	// 先读配置文件再解析命令。提示打在 stderr，
 	// 保证 probe --json 的 stdout 是纯 JSON。
-	if cf, err := loadConfigFile(); err != nil {
+	if cf, err := config.LoadFile(); err != nil {
 		fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
 		os.Exit(2)
 	} else if cf.Path != "" {

@@ -76,9 +76,9 @@ type serverSummary struct {
 	DrainingInflight int   `json:"drainingInflight,omitempty"`
 	DrainingSince    int64 `json:"drainingSince,omitempty"`
 
-	LastCheckAt   int64  `json:"lastCheckAt,omitempty"`
+	LastCheckAt int64 `json:"lastCheckAt,omitempty"`
 	// 不加 omitempty：探活失败时延迟为 0，省略掉会让界面误判成"从未探活"。
-	LastLatencyMS int64 `json:"lastLatencyMs"`
+	LastLatencyMS int64  `json:"lastLatencyMs"`
 	LastErrorKind string `json:"lastErrorKind,omitempty"`
 	LastError     string `json:"lastError,omitempty"`
 	LastErrorHint string `json:"lastErrorHint,omitempty"`
