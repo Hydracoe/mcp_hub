@@ -5,6 +5,15 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  /**
+   * 相对基址，让同一份产物在三种挂载点下都能用：
+   *   /            后端同源部署（默认）
+   *   /admin/      反代到子路径
+   *   wails://…    桌面端的内嵌资产服务器
+   * 绝对基址（默认的 '/'）只在"部署在根路径"时成立，子路径下资源会 404。
+   * 与 HashRouter 配合：文档 URL 最多只有一个子路径，相对路径解析没有歧义。
+   */
+  base: './',
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
