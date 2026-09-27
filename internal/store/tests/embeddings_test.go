@@ -110,8 +110,9 @@ func TestEmbeddingDualGenerationCoexist(t *testing.T) {
 	}
 }
 
-// DeleteStaleGenerations 只留指定代：热切换后的 GC 保留 {当前代, 上一代}，
-// 上一代是"一键回滚"的底气，其余的删。
+// DeleteStaleGenerations 只留指定代：保留集由调用方决定。生产路径
+// （Reconcile）只在当前代完全就绪后保留当前代并清掉其余——没有回滚
+// 接口，清掉的旧代只能重新嵌入。
 func TestDeleteStaleGenerations(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

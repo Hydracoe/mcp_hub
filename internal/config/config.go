@@ -250,7 +250,7 @@ var configItems = []configItem{
 	},
 	{
 		env: EnvEmbedAPIKey, kind: kindString,
-		note: "embed 密钥；留空则检索降级为 keyword/bm25，网关照常运行",
+		note: "embed 密钥；留空则检索降级为 bm25，网关照常运行",
 	},
 	{
 		env: EnvEmbedModel, kind: kindString, def: client.DefaultModel,
@@ -677,7 +677,7 @@ func PrintEnvHelp(out io.Writer) {
 		"  .env 里不认识的 MCPHUB_* 名字会在启动时点名提醒。\n"+
 		"  配置只有这一个来源：改配置 = 改这里 + 重启，管理界面上没有配置项。\n"+
 		"  改了 EMBED_MODEL / EMBED_DIMS 后重启会重建向量，期间检索\n"+
-		"  退回 keyword/bm25，构建完成自动恢复。\n\n")
+		"  退回 bm25，构建完成自动恢复。\n\n")
 }
 
 // File 描述一次配置文件加载的结果。

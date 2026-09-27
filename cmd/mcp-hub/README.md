@@ -93,7 +93,7 @@ mcp-hub serve（不接受任何命令行参数，配置全部来自 .env / 环�
   │     │                          memory → 进程内缓存（默认）
   │     ├─ 2.3 hub.NewServiceWithOptions()   聚合服务本体
   │     ├─ 2.4 EmbedManager     配了 EMBED_API_KEY → 后台补齐向量（不阻塞启动）；
-  │     │                       没配 → 检索自动降级 keyword/bm25，网关照常运行
+  │     │                       没配 → 检索自动降级 bm25，网关照常运行
   │     └─ 2.5 从数据库加载 server，打印 servers / enabled 数量
   │
   ├─ 3. engine.Start()         先监听、再探活：
@@ -261,7 +261,7 @@ PostgreSQL、Redis 三者。基础镜像清单、容器内的配置边界、`MCP
 | `MCPHUB_PROBE_ON_START`   | `true` | `true` \| `false`：启动时先探活一轮再对外服务  |
 | `MCPHUB_PROBE_BLOCK_AFTER` | `3`   | 整数：同一上游连续探活失败达到该次数后，网关暂停它的工具调用（AI 调用收到明确拦截说明；探活照常、指数退避不变，任一次探活成功即自动解除）。`0` 不拦截 |
 
-**向量检索（不配密钥则自动降级 keyword/bm25，网关照常运行）**
+**向量检索（不配密钥则自动降级 bm25，网关照常运行）**
 
 | 变量                      | 默认          | 可填值 / 说明                                                                        |
 | ------------------------- | ------------- | ------------------------------------------------------------------------------------ |
@@ -280,7 +280,7 @@ PostgreSQL、Redis 三者。基础镜像清单、容器内的配置边界、`MCP
 | `MCPHUB_RERANK_BASE_URL` | 空（复用 embed）          | 与 embed 不同源时才需要                      |
 | `MCPHUB_RERANK_API_KEY`  | 空（复用 embed）          | 与 embed 不同源时才需要                      |
 
-改了 `EMBED_MODEL` / `EMBED_DIMS` 后重启会重建向量，期间检索退回 keyword/bm25，构建完成自动恢复。
+改了 `EMBED_MODEL` / `EMBED_DIMS` 后重启会重建向量，期间检索退回 bm25，构建完成自动恢复。
 
 ### 业务侧怎么读配置
 

@@ -2,18 +2,15 @@ package lexical
 
 import (
 	"math"
-	"strings"
 
 	"github.com/hydra/mcp-hub/internal/search/rank"
 )
 
 // Doc 是检索文档的最小单元。Tokens 已按字段权重展开（工具名 ×3 即出现 3 次，
-// BM25 的词频自然带上权重）；Raw 必须是小写原文，keyword 子串命中直接拿它
-// 做比较，不再二次 lower。
+// BM25 的词频自然带上权重）。
 type Doc struct {
 	ID     string
 	Tokens []string
-	Raw    string
 }
 
 const (
@@ -37,7 +34,6 @@ type BM25 struct {
 	count    int
 	avgDl    float64
 	idAt     []string
-	raws     []string
 	dls      []int
 	postings map[string][]posting
 }
@@ -58,7 +54,6 @@ func NewBM25(docs []Doc) *BM25 {
 	ix := &BM25{
 		count:    len(deduped),
 		idAt:     make([]string, len(deduped)),
-		raws:     make([]string, len(deduped)),
 		dls:      make([]int, len(deduped)),
 		postings: make(map[string][]posting, len(deduped)),
 	}
@@ -69,7 +64,6 @@ func NewBM25(docs []Doc) *BM25 {
 			freq[t]++
 		}
 		ix.idAt[i] = d.ID
-		ix.raws[i] = d.Raw
 		ix.dls[i] = len(d.Tokens)
 		total += len(d.Tokens)
 		for term, f := range freq {
@@ -127,33 +121,4 @@ func (ix *BM25) Search(queryTokens []string, topK int) []rank.Hit {
 		}
 	}
 	return rank.TopK(hits, topK)
-}
-
-// KeywordHits 返回命中 query 的文档 ID，保持文档顺序、不打分（keyword 是
-// 粗筛，不做精细打分）。
-//
-// 命中 = 任一 query 词元出现，或 query 小写原文是文档小写原文的子串
-// （覆盖"查天气"这类连续中文短语的整串匹配）。词元命中走倒排表，
-// 只遍历真正含该词元的文档，而不是每篇文档的全部词元。
-func (ix *BM25) KeywordHits(query string) []string {
-	hit := make([]bool, ix.count)
-	for _, t := range Dedupe(Tokenize(query)) {
-		for _, p := range ix.postings[t] {
-			hit[p.doc] = true
-		}
-	}
-	if raw := strings.ToLower(query); raw != "" {
-		for i := range hit {
-			if !hit[i] {
-				hit[i] = strings.Contains(ix.raws[i], raw)
-			}
-		}
-	}
-	out := make([]string, 0, ix.count)
-	for i := range hit {
-		if hit[i] {
-			out = append(out, ix.idAt[i])
-		}
-	}
-	return out
 }

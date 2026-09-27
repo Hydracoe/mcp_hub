@@ -35,7 +35,7 @@ func (s *Service) CreateCategory(ctx context.Context, name, slug, description st
 // 也不触发向量重建：工具名不含分类 → 快照指纹不变；分类不在向量语料里
 // → 语料哈希不变，一次 embedding 调用都不会多发。
 //
-// 唯一要做的是重建内存里的检索索引：分类名仍参与 BM25 / keyword 打分
+// 唯一要做的是重建内存里的检索索引：分类名仍参与 BM25 打分
 // 与 facet，改完必须立刻生效，不能等到下一轮探活。纯内存操作，零 API 成本。
 func (s *Service) UpdateCategory(ctx context.Context, id, name, slug, description string) (*categories.Category, error) {
 	before, err := s.store.Categories.Get(ctx, id)

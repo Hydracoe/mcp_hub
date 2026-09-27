@@ -417,17 +417,8 @@ func TestSearchToolsModes(t *testing.T) {
 	ctx := context.Background()
 	seedSearchServer(t, svc, "wx")
 
-	// keyword：词面命中
-	hits, err := svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "keyword"})
-	if err != nil {
-		t.Fatalf("keyword 检索失败: %v", err)
-	}
-	if !hitContains(hits, "wx__forecast") {
-		t.Fatalf("keyword 应命中 forecast: %+v", hits)
-	}
-
 	// bm25：分词命中（bigram 天气）
-	hits, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "bm25"})
+	hits, err := svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "bm25"})
 	if err != nil {
 		t.Fatalf("bm25 检索失败: %v", err)
 	}
@@ -435,7 +426,7 @@ func TestSearchToolsModes(t *testing.T) {
 		t.Fatalf("bm25 应命中 forecast: %+v", hits)
 	}
 
-	// hybrid（未配 embed）：降级 keyword+bm25，仍然可用
+	// hybrid（未配 embed）：降级 bm25，仍然可用
 	hits, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气"})
 	if err != nil {
 		t.Fatalf("hybrid 降级检索失败: %v", err)
@@ -445,21 +436,17 @@ func TestSearchToolsModes(t *testing.T) {
 	}
 
 	// 过滤器：server 大小写不敏感；落空的过滤返回空
-	hits, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "keyword", Server: "WX"})
+	hits, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "bm25", Server: "WX"})
 	if err != nil || !hitContains(hits, "wx__forecast") {
 		t.Fatalf("server 过滤（大写）应命中: %+v err=%v", hits, err)
 	}
-	hits, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "keyword", Server: "other"})
+	hits, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "bm25", Server: "other"})
 	if err != nil || len(hits) != 0 {
 		t.Fatalf("server 过滤落空应返回空: %+v err=%v", hits, err)
 	}
-	hits, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "keyword", Tag: "天气"})
-	if err != nil || len(hits) == 0 {
-		t.Fatalf("tag 过滤应命中: %+v err=%v", hits, err)
-	}
 
 	// k 钳制
-	hits, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "keyword", K: 1})
+	hits, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "bm25", K: 1})
 	if err != nil || len(hits) > 1 {
 		t.Fatalf("k=1 应至多返回 1 条: %+v err=%v", hits, err)
 	}
@@ -468,7 +455,7 @@ func TestSearchToolsModes(t *testing.T) {
 	if _, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "bogus"}); err == nil {
 		t.Fatal("非法模式应报错")
 	}
-	if _, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "  ", Mode: "keyword"}); err == nil {
+	if _, err = svc.SearchTools(ctx, retrieval.SearchQuery{Query: "  ", Mode: "bm25"}); err == nil {
 		t.Fatal("空 query 应报错")
 	}
 }
@@ -539,10 +526,11 @@ func TestEmbedRebuildIncremental(t *testing.T) {
 // Reconcile 是"改了 .env 重启"之后向量怎么跟上来的地方。
 //
 // 场景：换了 MCPHUB_EMBED_MODEL / EMBED_DIMS，库里只有上一代的向量。
-// 启动对账必须把当前代补齐，并在补全后把上一代清掉——那些行没有任何
-// 一处会再读（检索只查当前代），留着只是占存储。
+// 启动对账必须把当前代补齐——当前代完全就绪后向量分支才激活（activeGen），
+// 此时上一代行没有任何一处会再读，清掉只是省存储。
 //
-// 但服务打不通时必须反过来：当前代补不齐，上一代一个字节都不能删。
+// 但服务打不通时必须反过来：当前代补不齐，向量分支保持降级，
+// 上一代一个字节都不能删。
 func TestReconcileRebuildsCurrentGeneration(t *testing.T) {
 	st, svc := openSvc(t)
 	ctx := context.Background()
@@ -614,7 +602,7 @@ func TestSearchHybridRerankReorders(t *testing.T) {
 		t.Fatalf("重建失败: %+v", rs)
 	}
 
-	// 向量分支不可用时走 ErrVectorUnsupported 降级 keyword+bm25，
+	// 向量分支不可用时走 ErrVectorUnsupported 降级 bm25，
 	// 但 rerank 不受影响——精排请求必须发出，且最终顺序按精排结果倒序。
 	hits, err := svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气 经纬度", K: 2})
 	if err != nil {
@@ -862,7 +850,7 @@ func TestCategoryLifecycle(t *testing.T) {
 	svc.RefreshAll(ctx)
 	enableAllCachedTools(t, st, svc)
 	hits, err := svc.SearchTools(ctx, retrieval.SearchQuery{
-		Query: "天气", Mode: "keyword", Category: "天气预报",
+		Query: "天气", Mode: "bm25", Category: "天气预报",
 	})
 	if err != nil || !hitContains(hits, "wx__forecast") {
 		t.Fatalf("按分类名检索应命中: %+v err=%v", hits, err)

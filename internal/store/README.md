@@ -1,6 +1,6 @@
 # store — mcp-hub 持久层
 
-mcp-hub 唯一的持久化包。所有数据落在 PostgreSQL（可选 pgvector 扩展），SQL 由 GORM 生成，建表 DDL 由 [migrations/](migrations/000001_init.up.sql) 迁移文件独占。
+mcp-hub 唯一的持久化包。所有数据落在 PostgreSQL（pgvector 扩展，`tool_embeddings` 的向量列依赖它；SQLite 无向量类型，检索走内存余弦），SQL 由 GORM 生成，建表 DDL 由 [migrations/](migrations/000001_init.up.sql) 迁移文件独占。
 
 ## 包结构
 
@@ -40,7 +40,7 @@ s.Embeddings.Save(ctx, rows)
 
 3. **Row 结构体与领域结构体分离。** 各子包里的 `serverRow` 等是"存进库里的样子"（只声明列映射），对外的 `Server`、`Credential` 等是领域结构体，由 `toServer()` 之类的转换函数衔接。分离后改一个列名不会波及上层，反过来也一样。
 
-4. **存储类型从朴素。** 只用 TEXT / INTEGER / BIGINT：JSON（headers、tags、args…）存 TEXT 字符串，布尔存 0/1，时间戳一律存 epoch 毫秒的 BIGINT（integer 32 位撑不过一个月）。不碰 timestamp 与时区语义。
+4. **存储类型从朴素。** 只用 TEXT / INTEGER / BIGINT：JSON（headers、tags、args…）存 TEXT 字符串，布尔存 0/1，时间戳一律存 epoch 毫秒的 BIGINT（integer 32 位撑不过一个月）。不碰 timestamp 与时区语义。唯一的例外是 `tool_embeddings.vector`：PostgreSQL 上用 pgvector 的 vector 类型换原生距离算子（000007），SQLite 上仍是 TEXT。
 
 **错误约定**：哨兵错误分散在各自领域子包，供上层映射 HTTP 状态码——
 
@@ -63,7 +63,7 @@ hub 的角色是 **MCP 网关**：上游接外部 AI 客户端，下游代理一
 - **api_keys**（apikeys/）— 外部 AI 客户端调 hub 的 `/mcp` 端点用的接入 key。只存 sha256，明文仅在创建响应里出现一次。一把 key 都没建过时端点开放，建过就强制鉴权（按"存在"而非"启用"判断——全停用等于锁死，不是放开匿名）。
 - **call_logs**（logs/）— 每次工具调用的现场：入参与返回体截断到 8KB 落库，归因到具体下游密钥与接入 key。`api_key_name` 存调用当时的名字快照——改名或删 key 不该改写历史。日志查询的排序列走白名单映射，防止 ORDER BY 注入。
 - **categories**（categories/）— server 的单值分类（一个 server 至多属一个分类，多标签由 servers.tags 承担）。`Name`（中文）与 `Slug`（英文，`[a-z0-9-]`）都是必填且各自全局唯一，两者之间不做任何转换：填错就报错，不替用户折成别的值。分类下还有 server 时拒绝删除——删分类顺手把 server 摘成"未分类"是一次用户没点过的批量改动。
-- **tool_embeddings**（embeddings/）— 工具向量，支撑混合检索（hybrid）里的向量一路。主键是完整"代身份" `(tool_id, model, dims, spec)`：换模型或换语料字段即新代，新代整代建好再原子切换（热切换），切换期间新旧两代并存，回滚也只靠保留上一代。vector 列存 TEXT（JSON 数组）而非 pgvector 类型——扩展没装上时库照样起，检索降级为 keyword。
+- **tool_embeddings**（embeddings/）— 工具向量，支撑混合检索（hybrid）里的向量一路。主键是完整"代身份" `(tool_id, model, dims, spec)`：换模型或换语料字段即新代，新代整代建好再原子切换（热切换），切换期间新旧两代并存；**没有回滚接口**——当前代就绪后其它代立即清除。vector 列在 PostgreSQL 上存 pgvector 的 `vector` 类型（000007 起，不带维度：不同代维度可以不同，定长列会拒收第二个维度；写入传 `"[1,2,3]"` 文本由输入函数解析，读取显式 `CAST(vector AS TEXT)` 固定形态），SQLite 上存 TEXT（JSON 数组）、检索走 Go 侧内存余弦。`idx_tool_embeddings_gen (model, dims, spec)` 收窄代查询；刻意不建 ANN 索引——HNSW/IVFFlat 建索引时锁死单一维度，与多代混合维度并存冲突，工具量级下精确全扫是毫秒级。
 
 ## 测试
 

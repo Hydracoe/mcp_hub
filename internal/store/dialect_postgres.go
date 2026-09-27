@@ -45,13 +45,14 @@ func (*postgresDialect) TunePool(db *sql.DB) {
 	db.SetConnMaxIdleTime(5 * time.Minute)
 }
 
-// AfterOpen 探测 pgvector 是否可用。
+// AfterOpen 确保 pgvector 可用并记录探测结果。
 //
-// 装不上也能启动：SQL 侧的向量检索会被跳过，检索退回 Go 侧内存计算
-// （两者在无索引的表上数学等价，见 embeddings）。所以这里失败只提示。
+// 000007 起 vector 列已是 pgvector 的 vector 类型，扩展是 PostgreSQL
+// 部署的硬依赖。这里仍先 CREATE EXTENSION 并只记日志不返回错误：
+// 缺扩展时真正的失败发生在迁移阶段，让迁移报出准确的位置。
 func (d *postgresDialect) AfterOpen(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS vector"); err != nil {
-		log.Printf("store: pgvector 扩展不可用，向量检索退回 Go 侧内存计算: %v", err)
+		log.Printf("store: pgvector 扩展不可用，迁移 000007 大概率会失败: %v", err)
 		return nil
 	}
 	var ok bool
@@ -62,7 +63,7 @@ func (d *postgresDialect) AfterOpen(ctx context.Context, db *sql.DB) error {
 	}
 	d.nativeVector = ok
 	if !ok {
-		log.Printf("store: pgvector 未安装，向量检索退回 Go 侧内存计算")
+		log.Printf("store: pgvector 未安装，向量检索退回 Go 侧内存计算（PostgreSQL 部署应安装 pgvector，迁移 000007 依赖它）")
 	}
 	return nil
 }

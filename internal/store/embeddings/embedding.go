@@ -17,14 +17,17 @@ import (
 )
 
 // embeddingRow 是 tool_embeddings 表的一行（持久化形态）。
-// vector 存 TEXT（JSON 数组）：表的读写不依赖 pgvector 装没装上，缺扩展时检索链路整体降级而库照常可用。
+// vector 列：PostgreSQL 上存 pgvector 的 vector 类型（000007 起；写入时
+// 传 "[1,2,3]" 文本，由 vector 的输入函数解析），SQLite 上存 TEXT（JSON
+// 数组），检索走 Go 侧内存余弦。读取一律显式 `CAST(vector AS TEXT)`，保证 Go 侧
+// 拿到的形态不依赖驱动对 vector 类型的解码行为。
 // 主键是完整代身份 (tool_id, model, dims, spec)：不同代向量可并存，支撑热切换。
 type embeddingRow struct {
 	ToolID     string `gorm:"column:tool_id;primaryKey"`
 	Model      string `gorm:"column:model;primaryKey"`
 	Dims       int64  `gorm:"column:dims;primaryKey"`
 	Spec       string `gorm:"column:spec;primaryKey"`
-	Vector     string `gorm:"column:vector"` // JSON array
+	Vector     string `gorm:"column:vector"` // "[1,2,3]" 文本形态
 	CorpusHash string `gorm:"column:corpus_hash"`
 	CreatedMS  int64  `gorm:"column:created_at"`
 }
@@ -99,11 +102,13 @@ func New(db *gorm.DB, opts Options) *Store {
 // 只查启用且可用的 server：此刻调不通的工具排进结果，AI 只会再撞一次错。
 //
 // 两条路径的取舍：
-//   - 有 pgvector 时把距离计算交给数据库（SQL 里的 `<=>` 是余弦距离）；
-//   - 没有时把候选读进内存自己算余弦相似度。
+//   - PostgreSQL（pgvector，vector 类型列）把距离计算交给数据库
+//     （SQL 里的 `<=>` 是余弦距离）；
+//   - SQLite 没有向量类型，把候选读进内存自己算余弦相似度。
 //
-// 之所以敢在 Go 侧做全表计算：tool_embeddings 上**没有任何向量索引**，
-// 所以数据库那条 `ORDER BY distance LIMIT n` 本来也是精确全表扫描——
+// 之所以 SQLite 侧敢做全表计算：tool_embeddings 上**没有任何向量索引**
+// （ANN 索引锁死单一维度，与多代混合维度并存冲突；B-tree 只收窄代），
+// 所以数据库那条 `ORDER BY distance LIMIT n` 也是精确全表扫描——
 // 换执行位置不改变结果，只改变算力归属。工具量级（几千）下这是毫秒级。
 func (s *Store) Search(ctx context.Context, model string, dims int, spec string, query []float64, topK int) ([]EmbeddingHit, error) {
 	if topK <= 0 {
@@ -130,8 +135,10 @@ func (s *Store) searchNative(ctx context.Context, model string, dims int, spec s
 		ToolID   string
 		Distance float64
 	}
+	// vector 列已是 pgvector 的 vector 类型，无需再强转列本身；
+	// 查询向量参数是 "[1,2,3]" 文本，显式 ::vector 走输入函数解析。
 	err = s.db.WithContext(ctx).Raw(
-		`SELECT e.tool_id AS tool_id, (e.vector::vector <=> ?::vector) AS distance
+		`SELECT e.tool_id AS tool_id, (e.vector <=> ?::vector) AS distance
 		FROM tool_embeddings e
 		JOIN tools t ON t.id = e.tool_id
 		JOIN servers s ON s.id = t.server_id
@@ -158,6 +165,7 @@ func (s *Store) searchNative(ctx context.Context, model string, dims int, spec s
 func (s *Store) searchInMemory(ctx context.Context, model string, dims int, spec string, query []float64, topK int) ([]EmbeddingHit, error) {
 	var rows []embeddingRow
 	err := s.db.WithContext(ctx).
+		Select("tool_id, model, dims, spec, corpus_hash, created_at, CAST(vector AS TEXT) AS vector").
 		Where("model = ? AND dims = ? AND spec = ?", model, dims, spec).
 		Find(&rows).Error
 	if err != nil {
@@ -241,7 +249,11 @@ func (s *Store) Save(ctx context.Context, es []Embedding) error {
 // 哪些工具需要重新向量化。
 func (s *Store) List(ctx context.Context) ([]Embedding, error) {
 	var rows []embeddingRow
-	err := s.db.WithContext(ctx).Find(&rows).Error
+	// 显式列出列并固定 vector 的文本形态（见 embeddingRow 注释）：
+	// PG 的 vector 类型交给驱动解码会因驱动而异，CAST(... AS TEXT) 两边都是同一形态。
+	err := s.db.WithContext(ctx).
+		Select("tool_id, model, dims, spec, corpus_hash, created_at, CAST(vector AS TEXT) AS vector").
+		Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("查询工具向量失败: %w", err)
 	}
@@ -264,8 +276,9 @@ func (s *Store) Delete(ctx context.Context, toolIDs []string) error {
 	return nil
 }
 
-// DeleteStaleGenerations 删除 keep 之外的所有代（热切换后的 GC）。
-// 保留集通常是 {当前代, 上一代}：上一代留到下次切换，支撑一键回滚。
+// DeleteStaleGenerations 删除 keep 之外的所有代。
+// 保留集由调用方决定：生产路径（Reconcile）只保留当前代，没有回滚
+// 接口，删掉的旧代只能重新嵌入。
 func (s *Store) DeleteStaleGenerations(ctx context.Context, keep ...Generation) error {
 	if len(keep) == 0 {
 		// GORM 拒绝无 WHERE 的整表 Delete，清空走原生 SQL。
@@ -291,8 +304,7 @@ func (s *Store) DeleteStaleGenerations(ctx context.Context, keep ...Generation) 
 	return nil
 }
 
-// Count 统计某一代已有的向量行数
-// （热切换就绪判定与回滚可行性判定都用它）。
+// Count 统计某一代已有的向量行数（热切换就绪判定用）。
 func (s *Store) Count(ctx context.Context, model string, dims int, spec string) (int, error) {
 	var n int64
 	err := s.db.WithContext(ctx).Model(&embeddingRow{}).

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hydra/mcp-hub/internal/search/client"
@@ -90,48 +92,64 @@ func (m *EmbedManager) buildGeneration(ctx context.Context, cfg EmbedConfig, e *
 
 	m.progress(len(pending), 0, 0, fmt.Sprintf("共 %d 个工具有语料，其中 %d 个需要重新向量化", len(live), len(pending)))
 
-	embedded, failed := 0, 0
+	// 每批是一个独立作业：最多 rebuildConcurrency 个并行，单批失败只损失
+	// 自己（保留旧向量，下轮增量重嵌），不拖垮整次构建。批内并发由
+	// Embedder 自己保证，这里让批与批之间也并行起来。
+	const rebuildConcurrency = 4
+
 	batch := batchOrDefault(cfg.Batch)
+	var embeddedN, failedN atomic.Int64
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, rebuildConcurrency)
 	for start := 0; start < len(pending); start += batch {
-		end := start + batch
-		if end > len(pending) {
-			end = len(pending)
-		}
-		texts := make([]string, 0, end-start)
-		for _, d := range pending[start:end] {
-			texts = append(texts, d.Corpus)
-		}
+		job := pending[start:min(start+batch, len(pending))]
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(job []toolDoc) {
+			defer wg.Done()
+			defer func() { <-sem }()
 
-		vecs, err := e.Embed(ctx, texts)
-		if err != nil {
-			failed += end - start
-			m.log.Warn("一批 embedding 失败，保留旧向量",
-				zap.Int("count", end-start), zap.Error(err))
-			m.progress(len(pending), embedded, failed, fmt.Sprintf("已向量化 %d/%d（%d 批失败）", end, len(pending), failed))
-			continue
-		}
+			texts := make([]string, 0, len(job))
+			for _, d := range job {
+				texts = append(texts, d.Corpus)
+			}
+			vecs, err := e.Embed(ctx, texts)
+			if err != nil {
+				failedN.Add(int64(len(job)))
+				m.log.Warn("一批 embedding 失败，保留旧向量",
+					zap.Int("count", len(job)), zap.Error(err))
+				m.progress(len(pending), int(embeddedN.Load()), int(failedN.Load()),
+					fmt.Sprintf("已向量化 %d/%d（%d 失败）", embeddedN.Load()+failedN.Load(), len(pending), failedN.Load()))
+				return
+			}
 
-		es := make([]embeddings.Embedding, 0, len(vecs))
-		for i, v := range vecs {
-			d := pending[start+i]
-			es = append(es, embeddings.Embedding{
-				ToolID:     d.ToolID,
-				Model:      cfg.Model,
-				Dims:       cfg.Dimensions,
-				Spec:       gen.Spec,
-				Vector:     v,
-				CorpusHash: corpus.Hash(d.Corpus),
-				CreatedAt:  time.Now(),
-			})
-		}
-		if err := m.store.Embeddings.Save(ctx, es); err != nil {
-			failed += len(es)
-			m.log.Warn("向量写库失败，保留旧向量", zap.Int("count", len(es)), zap.Error(err))
-			continue
-		}
-		embedded += len(es)
-		m.progress(len(pending), embedded, failed, fmt.Sprintf("已向量化 %d/%d", end, len(pending)))
+			es := make([]embeddings.Embedding, 0, len(vecs))
+			for i, v := range vecs {
+				d := job[i]
+				es = append(es, embeddings.Embedding{
+					ToolID:     d.ToolID,
+					Model:      cfg.Model,
+					Dims:       cfg.Dimensions,
+					Spec:       gen.Spec,
+					Vector:     v,
+					CorpusHash: corpus.Hash(d.Corpus),
+					CreatedAt:  time.Now(),
+				})
+			}
+			if err := m.store.Embeddings.Save(ctx, es); err != nil {
+				failedN.Add(int64(len(es)))
+				m.log.Warn("向量写库失败，保留旧向量", zap.Int("count", len(es)), zap.Error(err))
+				m.progress(len(pending), int(embeddedN.Load()), int(failedN.Load()),
+					fmt.Sprintf("已向量化 %d/%d（%d 失败）", embeddedN.Load()+failedN.Load(), len(pending), failedN.Load()))
+				return
+			}
+			embeddedN.Add(int64(len(es)))
+			m.progress(len(pending), int(embeddedN.Load()), int(failedN.Load()),
+				fmt.Sprintf("已向量化 %d/%d", embeddedN.Load()+failedN.Load(), len(pending)))
+		}(job)
 	}
+	wg.Wait()
+	embedded, failed := int(embeddedN.Load()), int(failedN.Load())
 
 	// 就绪判定：本代下全部有语料的工具都有向量。构建期间新增的工具
 	// 此刻还没有向量 → 未就绪，下一轮 45s 增量会补上。
@@ -145,7 +163,15 @@ func (m *EmbedManager) buildGeneration(ctx context.Context, cfg EmbedConfig, e *
 		msg = fmt.Sprintf("重建完成：%d 成功，%d 失败（失败项保留旧向量）", embedded, failed)
 	}
 
-	return m.finish(state, len(pending), embedded, failed, covered, liveCount, msg)
+	st := m.finish(state, len(pending), embedded, failed, covered, liveCount, msg)
+	// 完全就绪才激活这一代供检索：构建中途（或失败）的代不进向量分支，
+	// 代切换因此是原子的——切换窗口里检索一直用上一代就绪的向量。
+	if st.Ready {
+		m.mu.Lock()
+		m.activeGen = &gen
+		m.mu.Unlock()
+	}
+	return st
 }
 
 // coverageOf 统计某一代对"有语料的工具"的覆盖数。
@@ -174,11 +200,12 @@ func (m *EmbedManager) coverageOf(ctx context.Context, gen embeddings.Generation
 
 // Reconcile 是启动时的一次性对齐：把当前代（由进程配置算出）的向量补齐，
 // 补全后清掉其它代的遗留行。换了 MCPHUB_EMBED_MODEL / EMBED_DIMS 后重启
-// 走的就是这条路。构建期间向量一路为空（hybrid 自动退回 keyword+bm25），
-// 完成即刻恢复，不需要重启或人工干预。
+// 走的就是这条路。构建期间检索只用上一代就绪的向量（没有就绪代时降级为
+// bm25），半成品代从不参与，完成即刻生效，不需要重启或人工干预。
 //
 // 清理只在完全就绪（无失败 + 全覆盖）时做：embed 服务暂时打不通时旧代的
-// 行还留着，它们不参与检索，但那是唯一的退路，没把握时不该删。
+// 行还留着——它们不参与检索（检索只查 activeGen），留着是因为"把配置改回
+// 旧代再重启"时可以直接就绪，不必重新花一遍嵌入的钱。
 func (m *EmbedManager) Reconcile(ctx context.Context) RebuildStatus {
 	st := m.Rebuild(ctx)
 	staleRows := m.otherGenerationRows(ctx)
@@ -191,7 +218,7 @@ func (m *EmbedManager) Reconcile(ctx context.Context) RebuildStatus {
 		return st
 	}
 	if staleRows > 0 {
-		m.log.Warn("当前代向量尚未补齐，检索暂时降级为 keyword/bm25",
+		m.log.Warn("当前代向量尚未补齐，检索暂时降级为 bm25",
 			zap.String("message", st.Message), zap.Int("keptRows", staleRows))
 	}
 	return st

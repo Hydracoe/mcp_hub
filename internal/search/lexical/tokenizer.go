@@ -1,4 +1,4 @@
-// Package lexical 内存词法检索：中英混合分词、BM25 打分与 keyword 保序命中。
+// Package lexical 内存词法检索：中英混合分词与 BM25 打分。
 package lexical
 
 import (
@@ -78,7 +78,7 @@ func Tokenize(text string) []string {
 	return out
 }
 
-// Dedupe 去掉重复词元，保持首次出现顺序（keyword 命中判定用）。
+// Dedupe 去掉重复词元，保持首次出现顺序。
 func Dedupe(tokens []string) []string {
 	seen := make(map[string]struct{}, len(tokens))
 	out := make([]string, 0, len(tokens))

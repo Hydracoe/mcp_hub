@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hydra/mcp-hub/internal/search/corpus"
 	"github.com/hydra/mcp-hub/internal/search/lexical"
 	"github.com/hydra/mcp-hub/internal/search/rank"
 	"github.com/hydra/mcp-hub/internal/store"
@@ -17,9 +16,8 @@ import (
 
 // 检索模式（PRD §4.7.4）。
 const (
-	searchModeKeyword = "keyword"
-	searchModeBM25    = "bm25"
-	searchModeHybrid  = "hybrid"
+	searchModeBM25   = "bm25"
+	searchModeHybrid = "hybrid"
 )
 
 // ToolHit 是一次工具检索的结果（PRD §4.7.4）。
@@ -40,10 +38,9 @@ type ToolHit struct {
 // SearchQuery 是工具检索的输入。
 type SearchQuery struct {
 	Query      string
-	Mode       string // keyword | bm25 | hybrid；空按 hybrid
+	Mode       string // bm25 | hybrid；空按 hybrid
 	Category   string // 分类 id 或名称
 	Server     string // serverKey
-	Tag        string
 	K          int  // 0 按默认 5
 	WithSchema bool // 结果内联完整 inputSchema（跳过 hub__tool 一步的退路）
 }
@@ -104,11 +101,11 @@ type idScore struct {
 	score float64
 }
 
-// SearchTools 按三种模式检索工具（PRD §4.7.4）。
+// SearchTools 按两种模式检索工具（PRD §4.7.4）。
 //
-// 降级阶梯，每一级都保持可用：rerank 挂 → 保持融合顺序；embed 挂 →
-// 只用 bm25；无 pgvector → keyword 与 bm25 融合。辅助能力挂掉不该让
-// 检索整体报错——搜不到比报错更接近可用。
+// 降级阶梯，每一级都保持可用：rerank 挂 → 保持融合顺序；向量一路挂
+// （embed 未配置 / 当前代未就绪 / 检索报错）→ 退回纯 bm25 融合。辅助
+// 能力挂掉不该让检索整体报错——搜不到比报错更接近可用。
 func (e *Engine) Search(ctx context.Context, q SearchQuery) ([]ToolHit, error) {
 	e.mu.Lock()
 	ix := e.ix
@@ -122,9 +119,9 @@ func (e *Engine) Search(ctx context.Context, q SearchQuery) ([]ToolHit, error) {
 		mode = searchModeHybrid
 	}
 	switch mode {
-	case searchModeKeyword, searchModeBM25, searchModeHybrid:
+	case searchModeBM25, searchModeHybrid:
 	default:
-		return nil, fmt.Errorf("不支持的检索模式 %q（可选 keyword / bm25 / hybrid）", q.Mode)
+		return nil, fmt.Errorf("不支持的检索模式 %q（可选 bm25 / hybrid）", q.Mode)
 	}
 
 	query := strings.TrimSpace(q.Query)
@@ -149,18 +146,6 @@ func (e *Engine) Search(ctx context.Context, q SearchQuery) ([]ToolHit, error) {
 		if q.Server != "" && !strings.EqualFold(d.ServerKey, q.Server) {
 			return false
 		}
-		if q.Tag != "" {
-			ok := false
-			for _, t := range d.Tags {
-				if strings.EqualFold(t, q.Tag) {
-					ok = true
-					break
-				}
-			}
-			if !ok {
-				return false
-			}
-		}
 		if q.Category != "" && d.CategoryID != catID && !strings.EqualFold(d.Category, q.Category) {
 			return false
 		}
@@ -168,41 +153,42 @@ func (e *Engine) Search(ctx context.Context, q SearchQuery) ([]ToolHit, error) {
 	}
 
 	switch mode {
-	case searchModeKeyword:
-		return hitsFromIDs(ix, keywordBranch(ix, query, k, match), q.WithSchema), nil
-
 	case searchModeBM25:
 		return hitsFromIDs(ix, e.bm25Branch(ix, query, k, match), q.WithSchema), nil
 
 	default: // hybrid
+		// 融合只收 bm25 与向量两路有分数的命中：两者量纲不同不能混加，
+		// RRF 按名次融合；向量一路不可用时退回纯 bm25。
 		lists := [][]string{idsOf(e.bm25Branch(ix, query, 50, match), 50)}
-
 		em := e.em
 		if em != nil {
 			vecIDs, err := e.vectorBranch(ctx, ix, em, query, match)
 			if err == nil {
 				lists = append(lists, vecIDs)
 			} else {
-				// 向量一路挂掉（含未装 pgvector 扩展）：退回
-				// keyword+bm25 融合，检索整体保持可用。
-				e.log.Warn("向量检索分支失败，退回 keyword+bm25", zap.Error(err))
-				lists = append(lists, idsOf(keywordBranch(ix, query, 50, match), 50))
-			}
-		} else {
-			lists = [][]string{
-				idsOf(keywordBranch(ix, query, 50, match), 50),
-				idsOf(e.bm25Branch(ix, query, 50, match), 50),
+				// 向量一路整体不可用（embed 未配置、当前代未就绪、检索报错）。
+				e.log.Warn("向量检索分支失败，退回 bm25", zap.Error(err))
 			}
 		}
 
 		fused := rank.RRF(rank.DefaultK, lists)
-		if len(fused) > 20 {
-			fused = fused[:20]
+		// 候选池上界 = max(20, k)：k ≤ 20 时留 20 条做 rerank 缓冲（rerank 在
+		// 比最终返回更宽的网里重排，能把 RRF 排低但更相关的捞回来）；k > 20 时
+		// 放宽到 k，兑现"返回条数最大 50"的契约——否则 hybrid 被悄悄封顶在 20。
+		pool := 20
+		if k > pool {
+			pool = k
 		}
+		seen := make(map[string]bool, len(fused))
 		out := make([]idScore, 0, len(fused))
 		for _, h := range fused {
-			if _, ok := ix.byID[h.ID]; ok {
-				out = append(out, idScore{id: h.ID, score: h.Score})
+			if _, ok := ix.byID[h.ID]; !ok || seen[h.ID] {
+				continue
+			}
+			seen[h.ID] = true
+			out = append(out, idScore{id: h.ID, score: h.Score})
+			if len(out) >= pool {
+				break
 			}
 		}
 
@@ -229,6 +215,12 @@ func (e *Engine) Search(ctx context.Context, q SearchQuery) ([]ToolHit, error) {
 			}
 		}
 
+		// 候选池上界是 max(20, k)，返回条数必须兑现 k：rerank 未启用或失败时
+		// out 仍是 pool 上界，这里截到 k，否则"返回条数默认 5"的契约落空。
+		if len(out) > k {
+			out = out[:k]
+		}
+
 		return hitsFromIDs(ix, out, q.WithSchema), nil
 	}
 }
@@ -253,42 +245,37 @@ func (e *Engine) bm25Branch(ix *searchIndex, query string, k int, match func(too
 	return out
 }
 
-// keywordBranch 跑 keyword 粗筛一路（分数无意义，记 0）。
-func keywordBranch(ix *searchIndex, query string, k int, match func(toolDoc) bool) []idScore {
-	out := make([]idScore, 0, k)
-	for _, id := range ix.bm25.KeywordHits(query) {
-		i, ok := ix.byID[id]
-		if !ok || !match(ix.docs[i]) {
-			continue
-		}
-		out = append(out, idScore{id: id})
-		if len(out) >= k {
-			break
-		}
-	}
-	return out
-}
-
-// vectorBranch 走 pgvector ANN 一路：嵌入查询 → 余弦距离排序 → 过滤。
+// vectorBranch 走向量一路：嵌入查询 → 余弦距离排序 → 过滤。
+//
+// 只查最近一次"完全就绪"的代（activeGen）：换代构建期间按配置算出的代
+// 是半成品，查它就是两套语义空间混着出结果——宁可这一路整体缺席。
 func (e *Engine) vectorBranch(ctx context.Context, ix *searchIndex, em *EmbedManager, query string, match func(toolDoc) bool) ([]string, error) {
+	gen := em.ActiveGeneration()
+	if gen == nil {
+		return nil, errors.New("当前代向量未就绪")
+	}
 	vec, err := em.EmbedQuery(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	cfg := em.Config()
-	// 只查当前代（model+dims+spec）的向量：旧代的向量还在表里，
-	// 混进检索就是两套语义空间打架。
-	ids, err := e.st.Embeddings.Search(ctx, cfg.Model, cfg.Dimensions, corpus.SpecString(cfg.CorpusFields), vec, 50)
+	// 与 bm25Branch 同款的放宽窗口：先多取一些，过滤完再截到 k，
+	// 免得内存过滤把 top-50 吃掉一截后召回不够。
+	const k = 50
+	want := k*5 + 10
+	ids, err := e.st.Embeddings.Search(ctx, gen.Model, gen.Dims, gen.Spec, vec, want)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]string, 0, len(ids))
+	out := make([]string, 0, k)
 	for _, h := range ids {
 		i, ok := ix.byID[h.ToolID]
 		if !ok || !match(ix.docs[i]) {
 			continue
 		}
 		out = append(out, h.ToolID)
+		if len(out) >= k {
+			break
+		}
 	}
 	return out, nil
 }

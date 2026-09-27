@@ -202,7 +202,7 @@ func New(opts Options) (*Engine, error) {
 // attachEmbedding 接上向量检索，并在后台补齐向量。
 //
 // 没配 EMBED_API_KEY 时 Embedder() 为 nil，整条向量路径关闭，
-// 检索降级为 keyword/bm25——网关照常运行，这是刻意的降级阶梯。
+// 检索降级为 bm25——网关照常运行，这是刻意的降级阶梯。
 func (e *Engine) attachEmbedding() {
 	em := retrieval.NewEmbedManager(e.st, e.log, retrieval.EmbedOptions{
 		BaseURL:       e.settings.EmbedBaseURL,
@@ -235,7 +235,7 @@ func (e *Engine) attachEmbedding() {
 			e.log.Info("向量对账完成", fields...)
 			return
 		}
-		e.log.Warn("向量对账未完全就绪，检索暂时降级 keyword/bm25", fields...)
+		e.log.Warn("向量对账未完全就绪，检索暂时降级 bm25", fields...)
 	}()
 }
 

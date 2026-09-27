@@ -31,7 +31,7 @@ serve 的配置全部来自 .env 与进程环境变量，不接受任何命令�
   表结构在首次连接时自动同步。数据库可以是 PostgreSQL（需先建好空库）
   或 SQLite 文件（不存在会自动创建）；缓存可以是 Redis 或进程内实现。
   两者都由配置项显式选择，或按连接串形态自动推断。
-  未配置 MCPHUB_EMBED_API_KEY 时检索自动降级 keyword/bm25，网关照常运行。
+  未配置 MCPHUB_EMBED_API_KEY 时检索自动降级为 bm25，网关照常运行。
 
 add / probe / servers 的其余参数用 -h 查看。`,
 		Example: `  add 远程 server（--db 可省略，缺省读 MCPHUB_DB）:

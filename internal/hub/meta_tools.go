@@ -36,11 +36,9 @@ func (m *MetaTools) Tools() []mcpserver.ServerTool {
 			Tool: mcp.NewTool(aggregate.MetaPrefix+"search_tools",
 				mcp.WithDescription("按意图搜索全部下游 server 里可被调用的工具，支持关键词与语义混合检索。不确定用哪个工具时，先搜再调。结果只含工具名与一句话描述（不含参数定义）；末尾 facets 是命中的分类/server 分布，命中分散时用它收窄重搜，命中明确后用 hub__tool 取参数定义。"),
 				mcp.WithString("query", mcp.Required(), mcp.Description("检索意图，如\"查询北京天气\"或\"把地址转成经纬度\"")),
-				mcp.WithString("mode", mcp.Description("keyword（快，纯词面）| bm25 | hybrid（默认，语义+全文）")),
+				mcp.WithString("mode", mcp.Description("bm25（全文）| hybrid（默认，语义+全文）")),
 				mcp.WithString("category", mcp.Description("按分类过滤（id 或名称），收窄候选时用")),
 				mcp.WithString("server", mcp.Description("按 server key 过滤，收窄候选时用")),
-				mcp.WithString("tag", mcp.Description("按标签过滤")),
-				mcp.WithNumber("k", mcp.Description("返回条数，默认 5，最大 50")),
 				mcp.WithBoolean("with_schema", mcp.Description("结果内联完整参数 schema。仅当对候选很有把握、想省一次 hub__tool 调用时才开")),
 			),
 			Handler: m.searchTools,
@@ -100,8 +98,6 @@ func (m *MetaTools) searchTools(ctx context.Context, req mcp.CallToolRequest) (*
 		Mode       string `json:"mode"`
 		Category   string `json:"category"`
 		Server     string `json:"server"`
-		Tag        string `json:"tag"`
-		K          int    `json:"k"`
 		WithSchema bool   `json:"with_schema"`
 	}
 	if err := parseArgs(req, &a); err != nil {
@@ -113,8 +109,6 @@ func (m *MetaTools) searchTools(ctx context.Context, req mcp.CallToolRequest) (*
 		Mode:       a.Mode,
 		Category:   a.Category,
 		Server:     a.Server,
-		Tag:        a.Tag,
-		K:          a.K,
 		WithSchema: a.WithSchema,
 	})
 	if err != nil {

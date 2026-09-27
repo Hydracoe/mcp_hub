@@ -29,7 +29,6 @@ func (a *API) handleSearchTools(c *gin.Context) {
 		Mode:       q.Get("mode"),
 		Category:   q.Get("category"),
 		Server:     q.Get("server"),
-		Tag:        q.Get("tag"),
 		K:          k,
 		WithSchema: q.Get("with_schema") == "1" || q.Get("with_schema") == "true",
 	})

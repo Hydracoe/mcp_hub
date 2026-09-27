@@ -105,6 +105,10 @@ type EmbedManager struct {
 	embedder *client.Embedder
 	reranker *client.Reranker
 	status   RebuildStatus
+	// activeGen 是最近一次"完全就绪"的代：检索的向量一路只查这一代。
+	// nil 表示还没有任何就绪的代（首次启动构建中、或换代后构建未竟），
+	// 向量分支自动降级——半成品代永远不进检索，代切换因此是原子的。
+	activeGen *embeddings.Generation
 
 	catMu   sync.Mutex
 	catVecs map[string][]float64
@@ -210,6 +214,14 @@ func (m *EmbedManager) Config() EmbedConfig {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.cfg
+}
+
+// ActiveGeneration 返回检索的向量一路应当查询的代（最近一次完全就绪的代）。
+// 返回 nil 表示还没有就绪的代：向量分支应整体跳过而非查询半成品。
+func (m *EmbedManager) ActiveGeneration() *embeddings.Generation {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.activeGen
 }
 
 // Embedder 返回当前 embed 客户端；未配置密钥时为 nil。

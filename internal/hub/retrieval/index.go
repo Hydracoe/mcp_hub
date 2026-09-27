@@ -115,7 +115,7 @@ func collectToolDocs(ctx context.Context, st *store.Store, fields corpus.Fields)
 				// 语料只吃"工具自身"的字段（工具名 / 描述 / 参数线索 /
 				// 标签 / server 描述）。分类刻意不进这里：它是可变的组织
 				// 元数据，进去就意味着改一次分类要重嵌一整批向量；
-				// 分类仍参与 docTokens / docRaw，词法检索照样命中。
+				// 分类仍参与 docTokens，词法检索照样命中。
 				Corpus: corpus.Text(t.Name, t.Description, sv.Tags, sv.Description, hints, fields),
 			})
 		}
@@ -140,16 +140,6 @@ func docTokens(d toolDoc) []string {
 	toks = append(toks, lexical.Tokenize(d.Hints)...)
 	toks = append(toks, lexical.Tokenize(d.ServerDesc)...)
 	return toks
-}
-
-// docRaw 是小写原文，keyword 模式用它做子串命中。
-// 带上对外全名、分类名与参数线索：AI 复制 "weather__forecast" 来搜、
-// 或按分类名搜，都必须命中。
-func docRaw(d toolDoc) string {
-	return strings.ToLower(strings.Join([]string{
-		d.Exposed, d.Name, d.Category, d.Description, d.Hints, d.ServerDesc,
-		strings.Join(d.Tags, " "),
-	}, "\n"))
 }
 
 func repeatTokens(toks []string, n int) []string {
@@ -189,7 +179,6 @@ func (e *Engine) RebuildIndex(ctx context.Context) {
 		bm25Docs = append(bm25Docs, lexical.Doc{
 			ID:     docs[i].ToolID,
 			Tokens: docTokens(docs[i]),
-			Raw:    docRaw(docs[i]),
 		})
 	}
 	ix.bm25 = lexical.NewBM25(bm25Docs)

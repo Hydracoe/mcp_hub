@@ -100,7 +100,7 @@ func TestEmbedderRejectsDimsMismatch(t *testing.T) {
 	defer srv.Close()
 
 	// dims 配错必须在写入前拦住：放过去的话库里 dims 列与 vector 列对不上，
-	// 检索时 pgvector 强转失败、向量一路静默降级成 keyword+bm25。
+	// 检索时距离计算要么报错要么逐行跳过，向量一路静默失效。
 	e, err := NewEmbedder("k", srv.URL+"/v1", "m", 8, 1)
 	if err != nil {
 		t.Fatalf("构造失败: %v", err)

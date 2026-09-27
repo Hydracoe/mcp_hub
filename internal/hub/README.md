@@ -14,7 +14,7 @@ internal/hub/            门面：Service 编排 + meta-tool + 接入 key 校验
 ├── pool/                下游连接池：懒建连、失败退避、密钥池、优雅退场
 ├── callctx/             一次调用的上下文：谁调的 + 用了哪把凭据（叶子包）
 ├── aggregate/           对外 MCP 端点：tools/list 聚合 + tools/call 路由
-├── retrieval/           检索与向量：内存索引、三路检索、按代重建、自动归类
+├── retrieval/           检索与向量：内存索引、两路检索、按代重建、自动归类
 └── tests/               黑盒集成测试（package tests）
 ```
 
@@ -39,7 +39,7 @@ internal/hub/            门面：Service 编排 + meta-tool + 接入 key 校验
 | `aggregate`  | `aggregate.go`            | 对外 MCP server：`tools/list` 聚合、`tools/call` 路由、meta 列表模式、`serverInstructions`          |
 |              | `calllog.go`              | `LogRecord` 调用日志结构、失败建议文案 `adviceFor`                                                  |
 | `retrieval`  | `engine.go`               | `Engine`：持有索引与嵌入管理器，对外提供 `Search` / `RebuildIndex`                                  |
-|              | `search.go`               | 三路检索编排（RRF + rerank）、结果与 facet 装配、分类解析                                           |
+|              | `search.go`               | 两路检索编排（RRF + rerank）、结果与 facet 装配、分类解析                                           |
 |              | `index.go`                | 内存索引与语料：`collectToolDocs`、分词、索引重建                                                   |
 |              | `embed.go`                | embedding 配置与 `EmbedManager` 本体                                                               |
 |              | `rebuild.go`              | 按"代"的增量向量重建与启动对账（`Reconcile`）                                                       |
@@ -97,14 +97,14 @@ hub ──► aggregate ──► registry, pool, callctx
 
 8. **检索索引与 embed 语料共用 `collectToolDocs`。** 同一个函数决定"哪些工具可被搜到"，两边口径不一致会让增量重建退化为全量重嵌，检索也会返回 AI 实际调不到的工具。启用语义与聚合路径完全一致：只有 `tools.enabled` 的工具可被搜到。
 9. **工具启停只有一个开关：`tools.enabled`。** 聚合端点、检索、管理界面读同一份事实，不存在第二层名单；创建向导的勾选通过一次性引导名单 `boot_enabled_tools` 在首次探活时兑现。
-10. **降级阶梯，每一级都保持可用。** rerank 挂 → 保持 RRF 融合顺序；embed 挂 → 只用 bm25；无 pgvector → keyword 与 bm25 融合。辅助能力挂掉不该让检索整体报错——搜不到比报错更接近可用。
+10. **降级阶梯，每一级都保持可用。** rerank 挂 → 保持 RRF 融合顺序；向量一路挂（embed 未配置 / 当前代未就绪 / 检索报错）→ 退回纯 bm25 融合。辅助能力挂掉不该让检索整体报错——搜不到比报错更接近可用。
 
 ## 关键概念
 
 - **meta 列表模式（`MCPHUB_LIST_MODE`）**：`meta` 只向客户端列出 5 个 `hub__*` 工具，下游工具靠搜索发现，列表小、AI 规划轮次少；`all` 列出全部聚合工具。两种模式下 `tools/call` 行为完全一致——`metaOnlyFilter` 靠 `len(tools) == 1` 识别 call 路径并一律放行，因为 mcp-go 的 list 与 call 共用同一条过滤器链。
 - **树式发现**：`hub__search_tools` 默认返回"薄结果"（不带 `inputSchema`）+ 末尾 `facets`（命中分布），AI 据此收窄到 3 个以内，再用 `hub__tool` 取完整 schema 调用。单次搜索的上下文开销与工具总数无关。
 - **两轴判决**：`ErrorKind` 回答"下游为什么失败"（面向人），`KeyVerdict` 回答"这把密钥还能不能用"（面向调度器）。同一个 5xx，前者是 `UPSTREAM_ERROR`，后者是 `NEUTRAL`（别动密钥）——合并成一个枚举会让两边加值都污染对方的语义。
-- **代（generation）**：`(model, dims, spec)` 三元组是一代向量的身份。换模型 / 维度 / 语料字段即新代；进程启动时 `Reconcile` 把当前代补齐，补全后才清掉其它代——embed 服务暂时打不通时，旧代的行是唯一的退路，没把握时不该删。
+- **代（generation）**：`(model, dims, spec)` 三元组是一代向量的身份。换模型 / 维度 / 语料字段即新代；检索的向量一路只查最近一次"完全就绪"的代（`activeGen`），半成品代从不参与，代切换因此是原子的。进程启动时 `Reconcile` 把当前代补齐，补全后才清掉其它代——embed 服务暂时打不通时旧代的行留着，它们不参与检索，留着是因为"把配置改回旧代再重启"时可以直接就绪，不必重新花一遍嵌入的钱（没有回滚接口，删掉的旧代只能重嵌）。
 - **调用日志的状态取值**：`ok` / `error` 是调用结果；`key` 是密钥事件（冷却 / 弃用 / 恢复），单列是为了让"按 status=error 查失败"时不把事件混进来，同时又能专门回答"这把密钥为什么不转了"。
 
 ## 测试
@@ -123,7 +123,7 @@ go test ./internal/hub/... -count=1   # 等价，含包内
 | `aggregate_test.go`   | 聚合与路由主链路、schema/入参/结果透传、故障隔离、工具缓存保留、创建引导名单、并发调用     |
 | `graceful_test.go`    | 凭据轮换与在飞调用、停用收尾与超时强关、连接重建判据（`ConnFingerprint`）           |
 | `keypool_e2e_test.go` | 密钥池端到端：限流换钥、废弃坏钥、池子打空、并发归因、单密钥模式不回归             |
-| `m7_test.go`          | meta 列表模式与 5 个 meta-tool、三路检索与 facet、向量增量重建与对账、自动归类      |
+| `m7_test.go`          | meta 列表模式与 5 个 meta-tool、两路检索与 facet、向量增量重建与对账、自动归类      |
 | `cache_test.go`       | 管理读路径的缓存命中与写路径失效范围                                               |
 | `apikey_test.go`      | 接入 key 鉴权与调用日志归因                                                        |
 | `service_test.go`     | `RefreshAll` 对停用 server 的排除语义                                             |
