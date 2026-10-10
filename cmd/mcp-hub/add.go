@@ -82,7 +82,10 @@ func runAdd(o addOptions) int {
 	}
 	if o.name != "" {
 		spec.Name = o.name
-	} else if spec.Name == "" {
+	} else {
+		// --name 留空时显示名同 key（帮助文案如此承诺）。buildSpec 里的
+		// 推断名是在 --key 覆盖之前算的，必须以最终的 key 为准，
+		// 否则名字与用户指定的前缀对不上。
 		spec.Name = spec.Key
 	}
 	spec.Env = o.envs

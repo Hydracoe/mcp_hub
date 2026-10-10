@@ -55,7 +55,8 @@ type toolStats struct {
 	// Cached 是下游声明的工具总数（工具缓存），与 Total 不等即"有工具没暴露"。
 	Cached int `json:"cached"`
 	// Hidden 是缓存里有、但没进聚合列表的：人工禁用 + 被白/黑名单挡掉
-	// + 所属 server 被整体停用。恒等于 Cached - Total，界面不用自己减。
+	// + 所属 server 被整体停用。等于 Cached - Total（快照与缓存错位时
+	// 钳到 0），界面不用自己减。
 	Hidden int `json:"hidden"`
 	// PendingEnable 是"探活新发现、默认禁用、从未被人工处理"的工具数。
 	// 每一个都在等一个决定（启用或拒绝），是"待人工处理"告警的依据。
@@ -136,7 +137,10 @@ func (a *API) handleOverview(c *gin.Context) {
 	tools := toolStats{Total: exposed, Cached: exposed, Hidden: 0}
 	if len(cachedTools) > 0 {
 		tools.Cached = len(cachedTools)
-		tools.Hidden = len(cachedTools) - exposed
+		// 快照与工具缓存各有一份真相，两次刷新之间可能错位（缓存里
+		// 已经少了而快照还没重建）。Hidden 是展示用的派生值，负数
+		// 会让界面显示成 "-2"，钳到 0 比传一个不可能的数好。
+		tools.Hidden = max(len(cachedTools)-exposed, 0)
 	}
 
 	keys, err := a.svc.KeySummary(ctx)

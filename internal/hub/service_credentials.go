@@ -65,9 +65,7 @@ func (s *Service) AddCredential(ctx context.Context, serverID string, in Credent
 		zap.String("server", sv.Spec.Key),
 		zap.String("credential", c.LabelOrFallback()),
 		zap.String("id", c.ID))
-	if err := s.reloadKeyRing(ctx, serverID); err != nil {
-		return c, err
-	}
+	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, serverID)
 	// O2：保存后自动试测一次（只读探活）。结果只记日志不改状态——
 	// 失败可能只是下游在抖，"禁用"的判决留给在线结算。
 	s.asyncTestCredential(sv.Spec, c)
@@ -136,9 +134,7 @@ func (s *Service) ImportCredentials(ctx context.Context, serverID string, in []C
 	}
 	s.log.Info("密钥已批量导入",
 		zap.String("server", sv.Spec.Key), zap.Int("count", len(out)))
-	if err := s.reloadKeyRing(ctx, serverID); err != nil {
-		return out, err
-	}
+	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, serverID)
 	// O2：批量导入逐把自动试测（串行，避免对下游形成突发）。
 	for _, c := range out {
 		s.asyncTestCredential(sv.Spec, c)
@@ -172,9 +168,7 @@ func (s *Service) UpdateCredential(ctx context.Context, serverID, credID string,
 	if err := s.store.Credentials.Update(ctx, existing); err != nil {
 		return credentials.Credential{}, err
 	}
-	if err := s.reloadKeyRing(ctx, serverID); err != nil {
-		return existing, err
-	}
+	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, serverID)
 	saved, err := s.credentialOf(ctx, serverID, credID)
 	if err != nil {
 		return existing, err

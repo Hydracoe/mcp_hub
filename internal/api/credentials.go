@@ -370,7 +370,12 @@ func (req credentialRequest) resolveHeaders(prev map[string]string) (map[string]
 	if value == secretMask {
 		return prev, nil
 	}
-	return expandCredential(req.AuthScheme, req.HeaderName, value)
+	expanded, err := expandCredential(req.AuthScheme, req.HeaderName, value)
+	if err != nil {
+		return nil, err
+	}
+	// 短途径是"换掉鉴权头"，不是"重写整组头"。
+	return mergeAuthHeaders(expanded, prev), nil
 }
 
 // expandCredential 把一个凭据值展开成完整注入头。
@@ -395,6 +400,32 @@ func expandCredential(scheme, headerName, value string) (map[string]string, erro
 		return map[string]string{name: value}, nil
 	}
 	return nil, badRequest("不支持的凭据类型 %q（可选：bearer / x-api-key / header）", scheme)
+}
+
+// mergeAuthHeaders 把展开出的鉴权头并入旧配置，返回更新后的完整注入头。
+//
+// value 短途径表达的是"给这把密钥换个值"，不是"重写整组注入头"：
+// 供应商凭据常是鉴权头 + 附加头（租户标识、地域、版本）的组合，
+// 按单头 map 整体覆盖会把附加头一并丢掉，表现为认证头没问题、
+// 下游却仍然拒掉请求，症状与凭据无关、极难归因。
+//
+// 头名按 HTTP 惯例不区分大小写：旧配置里写成 x-api-key 时要先摘掉
+// 再落 X-API-Key，否则同一个头在请求里带着两份，下游取到哪份全看
+// 运气。除鉴权头外一个键都不动。
+func mergeAuthHeaders(expanded, prev map[string]string) map[string]string {
+	out := make(map[string]string, len(prev)+len(expanded))
+	for k, v := range prev {
+		out[k] = v
+	}
+	for k, v := range expanded {
+		for old := range out {
+			if old != k && strings.EqualFold(old, k) {
+				delete(out, old)
+			}
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // parseCredentialLines 把"一行一把"的粘贴内容展开成密钥列表。
@@ -439,8 +470,25 @@ func parseCredentialLines(lines []string, scheme, headerName string) ([]hub.Cred
 }
 
 // splitCredentialLine 把一行拆成名称与值。没有名称时返回空名称。
+//
+// "=" 只有在后面确实跟着非填充内容时才算分隔符：值本身可能以 "="
+// 结尾（base64 的填充，如 dGVzdA==），按首个 "=" 硬切会把它拆成
+// label=dGVzdA、value="="，静默导入一把值错误的凭据。剩下两种情形
+// 维持原样——"名称=" 这种残缺行仍按缺值报错（它是明显的笔误，
+// 不该悄悄把 "名称=" 整串当成凭据值）。
 func splitCredentialLine(line string) (label, value string) {
-	for _, sep := range []string{"=", "\t", "，", ","} {
+	if idx := strings.Index(line, "="); idx >= 0 {
+		rest := strings.TrimSpace(line[idx+1:])
+		if rest == "" {
+			return strings.TrimSpace(line[:idx]), ""
+		}
+		if strings.Trim(rest, "=") != "" {
+			return strings.TrimSpace(line[:idx]), rest
+		}
+		// rest 是一段纯 "=" 填充：这个等号属于值本身，整行当值。
+		return "", line
+	}
+	for _, sep := range []string{"\t", "，", ","} {
 		if idx := strings.Index(line, sep); idx >= 0 {
 			return strings.TrimSpace(line[:idx]), strings.TrimSpace(line[idx+len(sep):])
 		}

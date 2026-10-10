@@ -160,7 +160,24 @@ func (s *Store) Update(ctx context.Context, id, name, slug, description string) 
 			"description": description,
 			"updated_at":  time.Now().UnixMilli(),
 		})
-	if err := storeutil.RequireAffected(res.RowsAffected, res.Error, "更新分类"); err != nil {
+	if res.Error != nil {
+		// 预检与 UPDATE 之间有并发窗口：别的请求可能刚占用了这个名字。
+		// 重查一次占用情况，把撞车翻译成与预检同样的领域错误（上层映射
+		// 409），而不是让它作为未知错误冒出去变成 500。
+		if storeutil.IsUniqueViolation(res.Error) {
+			if err := s.checkNameFree(ctx, name, id); err != nil {
+				return Category{}, err
+			}
+			if err := s.checkSlugFree(ctx, slug, id); err != nil {
+				return Category{}, err
+			}
+			// 占用方在这两次重查之间又放开了：照样按撞车报，
+			// 让用户重试一次即可，不做无谓的重试循环。
+			return Category{}, fmt.Errorf("%w: %q", ErrCategoryTaken, name)
+		}
+		return Category{}, fmt.Errorf("更新分类失败: %w", res.Error)
+	}
+	if err := storeutil.RequireAffected(res.RowsAffected, nil, "更新分类"); err != nil {
 		return Category{}, err
 	}
 	return s.Get(ctx, id)

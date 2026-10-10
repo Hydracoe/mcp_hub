@@ -76,6 +76,19 @@ func (s *Service) reloadKeyRing(ctx context.Context, serverID string) error {
 	return nil
 }
 
+// reloadKeyRingAfterCommit 在存储写入已提交之后同步密钥池。
+//
+// 同步失败只记日志、不向调用方报错：库是真相，密钥已经在里面，
+// 下一次 Reload（或重启）会把它补装进池子；而在这里返回错误会让
+// 用户以为没保存成功、重试一遍，重试撞上唯一约束（409），把一个
+// 已经成功的操作显示成失败。
+func (s *Service) reloadKeyRingAfterCommit(ctx context.Context, serverKey, serverID string) {
+	if err := s.reloadKeyRing(ctx, serverID); err != nil {
+		s.log.Error("密钥池同步失败，密钥已在库中，下次 Reload 会补装",
+			zap.String("server", serverKey), zap.Error(err))
+	}
+}
+
 // keyRingOptions 汇总密钥池的行为参数。
 //
 // 只有远程传输能用密钥池：stdio 的凭据在子进程环境变量里，改它等于换进程，
