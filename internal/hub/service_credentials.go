@@ -189,11 +189,15 @@ func (s *Service) DeleteCredential(ctx context.Context, serverID, credID string)
 	if err := s.store.Credentials.Delete(ctx, credID); err != nil {
 		return err
 	}
+	key := s.serverKey(ctx, serverID)
 	s.log.Info("密钥已删除",
-		zap.String("server", s.serverKey(ctx, serverID)),
+		zap.String("server", key),
 		zap.String("credential", cred.LabelOrFallback()),
 		zap.String("id", credID))
-	return s.reloadKeyRing(ctx, serverID)
+	// 删除已经提交：密钥池同步失败只是运行时状态没跟上（记日志），
+	// 不该把一次成功的删除报成失败——库里已经没有这把密钥了。
+	s.reloadKeyRingAfterCommit(ctx, key, serverID)
+	return nil
 }
 
 // SetCredentialEnabled 人工启停一把密钥。
@@ -216,11 +220,14 @@ func (s *Service) SetCredentialEnabled(ctx context.Context, serverID, credID str
 	if enabled {
 		action = "server 密钥已启用"
 	}
+	key := s.serverKey(ctx, serverID)
 	s.log.Info(action,
-		zap.String("server", s.serverKey(ctx, serverID)),
+		zap.String("server", key),
 		zap.String("credential", cred.LabelOrFallback()),
 		zap.String("id", credID))
-	return s.reloadKeyRing(ctx, serverID)
+	// 启停已经提交：密钥池同步失败只是运行时状态没跟上（记日志）。
+	s.reloadKeyRingAfterCommit(ctx, key, serverID)
+	return nil
 }
 
 // ResetCredentialQuota 清零一把密钥的本地配额计数。

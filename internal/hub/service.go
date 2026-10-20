@@ -94,6 +94,9 @@ type Service struct {
 	// 聚合快照上次重建时刻（UnixNano），refreshAggThrottled 用它节流。
 	lastAggRefresh atomic.Int64
 
+	// reloadFn 覆盖 Reload 的实现（见 Options.ReloadFn），生产恒为 nil。
+	reloadFn func(context.Context) error
+
 	// last_used_at 的落库节流（见 touchAPIKey）。
 	touchMu   sync.Mutex
 	touchLast map[string]time.Time
@@ -109,6 +112,12 @@ type Options struct {
 	// BlockAfterFails 是连败拦截阈值：同一 server 连续探活失败达到该次数
 	// 后，拒绝它的工具调用（探活照常）。0 或负数关闭拦截。
 	BlockAfterFails int
+	// ReloadFn 替换配置重载（Reload）的实现，留空用 Reload 本体。
+	//
+	// 它是"写已落库、刷新失败"这条路径唯一的接缝：写路径必须把重载
+	// 失败当成运行时状态问题（记 error 日志、缓存照常失效），而不是
+	// 把一次已经提交的写判成失败——库里已经有新配置了。只有测试会设置它。
+	ReloadFn func(context.Context) error
 }
 
 // NewServiceWithCache 用指定的缓存后端构造服务并完成首次聚合装载。
@@ -145,6 +154,7 @@ func NewServiceWithOptions(st *store.Store, logger *zap.Logger, opts Options) *S
 		keyEventCh: make(chan pool.KeyEvent, keyEventQueueSize),
 		probeSem:   make(chan struct{}, probeConcurrency),
 		gate:       newBlockGate(opts.BlockAfterFails),
+		reloadFn:   opts.ReloadFn,
 	}
 
 	s.agg = aggregate.NewAggregator(aggregate.Deps{

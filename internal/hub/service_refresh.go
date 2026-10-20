@@ -381,9 +381,10 @@ func (s *Service) ApplyServer(ctx context.Context, cfg servers.Config) (*ApplyRe
 		s.log.Info("已热更新下游凭据", zap.String("server", saved.Spec.Key))
 	}
 
-	if err := s.Reload(ctx); err != nil {
-		return nil, err
-	}
+	// 落库之后刷新运行时配置。刷新失败不是这次写的失败：配置已经在
+	// 库里了（失败只记日志），所以下面照常失效缓存——跳过它会让界面
+	// 一直显示旧配置，下次读还会命中旧值。
+	s.reloadAfterCommit(ctx, saved.Spec.Key, saved.Spec.ID)
 	s.invalidateServers(ctx)
 	result := &ApplyResult{ID: saved.Spec.ID, Created: created}
 	// 自动归类的 top-3 候选随结果返回（自动应用成功时也返回，

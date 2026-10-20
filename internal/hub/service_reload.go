@@ -15,7 +15,14 @@ import (
 
 // Reload 从存储重新装载连接配置与聚合快照，不触网。
 // 配置变更后调用它即可生效，无需重启进程。
+//
+// Options.ReloadFn 非空时由它替代本方法：那是测试用的接缝，用来复现
+// "写已落库、刷新失败"这条路径（见 reloadAfterCommit）。
 func (s *Service) Reload(ctx context.Context) error {
+	if s.reloadFn != nil {
+		return s.reloadFn(ctx)
+	}
+
 	srvs, err := s.store.Servers.List(ctx)
 	if err != nil {
 		return fmt.Errorf("加载 server 配置失败: %w", err)
@@ -44,6 +51,24 @@ func (s *Service) Reload(ctx context.Context) error {
 
 	s.refreshAgg()
 	return nil
+}
+
+// reloadAfterCommit 在存储写入已提交之后刷新运行时配置。
+//
+// 刷新失败只记日志、不向调用方报错：库是真相，配置已经在里面，
+// 下一次 Reload（或重启）会把它装进来；而在这里返回错误会让用户
+// 以为没保存成功——配置其实已经写进去了，重试还会撞上唯一约束（409），
+// 把一个已经成功的操作显示成失败。
+//
+// 与 reloadKeyRingAfterCommit 同一个道理：提交之后的刷新属于运行时状态，
+// 不是这次写操作本身的结果。
+func (s *Service) reloadAfterCommit(ctx context.Context, serverKey, serverID string) {
+	if err := s.Reload(ctx); err != nil {
+		s.log.Error("运行时配置刷新失败，配置已在库中，下次 Reload 会补装",
+			zap.String("server", serverKey),
+			zap.String("id", serverID),
+			zap.Error(err))
+	}
 }
 
 // syncKeyRings 把库里的密钥灌进连接池。

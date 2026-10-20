@@ -112,9 +112,9 @@ func (s *Service) RemoveServer(ctx context.Context, serverID string) error {
 		return err
 	}
 	s.pool.Retire(serverID)
-	if err := s.Reload(ctx); err != nil {
-		return err
-	}
+	// 删除已经提交：刷新失败只是运行时状态没跟上（记日志），
+	// 缓存的失效照常执行，否则列表里会一直留着这个已删的 server。
+	s.reloadAfterCommit(ctx, key, serverID)
 	s.invalidateServers(ctx)
 	s.log.Info("server 已删除", zap.String("server", key))
 	return nil
@@ -136,9 +136,9 @@ func (s *Service) SetEnabled(ctx context.Context, serverID string, enabled bool)
 		s.pool.Retire(serverID)
 		s.recordCascadeDisable(ctx, serverID, key, flipped)
 	}
-	if err := s.Reload(ctx); err != nil {
-		return err
-	}
+	// 启停已经提交：刷新失败只是运行时状态没跟上（记日志），
+	// 缓存的失效照常执行，否则界面会一直显示旧状态。
+	s.reloadAfterCommit(ctx, key, serverID)
 	s.invalidateServers(ctx)
 	if enabled {
 		s.log.Info("server 已启用", zap.String("server", key))
