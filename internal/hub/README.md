@@ -101,7 +101,7 @@ hub ──► aggregate ──► registry, pool, callctx
 
 ## 关键概念
 
-- **meta 列表模式（`MCPHUB_LIST_MODE`）**：`meta` 只向客户端列出 5 个 `hub__*` 工具，下游工具靠搜索发现，列表小、AI 规划轮次少；`all` 列出全部聚合工具。两种模式下 `tools/call` 行为完全一致——`metaOnlyFilter` 靠 `len(tools) == 1` 识别 call 路径并一律放行，因为 mcp-go 的 list 与 call 共用同一条过滤器链。
+- **meta 列表模式（`MCPHUB_LIST_MODE`）**：`meta` 只向客户端列出 5 个 `hub__*` 工具，下游工具靠搜索发现，列表小、AI 规划轮次少；`all` 列出全部聚合工具。两种模式下 `tools/call` 行为完全一致——mcp-go 的 list 与 call 共用同一条过滤器链，`metaOnlyFilter` 靠"输入里有没有元工具"区分两条路径（list 传全部已注册工具、call 只传被请求的那一个），而不是靠工具数量猜。哪个是元工具看的是注册时登记的元工具名单（`SetMetaTools` 带进来的），不靠工具名反推；同名时元工具后注册、占住 `hub__*` 这个保留命名空间。
 - **树式发现**：`hub__search_tools` 默认返回"薄结果"（不带 `inputSchema`）+ 末尾 `facets`（命中分布），AI 据此收窄到 3 个以内，再用 `hub__tool` 取完整 schema 调用。单次搜索的上下文开销与工具总数无关。
 - **两轴判决**：`ErrorKind` 回答"下游为什么失败"（面向人），`KeyVerdict` 回答"这把密钥还能不能用"（面向调度器）。同一个 5xx，前者是 `UPSTREAM_ERROR`，后者是 `NEUTRAL`（别动密钥）——合并成一个枚举会让两边加值都污染对方的语义。
 - **代（generation）**：`(model, dims, spec)` 三元组是一代向量的身份。换模型 / 维度 / 语料字段即新代；检索的向量一路只查最近一次"完全就绪"的代（`activeGen`），半成品代从不参与，代切换因此是原子的。进程启动时 `Reconcile` 把当前代补齐，补全后才清掉其它代——embed 服务暂时打不通时旧代的行留着，它们不参与检索，留着是因为"把配置改回旧代再重启"时可以直接就绪，不必重新花一遍嵌入的钱（没有回滚接口，删掉的旧代只能重嵌）。

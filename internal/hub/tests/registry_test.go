@@ -99,9 +99,10 @@ func TestServerKeyRejectsSeparatorSoExposedNameStaysUnambiguous(t *testing.T) {
 
 // serverKey 取 "hub"（keyPattern 是放行的）会让它的对外名整体落进网关自带
 // 工具的命名空间：hub__list_tools 之类与 meta 工具同名。
-// 聚合层只按前缀挑 meta 工具，因此这种 server 的工具会**冒充**成 meta 工具
-// 出现在 meta 模式的 tools/list 里；真撞上同名的那 5 个，调用指向哪边由
-// 注册顺序决定。本用例把聚合层自身不设防这件事钉住：拦住它只能靠配置校验。
+// 聚合层现在按"显式登记的元工具名单"挑 meta 工具，这台 server 的工具不再冒充
+// 成 meta 工具出现在 meta 模式的 tools/list 里；但它仍会与真元工具抢同一个
+// 对外名（聚合层让真元工具占住这个名字）。本用例把"配置源头必须拦住它"
+// 这件事钉住：这是保留命名空间被占用的唯一入口。
 func TestServerKeyHubLandsInsideReservedMetaNamespace(t *testing.T) {
 	reg := registry.NewRegistry()
 	snap := reg.Build([]registry.ToolSource{

@@ -8,8 +8,8 @@ package aggregate
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hydra/mcp-hub/internal/downstream"
@@ -93,9 +93,21 @@ type Aggregator struct {
 	metaMu sync.RWMutex
 	metaFn func() []mcpserver.ServerTool
 
+	// metaNames 是当前已注册到端点上的元工具名集合。
+	//
+	// 这是"哪个工具是元工具"的显式依据：元工具由 SetMetaTools 注册进来，
+	// 网关自己知道它们是谁，不必再靠工具名反推。随 Refresh 一起更新，
+	// 读侧无锁（换的是整份集合，不是逐项改）。
+	metaNames atomic.Pointer[metaNameSet]
+
 	refreshMu sync.Mutex
 	lastPrint uint64
 	hasPrint  bool
+}
+
+// metaNameSet 是一份不可变的元工具名集合。
+type metaNameSet struct {
+	names map[string]struct{}
 }
 
 // NewAggregator 构造聚合 MCP server 并完成首次工具装载。
@@ -139,28 +151,79 @@ func (a *Aggregator) metaTools() []mcpserver.ServerTool {
 
 // metaOnlyFilter 是 meta 列表模式的工具可见性过滤器。
 //
-// mcp-go 的 list 与 call 共用这条链：list 传完整列表，call 传只含被请求
-// 那个工具的单元素切片。因此 len==1 就是 call 路径——一律放行，
-// 否则只保留 hub__* 前缀的 meta-tool。
+// mcp-go 的 list 与 call 共用这条过滤器链，但两条路径要区别对待：
+//   - list：传入端点上已注册的全部工具。meta 模式下只列元工具——下游工具
+//     靠 hub__search_tools 发现，列表小、AI 规划轮次少。
+//   - call：只传入被请求的那一个工具。被请求的工具一律放行，否则下游工具
+//     就再也调不到了（meta 模式下它们仍然可按对外全名直接调用）。
+//
+// 旧实现用 len(tools)==1 猜哪条路径：端点上恰好只注册了一个工具时，列表
+// 会被当成调用整份放行——下游工具直接露给 AI，连"路由表兜底"那层判断都
+// 被跳过。判断"是不是元工具"更是靠工具名反推（hub__ 前缀 + 路由表里没有
+// 同名条目）：存量 server（key 取 hub）的工具恰好同名时，真元工具反而被
+// 当成下游工具摘掉，列表里凭空少一个元工具。
+//
+// 现在两处都改成显式依据：
+//   - 哪个是元工具：看注册时登记的元工具名单（见 metaNames），不靠名字反推；
+//   - 走的是哪条路径：看输入里有没有元工具——列表必然带全部元工具；调用
+//     路径最多带一个，而调用元工具时两种解释的结论一致（都保留它）。
 func (a *Aggregator) metaOnlyFilter(_ context.Context, tools []mcp.Tool) []mcp.Tool {
+	if a.containsMetaTool(tools) {
+		// 列表路径：只留元工具。
+		return a.keepMetaTools(tools)
+	}
 	if len(tools) == 1 {
+		// 调用路径：被请求的那个工具，放行。
+		//
+		// 端点上只注册了一个工具时，列表与调用交给过滤器的输入完全一样，
+		// 没法区分。这里保留旧行为：宁可多列一个工具，也不能让工具调不到。
 		return tools
 	}
-	// 真元工具永远不会出现在路由表里：路由表装的全是下游工具。
-	// 配置层已禁止 serverKey 取 "hub"，这里用路由表兜住校验生效之前
-	// 就存在的存量行——否则那台 server 的工具会一直冒充元工具露给 AI。
-	snap := a.reg.Current()
+	// 列表路径，但端点上还没有元工具（还没注册）：列表里没有任何该露的东西。
+	return a.keepMetaTools(tools)
+}
+
+// containsMetaTool 报告输入里有没有元工具。
+//
+// 这是 list 与 call 两条路径的分界信号：列表路径带全部元工具，调用路径
+// 最多带一个（而且那一个被调用的是元工具时，两种解释的结论一致）。
+func (a *Aggregator) containsMetaTool(tools []mcp.Tool) bool {
+	names := a.metaNameSet()
+	if len(names) == 0 {
+		return false
+	}
+	for _, t := range tools {
+		if _, ok := names[t.Name]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// keepMetaTools 只保留元工具，其余（下游工具）剔除。
+//
+// 下游工具即便顶着 hub__ 前缀也不留：它不是网关自带的元工具，只是名字
+// 撞了。撞名时占住这个名字的是真元工具——它后注册，mcp-go 的工具表按名字
+// 去重、后注册的覆盖先注册的（见 Refresh）。所以这里剔掉的确实是下游
+// 工具，而不是把真元工具误伤掉。
+func (a *Aggregator) keepMetaTools(tools []mcp.Tool) []mcp.Tool {
+	names := a.metaNameSet()
 	out := make([]mcp.Tool, 0, len(tools))
 	for _, t := range tools {
-		if !strings.HasPrefix(t.Name, MetaPrefix) {
-			continue
+		if _, ok := names[t.Name]; ok {
+			out = append(out, t)
 		}
-		if _, isDownstream := snap.Lookup(t.Name); isDownstream {
-			continue
-		}
-		out = append(out, t)
 	}
 	return out
+}
+
+// metaNameSet 返回当前已注册的元工具名集合。永不为 nil（未注册时为空集）。
+func (a *Aggregator) metaNameSet() map[string]struct{} {
+	set := a.metaNames.Load()
+	if set == nil {
+		return nil
+	}
+	return set.names
 }
 
 // MCP 返回底层 MCP server，供 HTTP 层挂载。
@@ -181,13 +244,26 @@ func (a *Aggregator) Refresh() *registry.Snapshot {
 	// meta-tool 与聚合工具必须在同一次 SetTools 里注册：全量替换，
 	// 漏掉就等于下次刷新时把它们从端点上抹掉。
 	meta := a.metaTools()
+
+	// 记下元工具名单：过滤器据此判断"哪个工具是元工具"，不再靠工具名反推。
+	names := make(map[string]struct{}, len(meta))
+	for _, m := range meta {
+		names[m.Tool.Name] = struct{}{}
+	}
+	a.metaNames.Store(&metaNameSet{names: names})
+
 	entries := make([]mcpserver.ServerTool, 0, len(snap.Tools())+len(meta))
-	entries = append(entries, meta...)
+	// 下游工具先注册、元工具后注册：同名时元工具胜出。
+	//
+	// hub__* 是网关的保留命名空间。存量 server（key 取 hub）的工具恰好同名时，
+	// 让真元工具占住这个名字——否则真元工具被挤掉（列表里凭空少一个元工具），
+	// 下游工具反倒冒充成元工具露给 AI。
 	for _, t := range snap.Tools() {
 		// 所有工具共用同一个 handler（按请求里的工具名反查路由）：
 		// 每个工具各配一个闭包会让每次刷新重建上千个函数值。
 		entries = append(entries, mcpserver.ServerTool{Tool: t, Handler: a.callTool})
 	}
+	entries = append(entries, meta...)
 
 	// 指纹覆盖整份待注册列表，而不只是下游工具。
 	//
