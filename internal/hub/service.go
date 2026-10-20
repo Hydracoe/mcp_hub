@@ -225,7 +225,8 @@ func (s *Service) refreshAgg() {
 	s.retr.RebuildIndex(context.Background())
 	// 增量 embed 重建：语料未变时零 API 成本（hash 比对），
 	// 让新增 server/工具、描述变更在下一个刷新周期内自动获得向量。
-	// Rebuild 自带重入保护，并发调用直接返回现状。
+	// Rebuild 自带重入保护：已有重建在跑时直接返回 skipped 状态，
+	// 不排队也不等待——这里是后台重建，等它没有意义。
 	if em := s.retr.Embedder(); em != nil {
 		go em.Rebuild(context.Background())
 	}

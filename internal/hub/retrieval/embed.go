@@ -73,11 +73,20 @@ const (
 	RebuildRunning RebuildState = "running"
 	RebuildDone    RebuildState = "done"
 	RebuildFailed  RebuildState = "failed"
+	// RebuildSkipped 表示"本次调用没有真正开始重建"：已有一次重建在跑。
+	//
+	// 它是调用级别的结果而不是重建的生命周期状态——管理器自己的状态
+	// 仍然是 running（见 Status）。有了它，调用方不必再靠"返回值是不是
+	// running"去猜：重复调用拿到的就是 skipped，绝不会被误读成"已完成"。
+	RebuildSkipped RebuildState = "skipped"
 )
 
 // RebuildStatus 是一次向量重建的进度与结果，用于日志与启动自检。
 // Ready 是"这一代可用了"的判定：无失败且有语料的全部工具在本代下都已
 // 有向量。Reconcile 用它决定能不能把上一代的向量清掉。
+//
+// State 为 RebuildSkipped 时，这次调用没有执行重建（已有重建在跑），
+// 其余字段是"在跑的那次"的进度快照，Message 说明为什么被跳过。
 type RebuildStatus struct {
 	State     RebuildState
 	Total     int

@@ -17,13 +17,28 @@ import (
 // Rebuild 对当前代做增量（重）嵌入（PRD §4.7.5）。
 //
 // corpus_hash 没变的跳过，成本与变更量成正比；单批失败保留旧向量并继续，
-// 重建失败不抹掉已有能力。同一时刻只有一个重建在跑，重复调用直接返回进度。
+// 重建失败不抹掉已有能力。
+//
+// 同一时刻只有一个重建在跑。已有重建在进行时，本次调用既不排队也不等待
+// （探活每轮都调它，排队会把探活周期拖长），而是立刻返回
+// RebuildSkipped 状态——调用方据此明确知道"已经有一次重建在进行"，
+// 而不是把在跑那次的进度快照误读成"重建已完成"。
+//
+// 重建全程使用调用方传入的 ctx：调用方取消后，在途的 embed 批次随之
+// 取消（保留旧向量），这次重建以失败收场，不会假装成功。
 // 探活循环每轮调用它：补新工具向量、重嵌变更语料、清理死工具向量。
 func (m *EmbedManager) Rebuild(ctx context.Context) RebuildStatus {
 	m.mu.Lock()
 	if m.status.State == RebuildRunning {
 		st := m.status
 		m.mu.Unlock()
+		// 只改本次调用的返回值，管理器自己的状态仍是 running。
+		st.State = RebuildSkipped
+		st.Ready = false
+		st.Message = "已有向量重建在进行中，本次调用已跳过"
+		if st.Total > 0 {
+			st.Message = fmt.Sprintf("%s（当前进度 %d/%d）", st.Message, st.Done, st.Total)
+		}
 		return st
 	}
 	e := m.embedder
@@ -208,6 +223,12 @@ func (m *EmbedManager) coverageOf(ctx context.Context, gen embeddings.Generation
 // 旧代再重启"时可以直接就绪，不必重新花一遍嵌入的钱。
 func (m *EmbedManager) Reconcile(ctx context.Context) RebuildStatus {
 	st := m.Rebuild(ctx)
+	if st.State == RebuildSkipped {
+		// 已有重建在跑：对账这次什么也没做。不能按"当前代没补齐"下结论——
+		// 在跑的那次结束后状态会自己落定，当前代到底就绪没有要等它。
+		m.log.Info("向量对账跳过：已有向量重建在进行中")
+		return st
+	}
 	staleRows := m.otherGenerationRows(ctx)
 	if st.Ready {
 		if staleRows > 0 {

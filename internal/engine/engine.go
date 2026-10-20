@@ -231,6 +231,11 @@ func (e *Engine) attachEmbedding() {
 			zap.Int("covered", st.Covered),
 			zap.String("message", st.Message),
 		}
+		if st.State == retrieval.RebuildSkipped {
+			// 已有重建在跑：对账这次没做事，不等于"没就绪"。
+			e.log.Info("向量对账跳过，已有向量重建在进行中", fields...)
+			return
+		}
 		if st.Ready {
 			e.log.Info("向量对账完成", fields...)
 			return
