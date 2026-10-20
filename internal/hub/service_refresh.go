@@ -209,6 +209,36 @@ func (e *CategoryRequiredError) Error() string {
 	return "新建 server 必须指定分类"
 }
 
+// isNewServer 判断这次写入是"新建"还是"更新已有记录"。
+//
+// 判据是"这条记录在不在"，不是"这个 key 在不在"：更新路径带着已知的
+// id（改了 key 也是原地更新，同一行换前缀），按 key 查会查不到，于是
+// 一次更新被误判成新建——新建要校验分类，于是"改个 key"就被"必须
+// 指定分类"挡住，返回的 Created 标志也成了错的。
+//
+// id 为空的创建路径按 key 判重：POST ?upsert=1 覆盖已有 key 时它已有
+// 记录，同样不是新建。
+func (s *Service) isNewServer(ctx context.Context, cfg servers.Config) (bool, error) {
+	if cfg.Spec.ID != "" {
+		_, err := s.store.Servers.Get(ctx, cfg.Spec.ID)
+		if err == nil {
+			return false, nil
+		}
+		if errors.Is(err, storeutil.ErrNotFound) {
+			return true, nil
+		}
+		return false, err
+	}
+	_, err := s.store.Servers.GetByKey(ctx, cfg.Spec.Key)
+	if err == nil {
+		return false, nil
+	}
+	if errors.Is(err, storeutil.ErrNotFound) {
+		return true, nil
+	}
+	return false, err
+}
+
 // ApplyServer 写入一个新 server 或更新已有配置，并让它立即生效。
 //
 // 要不要重建连接取决于目标是否换了，判据是 ConnFingerprint：换密钥、
@@ -219,9 +249,14 @@ func (e *CategoryRequiredError) Error() string {
 // 新建时分类必填（PRD §4.7.3）：显式指定则校验存在性；未指定且嵌入已
 // 启用则先跑自动归类，top-1 过阈值即应用；都落空则返回
 // CategoryRequiredError（带候选），不落库。
+//
+// 改 key 仍是更新：改的是同一行的前缀，不是新建一条，所以不走上面
+// 那套新建校验（判据见 isNewServer）。
 func (s *Service) ApplyServer(ctx context.Context, cfg servers.Config) (*ApplyResult, error) {
-	_, gerr := s.store.Servers.GetByKey(ctx, cfg.Spec.Key)
-	created := errors.Is(gerr, storeutil.ErrNotFound)
+	created, err := s.isNewServer(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	// 分类校验在 upsert 之前做：落库后才发现缺分类，要么删行回滚
 	// （多一次写、一个竞态窗口），要么留下脏行。

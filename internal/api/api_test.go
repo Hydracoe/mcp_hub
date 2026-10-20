@@ -824,6 +824,51 @@ func TestDuplicateKeyIsConflict(t *testing.T) {
 	}
 }
 
+// PUT 改 key 是原地更新，不是新建：改的是同一行的前缀。
+//
+// 新建要校验分类（PRD §4.7.3），更新不要——否则"改个 key"会被
+// "新建 server 必须指定分类"挡住：请求体里没带分类的编辑根本提交不了。
+func TestUpdateServerKeyChangeIsUpdate(t *testing.T) {
+	e := newEnv(t, httpd.Options{})
+	ds := startDownstream(t, "x")
+
+	var created serverResp
+	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
+		"key": "oldkey", "transport": "streamable_http", "url": ds,
+		"categoryId": e.mustCategory(),
+	}, http.StatusCreated, &created)
+
+	// 改 key，请求体不带分类：嵌入未启用时，走新建路径必然被拒。
+	var updated serverResp
+	e.mustJSON(http.MethodPut, "/api/servers/"+created.ID, map[string]any{
+		"key": "newkey", "transport": "streamable_http", "url": ds,
+	}, http.StatusOK, &updated)
+	if updated.Key != "newkey" {
+		t.Errorf("回显的 key = %q, 期望 newkey", updated.Key)
+	}
+	if updated.ID != created.ID {
+		t.Errorf("改 key 应原地更新同一行: id=%s want %s", updated.ID, created.ID)
+	}
+
+	// 新 key 可查，老 key 查不到，且没有多出一条。
+	saved, err := e.store.Servers.GetByKey(context.Background(), "newkey")
+	if err != nil {
+		t.Fatalf("新 key 查不到: %v", err)
+	}
+	if saved.Spec.ID != created.ID {
+		t.Errorf("新 key 应指向同一条记录: id=%s want %s", saved.Spec.ID, created.ID)
+	}
+	if _, err := e.store.Servers.GetByKey(context.Background(), "oldkey"); err == nil {
+		t.Errorf("老 key 应已被换掉")
+	}
+
+	var list serverListResp
+	e.get("/api/servers", &list)
+	if list.Total != 1 {
+		t.Errorf("改 key 后 server 数 = %d, 期望 1", list.Total)
+	}
+}
+
 // --- 鉴权 ---
 
 func TestAPIKeyProtectsAdminEndpoints(t *testing.T) {
