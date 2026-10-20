@@ -132,8 +132,9 @@ func (c *Conn) connect(waitCtx context.Context) (*mcpclient.Client, *Recorder, N
 
 	// Start 放在独立 goroutine 里跑：stdio 的 Start 会一直等到子进程就绪，
 	// 如果命令挂住，我们不能连"放弃等待"都做不到。
+	startCtx := c.startCtx(waitCtx)
 	started := make(chan error, 1)
-	go func() { started <- client.Start(c.lifeCtx) }()
+	go func() { started <- client.Start(startCtx) }()
 
 	select {
 	case err := <-started:
@@ -182,6 +183,25 @@ func (c *Conn) connect(waitCtx context.Context) (*mcpclient.Client, *Recorder, N
 	}
 
 	return client, rec, negotiated, nil
+}
+
+// startCtx 返回传输层 Start 使用的 ctx。
+//
+// 生命周期必须归 lifeCtx：SSE 的事件流、stdio 的子进程都跟着它走，不能被单次
+// 调用取消。但 Start 同时是远程传输的首次握手，传输层会从传入的 ctx 上读凭据
+// （见 headerFunc）。密钥池模式下凭据只在本次 Dial 的 waitCtx 上，lifeCtx 里没有，
+// 于是握手会裸奔并收到 401——上层还会把它算成"这把密钥无效"。
+//
+// 因此只把凭据值补进 lifeCtx 的派生 ctx，取消来源仍只有 lifeCtx。
+func (c *Conn) startCtx(waitCtx context.Context) context.Context {
+	if !c.spec.IsRemote() {
+		return c.lifeCtx
+	}
+	h := credentialHeadersFrom(waitCtx)
+	if h == nil {
+		return c.lifeCtx
+	}
+	return context.WithValue(c.lifeCtx, credentialCtxKey{}, h)
 }
 
 // ListTools 拉取下游的完整工具清单。
