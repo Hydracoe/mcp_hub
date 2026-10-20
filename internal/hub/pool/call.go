@@ -71,6 +71,9 @@ func (p *Pool) Get(ctx context.Context, spec downstream.Spec) (*downstream.Conn,
 		verdict := downstream.VerdictOf(kind, downstream.CallErrorObservation(err))
 		if !verdict.Retryable() {
 			p.recordFailure(spec.ID, kind, err.Error(), kind == downstream.KindTimeout)
+			// 这次失败已经记过账了。标出来，外层拿到同一个错误时就不该再记
+			// 一次——一次失败被当成两次，退避窗口会翻倍，可用密钥也会被过快淘汰。
+			return nil, &countedFailure{err: err}
 		}
 		return nil, err
 	}
@@ -302,6 +305,31 @@ func (p *Pool) noteFailure(spec downstream.Spec, err error, verdict downstream.K
 		p.Drop(spec.ID)
 		return
 	}
+	// 拨号失败已经在 Get 里记过账：同一次失败只能计一次。
+	// 两条路径都会记的话，一次失败被算成两次，退避窗口翻倍、密钥淘汰翻倍。
+	if alreadyCounted(err) {
+		return
+	}
 	kind := downstream.CallErrorKind(err)
 	p.recordFailure(spec.ID, kind, err.Error(), kind == downstream.KindTimeout)
+}
+
+// countedFailure 标记"这次失败已经记过账了"。
+//
+// 拨号失败由 Get 记账：那里同时握着错误分类与密钥判决，只有它能分清
+// "这是连接级失败（该让 server 退避）"还是"这是密钥级失败（换一把就好）"。
+// 同一个错误继续往上传到 runWithKeys 时，那里若再记一次，一次失败就被
+// 当成两次——退避窗口翻倍，可用密钥被过快淘汰。
+type countedFailure struct{ err error }
+
+func (e *countedFailure) Error() string { return e.err.Error() }
+
+// Unwrap 让 errors.Is / errors.As 能穿透到原始错误：
+// 分类与观测都还在原始的 CallError 里，不能被这层标记吃掉。
+func (e *countedFailure) Unwrap() error { return e.err }
+
+// alreadyCounted 报告这次失败是否已经记过账。
+func alreadyCounted(err error) bool {
+	var cf *countedFailure
+	return errors.As(err, &cf)
 }
