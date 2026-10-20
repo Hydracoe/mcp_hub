@@ -115,6 +115,26 @@ type Service struct {
 	// last_used_at 的落库节流（见 touchAPIKey）。
 	touchMu   sync.Mutex
 	touchLast map[string]time.Time
+
+	// credWriteMu 是凭据写路径（新增/编辑/导入/删除）的互斥锁。
+	//
+	// 同值检测与落库必须在同一个临界区里完成：否则两个并发的同值
+	// 新增都能通过检测，库里最终留下两份同值凭据——而同值凭据本该
+	// 被拒（白占轮换名额、把限流压力集中到同一个上游身份）。
+	//
+	// 一把全局锁而不是按 server 分锁：同值检测跨 server（同一份凭据
+	// 不许配到两个 server 上），按 server 分锁挡不住跨 server 的那一种。
+	//
+	// 临界区只覆盖"检测 + 落库 + 同步密钥池"：探活/试测要走网络，
+	// 不能被一把锁挡住（见 AddCredential / ImportCredentials）。
+	credWriteMu sync.Mutex
+
+	// credCheckedHook 是测试接缝：在写临界区内、同值检测通过之后、
+	// 真正落库之前被调用。生产恒为 nil。
+	//
+	// 存在的理由："两个并发写入都通过了检测"是竞态，靠 sleep 复现
+	// 不了——测试需要一个办法把两个调用同时卡在"检测"与"写入"之间。
+	credCheckedHook func()
 }
 
 // Options 是 NewServiceWithOptions 的可选参数。

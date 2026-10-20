@@ -50,11 +50,40 @@ func (s *Service) AddCredential(ctx context.Context, serverID string, in Credent
 	if err != nil {
 		return credentials.Credential{}, err
 	}
-	if err := s.rejectDuplicateHeaders(ctx, serverID, "", in.Headers, in.Label); err != nil {
+
+	c, err := s.addCredential(ctx, sv, in)
+	if err != nil {
 		return credentials.Credential{}, err
 	}
+	s.log.Info("密钥已添加",
+		zap.String("server", sv.Spec.Key),
+		zap.String("credential", c.LabelOrFallback()),
+		zap.String("id", c.ID))
+	// O2：保存后自动试测一次（只读探活）。结果只记日志不改状态——
+	// 失败可能只是下游在抖，"禁用"的判决留给在线结算。
+	//
+	// 试测在写临界区之外：它要连一次下游（握手 + tools/list），
+	// 慢操作不该把凭据写路径整条锁住。
+	s.asyncTestCredential(sv.Spec, c)
+	return c, nil
+}
+
+// addCredential 是新增密钥的写路径：同值检测 + 落库 + 同步密钥池，
+// 三步在同一个临界区内完成（见 Service.credWriteMu）。
+//
+// 检测与落库必须原子：中间插一个并发写入，两个同值的新增会双双通过
+// 检测，库里就留下两份同值凭据。
+func (s *Service) addCredential(ctx context.Context, sv servers.Server, in CredentialSpec) (credentials.Credential, error) {
+	s.credWriteMu.Lock()
+	defer s.credWriteMu.Unlock()
+
+	if err := s.rejectDuplicateHeaders(ctx, sv.Spec.ID, "", in.Headers, in.Label); err != nil {
+		return credentials.Credential{}, err
+	}
+	s.credChecked()
+
 	c, err := s.store.Credentials.Insert(ctx, credentials.Credential{
-		ServerID: serverID,
+		ServerID: sv.Spec.ID,
 		Label:    strings.TrimSpace(in.Label),
 		Headers:  in.Headers,
 		Enabled:  true,
@@ -63,14 +92,9 @@ func (s *Service) AddCredential(ctx context.Context, serverID string, in Credent
 	if err != nil {
 		return credentials.Credential{}, err
 	}
-	s.log.Info("密钥已添加",
-		zap.String("server", sv.Spec.Key),
-		zap.String("credential", c.LabelOrFallback()),
-		zap.String("id", c.ID))
-	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, serverID)
-	// O2：保存后自动试测一次（只读探活）。结果只记日志不改状态——
-	// 失败可能只是下游在抖，"禁用"的判决留给在线结算。
-	s.asyncTestCredential(sv.Spec, c)
+	// 密钥池同步留在临界区内：它按库里的全量凭据覆盖池子，与写并行
+	// 会出现"旧快照后到、把新凭据覆盖掉"的错位。
+	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, sv.Spec.ID)
 	return c, nil
 }
 
@@ -84,9 +108,34 @@ func (s *Service) ImportCredentials(ctx context.Context, serverID string, in []C
 		return nil, nil
 	}
 
+	out, err := s.importCredentials(ctx, sv, in)
+	if err != nil {
+		return nil, err
+	}
+	s.log.Info("密钥已批量导入",
+		zap.String("server", sv.Spec.Key), zap.Int("count", len(out)))
+	// O2：批量导入逐把自动试测。并发有上限（见 testCredentialsBounded）：
+	// 逐把一个 goroutine 的写法在导入几十把密钥时会让几十个探活同时打向
+	// 下游，既是突发流量（可能触发限流甚至封禁），也让"哪一把出了问题"
+	// 难以分辨。
+	//
+	// 顺序不变：先落库、再同步密钥池、最后才试测——试测发生在密钥池已经是
+	// 最新一批之后，不会出现"库里没有、池里已经在了"的错位。
+	//
+	// 试测在写临界区之外（慢操作不占着写锁）。
+	s.testCredentialsBounded(sv.Spec, out)
+	return out, nil
+}
+
+// importCredentials 是批量导入的写路径：同值检测 + 落库 + 同步密钥池，
+// 三步在同一个临界区内完成（见 Service.credWriteMu）。
+func (s *Service) importCredentials(ctx context.Context, sv servers.Server, in []CredentialSpec) ([]credentials.Credential, error) {
+	s.credWriteMu.Lock()
+	defer s.credWriteMu.Unlock()
+
 	// O3：批量导入同样要拦同值密钥——批量粘贴是"同一个 Key 粘两遍"的
 	// 高发场景。对比范围：本 server 存量、其他 server 存量（K7）、本批次内部。
-	existing, err := s.store.Credentials.List(ctx, serverID)
+	existing, err := s.store.Credentials.List(ctx, sv.Spec.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +151,7 @@ func (s *Service) ImportCredentials(ctx context.Context, serverID string, in []C
 	}
 	for _, others := range all {
 		for _, c := range others {
-			if c.ServerID != serverID && len(c.Headers) > 0 {
+			if c.ServerID != sv.Spec.ID && len(c.Headers) > 0 {
 				seen = append(seen, canonicalHeaders(c.Headers))
 			}
 		}
@@ -119,6 +168,7 @@ func (s *Service) ImportCredentials(ctx context.Context, serverID string, in []C
 		}
 		seen = append(seen, cand)
 	}
+	s.credChecked()
 
 	creds := make([]credentials.Credential, 0, len(in))
 	for _, item := range in {
@@ -130,21 +180,12 @@ func (s *Service) ImportCredentials(ctx context.Context, serverID string, in []C
 		})
 	}
 
-	out, err := s.store.Credentials.InsertBatch(ctx, serverID, creds)
+	out, err := s.store.Credentials.InsertBatch(ctx, sv.Spec.ID, creds)
 	if err != nil {
 		return nil, err
 	}
-	s.log.Info("密钥已批量导入",
-		zap.String("server", sv.Spec.Key), zap.Int("count", len(out)))
-	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, serverID)
-	// O2：批量导入逐把自动试测。并发有上限（见 testCredentialsBounded）：
-	// 逐把一个 goroutine 的写法在导入几十把密钥时会让几十个探活同时打向
-	// 下游，既是突发流量（可能触发限流甚至封禁），也让"哪一把出了问题"
-	// 难以分辨。
-	//
-	// 顺序不变：先落库、再同步密钥池、最后才试测——试测发生在密钥池已经是
-	// 最新一批之后，不会出现"库里没有、池里已经在了"的错位。
-	s.testCredentialsBounded(sv.Spec, out)
+	// 密钥池同步留在临界区内（理由同 addCredential）。
+	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, sv.Spec.ID)
 	return out, nil
 }
 
@@ -156,7 +197,27 @@ func (s *Service) UpdateCredential(ctx context.Context, serverID, credID string,
 	if err != nil {
 		return credentials.Credential{}, err
 	}
-	existing, err := s.credentialOf(ctx, serverID, credID)
+
+	saved, err := s.updateCredential(ctx, sv, credID, in)
+	if err != nil {
+		return credentials.Credential{}, err
+	}
+	s.log.Info("密钥已更新",
+		zap.String("server", sv.Spec.Key),
+		zap.String("credential", saved.LabelOrFallback()),
+		zap.String("id", credID))
+	return saved, nil
+}
+
+// updateCredential 是编辑密钥的写路径：读旧值 + 同值检测 + 落库 +
+// 同步密钥池，在同一个临界区内完成（见 Service.credWriteMu）。
+//
+// 读旧值也放进临界区：否则可能拿一份过期的旧值去覆盖别人刚写的内容。
+func (s *Service) updateCredential(ctx context.Context, sv servers.Server, credID string, in CredentialSpec) (credentials.Credential, error) {
+	s.credWriteMu.Lock()
+	defer s.credWriteMu.Unlock()
+
+	existing, err := s.credentialOf(ctx, sv.Spec.ID, credID)
 	if err != nil {
 		return credentials.Credential{}, err
 	}
@@ -168,21 +229,20 @@ func (s *Service) UpdateCredential(ctx context.Context, serverID, credID string,
 	existing.RPMLimit = max(in.RPMLimit, 0)
 
 	// O3：编辑同样不放过同值——把 A 改成和 B 一样，等于绕过新增时的检测。
-	if err := s.rejectDuplicateHeaders(ctx, serverID, credID, existing.Headers, existing.Label); err != nil {
+	if err := s.rejectDuplicateHeaders(ctx, sv.Spec.ID, credID, existing.Headers, existing.Label); err != nil {
 		return credentials.Credential{}, err
 	}
+	s.credChecked()
+
 	if err := s.store.Credentials.Update(ctx, existing); err != nil {
 		return credentials.Credential{}, err
 	}
-	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, serverID)
-	saved, err := s.credentialOf(ctx, serverID, credID)
+	// 密钥池同步留在临界区内（理由同 addCredential）。
+	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, sv.Spec.ID)
+	saved, err := s.credentialOf(ctx, sv.Spec.ID, credID)
 	if err != nil {
 		return existing, err
 	}
-	s.log.Info("密钥已更新",
-		zap.String("server", sv.Spec.Key),
-		zap.String("credential", saved.LabelOrFallback()),
-		zap.String("id", credID))
 	return saved, nil
 }
 
@@ -192,10 +252,16 @@ func (s *Service) DeleteCredential(ctx context.Context, serverID, credID string)
 	if err != nil {
 		return err
 	}
+	key := s.serverKey(ctx, serverID)
+
+	// 删除也进写临界区：它会让一把凭据从"同值检测"的对比范围里消失，
+	// 与检测并行会让同一次保存既看到它又看不到它。
+	s.credWriteMu.Lock()
+	defer s.credWriteMu.Unlock()
+
 	if err := s.store.Credentials.Delete(ctx, credID); err != nil {
 		return err
 	}
-	key := s.serverKey(ctx, serverID)
 	s.log.Info("密钥已删除",
 		zap.String("server", key),
 		zap.String("credential", cred.LabelOrFallback()),
@@ -399,6 +465,16 @@ func (s *Service) credentialOf(ctx context.Context, serverID, credID string) (cr
 }
 
 // --- 内部 ---
+
+// credChecked 是写路径上的测试接缝：在同值检测通过之后、真正落库之前
+// 被调用，且仍在写临界区内（见 Service.credCheckedHook）。
+//
+// 生产路径上它是一个空判断。
+func (s *Service) credChecked() {
+	if s.credCheckedHook != nil {
+		s.credCheckedHook()
+	}
+}
 
 // rejectDuplicateHeaders 在保存前检测同值密钥（O3 / K6 / K7）。
 // excludeID 是编辑场景里要跳过的自己（新增时传空）。头名按 HTTP 惯例

@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -304,5 +305,172 @@ func TestAddCredentialProbesExactlyOnce(t *testing.T) {
 	ring := svc.pool.KeyRing(serverID)
 	if ring == nil || ring.Len() != 1 {
 		t.Errorf("密钥池应有 1 把密钥，实际 %v", ring)
+	}
+}
+
+// --- 同值检测与写入之间的竞态 ---
+
+// dupBarrier 是一个"两边都到齐才放行"的同步点。
+//
+// 它存在的理由：同值检测是"先读库判断、再写库"两步，中间没有互斥，
+// 两个并发的同值写入会双双通过检测。用 sleep 制造交错是靠不住的，
+// 必须有一个能同时卡住两个调用的同步点——credCheckedHook 正是写
+// 路径上"检测已过、尚未落库"的那个位置。
+//
+// 到达人数不足时按超时放行：修好之后第二个调用被写锁挡在临界区外，
+// 根本到不了这里，等它等到天亮不如到点就走（用例照样能断言结果）。
+type dupBarrier struct {
+	mu      sync.Mutex
+	arrived int
+	want    int
+	gate    chan struct{}
+	wait    time.Duration
+}
+
+// newDupBarrier 造一个"want 个调用到齐才放行"的同步点。
+func newDupBarrier(want int, wait time.Duration) *dupBarrier {
+	return &dupBarrier{want: want, gate: make(chan struct{}), wait: wait}
+}
+
+// arrive 报告一个调用到达同步点，等齐（或超时）后返回。
+func (b *dupBarrier) arrive() {
+	b.mu.Lock()
+	b.arrived++
+	if b.arrived >= b.want {
+		select {
+		case <-b.gate:
+		default:
+			close(b.gate)
+		}
+	}
+	b.mu.Unlock()
+
+	timer := time.NewTimer(b.wait)
+	defer timer.Stop()
+	select {
+	case <-b.gate:
+	case <-timer.C:
+	}
+}
+
+// 并发新增同一份凭据：只能有一个成功，另一个必须被判为重复。
+//
+// 修好之前：两个调用都在"检测已过、尚未落库"的位置被同步点卡住，
+// 一起落库 → 库里两份同值凭据 → 用例失败。
+// 修好之后：写路径进了临界区，第二个调用根本进不来，它会看到第一个
+// 刚写进去的那份并被拒（ErrDuplicateCredential）。
+func TestAddCredentialConcurrentSameHeadersRejected(t *testing.T) {
+	svc, st, _ := newCredentialTestSvc(t)
+	ctx := context.Background()
+	serverID := seedRemoteServer(t, st, "dupsrv")
+
+	svc.probeFn = func(pctx context.Context, spec downstream.Spec) *downstream.ProbeResult {
+		return &downstream.ProbeResult{OK: true, ToolCount: 1}
+	}
+
+	barrier := newDupBarrier(2, 300*time.Millisecond)
+	svc.credCheckedHook = barrier.arrive
+
+	// 两个调用的 label 必须不同：label 有唯一索引兜底（那把 label 冲突
+	// 会先炸出来，掩盖住同值检测这条路径）。这里要验的是"请求头完全
+	// 相同"这一条——同一个上游身份配两把密钥。
+	labels := []string{"first", "second"}
+	sameHeaders := map[string]string{"Authorization": "Bearer same-token"}
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func(i int) {
+			<-start
+			_, err := svc.AddCredential(ctx, serverID, CredentialSpec{
+				Label:   labels[i],
+				Headers: sameHeaders,
+			})
+			results <- err
+		}(i)
+	}
+	close(start)
+
+	var ok, dup int
+	for i := 0; i < 2; i++ {
+		err := <-results
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrDuplicateCredential):
+			dup++
+		default:
+			t.Fatalf("并发新增返回了非预期的错误: %v", err)
+		}
+	}
+	if ok != 1 || dup != 1 {
+		t.Errorf("成功 %d 次、被判重复 %d 次，期望各 1 次", ok, dup)
+	}
+
+	list, err := st.Credentials.List(ctx, serverID)
+	if err != nil {
+		t.Fatalf("读取密钥列表失败: %v", err)
+	}
+	if len(list) != 1 {
+		t.Errorf("库里 %d 把密钥，期望 1 把（同值凭据不该留下两份）", len(list))
+	}
+}
+
+// 并发批量导入同一份凭据：同样只能有一个成功。
+//
+// 批量导入是"同一个 Key 粘两遍"的高发场景，这条路径的同值检测是
+// 内联实现（见 importCredentials），同样必须在临界区内。
+func TestImportCredentialsConcurrentSameHeadersRejected(t *testing.T) {
+	svc, st, _ := newCredentialTestSvc(t)
+	ctx := context.Background()
+	serverID := seedRemoteServer(t, st, "dupimport")
+
+	svc.probeFn = func(pctx context.Context, spec downstream.Spec) *downstream.ProbeResult {
+		return &downstream.ProbeResult{OK: true, ToolCount: 1}
+	}
+
+	barrier := newDupBarrier(2, 300*time.Millisecond)
+	svc.credCheckedHook = barrier.arrive
+
+	// label 不同、请求头相同（理由同上一个用例：label 冲突会先被唯一
+	// 索引拦下，掩盖住同值检测这条路径）。
+	sameHeaders := map[string]string{"Authorization": "Bearer same-token"}
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func(i int) {
+			<-start
+			_, err := svc.ImportCredentials(ctx, serverID, []CredentialSpec{{
+				Label:   fmt.Sprintf("batch-%d", i),
+				Headers: sameHeaders,
+			}})
+			results <- err
+		}(i)
+	}
+	close(start)
+
+	var ok, dup int
+	for i := 0; i < 2; i++ {
+		err := <-results
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrDuplicateCredential):
+			dup++
+		default:
+			t.Fatalf("并发导入返回了非预期的错误: %v", err)
+		}
+	}
+	if ok != 1 || dup != 1 {
+		t.Errorf("成功 %d 次、被判重复 %d 次，期望各 1 次", ok, dup)
+	}
+
+	list, err := st.Credentials.List(ctx, serverID)
+	if err != nil {
+		t.Fatalf("读取密钥列表失败: %v", err)
+	}
+	if len(list) != 1 {
+		t.Errorf("库里 %d 把密钥，期望 1 把（同值凭据不该留下两份）", len(list))
 	}
 }
