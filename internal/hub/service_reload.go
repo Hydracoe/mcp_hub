@@ -88,7 +88,15 @@ func (s *Service) syncKeyRings(ctx context.Context, srvs []servers.Server) error
 
 // reloadKeyRing 只同步一个 server 的密钥池：密钥增删改是逐 server 的
 // 操作，走全量 Reload 会顺带重扫所有 server 与工具缓存。
+//
+// Options.ReloadKeyRingFn 非空时由它替代本方法：那是测试用的接缝，
+// 用来复现"凭据写已落库、密钥池同步失败"这条路径（见
+// reloadKeyRingAfterCommit）。
 func (s *Service) reloadKeyRing(ctx context.Context, serverID string) error {
+	if s.reloadKeyRingFn != nil {
+		return s.reloadKeyRingFn(ctx, serverID)
+	}
+
 	sv, err := s.store.Servers.Get(ctx, serverID)
 	if err != nil {
 		return err

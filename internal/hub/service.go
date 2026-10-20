@@ -108,6 +108,10 @@ type Service struct {
 	// reloadFn 覆盖 Reload 的实现（见 Options.ReloadFn），生产恒为 nil。
 	reloadFn func(context.Context) error
 
+	// reloadKeyRingFn 覆盖 reloadKeyRing 的实现（见 Options.ReloadKeyRingFn），
+	// 生产恒为 nil。
+	reloadKeyRingFn func(context.Context, string) error
+
 	// last_used_at 的落库节流（见 touchAPIKey）。
 	touchMu   sync.Mutex
 	touchLast map[string]time.Time
@@ -129,6 +133,13 @@ type Options struct {
 	// 失败当成运行时状态问题（记 error 日志、缓存照常失效），而不是
 	// 把一次已经提交的写判成失败——库里已经有新配置了。只有测试会设置它。
 	ReloadFn func(context.Context) error
+	// ReloadKeyRingFn 替换单个 server 的密钥池同步（reloadKeyRing）的实现，
+	// 留空用 reloadKeyRing 本体。
+	//
+	// 它与 ReloadFn 是同一条思路的另一半：凭据的增删改只同步自己那个
+	// server 的密钥池，失败同样只是运行时状态没跟上（记 error 日志），
+	// 不该把一次已经提交的删除或启停报成失败。只有测试会设置它。
+	ReloadKeyRingFn func(context.Context, string) error
 }
 
 // NewServiceWithCache 用指定的缓存后端构造服务并完成首次聚合装载。
@@ -151,22 +162,23 @@ func NewServiceWithOptions(st *store.Store, logger *zap.Logger, opts Options) *S
 	}
 
 	s := &Service{
-		store:       st,
-		pool:        pool.NewPool(logger),
-		reg:         registry.NewRegistry(),
-		retr:        retrieval.NewEngine(st, logger),
-		log:         logger,
-		specMap:     make(map[string]downstream.Spec),
-		cache:       opts.Cache,
-		servers:     cache.NewTyped[[]servers.Server](opts.Cache, "hub:servers"),
-		stats:       cache.NewTyped[logs.CallStats](opts.Cache, "hub:stats"),
-		logCh:       make(chan logs.LogEntry, logQueueSize),
-		closeCh:     make(chan struct{}),
-		keyEventCh:  make(chan pool.KeyEvent, keyEventQueueSize),
-		probeSem:    make(chan struct{}, probeConcurrency),
-		credTestSem: make(chan struct{}, credentialTestConcurrency),
-		gate:        newBlockGate(opts.BlockAfterFails),
-		reloadFn:    opts.ReloadFn,
+		store:           st,
+		pool:            pool.NewPool(logger),
+		reg:             registry.NewRegistry(),
+		retr:            retrieval.NewEngine(st, logger),
+		log:             logger,
+		specMap:         make(map[string]downstream.Spec),
+		cache:           opts.Cache,
+		servers:         cache.NewTyped[[]servers.Server](opts.Cache, "hub:servers"),
+		stats:           cache.NewTyped[logs.CallStats](opts.Cache, "hub:stats"),
+		logCh:           make(chan logs.LogEntry, logQueueSize),
+		closeCh:         make(chan struct{}),
+		keyEventCh:      make(chan pool.KeyEvent, keyEventQueueSize),
+		probeSem:        make(chan struct{}, probeConcurrency),
+		credTestSem:     make(chan struct{}, credentialTestConcurrency),
+		gate:            newBlockGate(opts.BlockAfterFails),
+		reloadFn:        opts.ReloadFn,
+		reloadKeyRingFn: opts.ReloadKeyRingFn,
 	}
 
 	s.agg = aggregate.NewAggregator(aggregate.Deps{
