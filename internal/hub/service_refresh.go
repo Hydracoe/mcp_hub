@@ -251,15 +251,6 @@ func (s *Service) findExisting(ctx context.Context, cfg servers.Config) (servers
 	}
 }
 
-// isNewServer 判断这次写入是"新建"还是"更新已有记录"。
-func (s *Service) isNewServer(ctx context.Context, cfg servers.Config) (bool, error) {
-	_, found, err := s.findExisting(ctx, cfg)
-	if err != nil {
-		return false, err
-	}
-	return !found, nil
-}
-
 // checkCategoryExists 校验分类真实存在。
 //
 // 不存在时报领域错误（CategoryNotFoundError），让上层翻译成 400 而不是
@@ -291,12 +282,19 @@ func (s *Service) checkCategoryExists(ctx context.Context, id string) error {
 // 字段的保存里悄悄抹掉分类。
 //
 // 改 key 仍是更新：改的是同一行的前缀，不是新建一条，所以不走上面
-// 那套新建校验（判据见 isNewServer）。
+// 那套新建校验（判据见 findExisting）。
+//
+// 停用也要走完整套：把 server 关掉的这次写入同样要让连接退役
+// （见下面 !saved.Enabled 那段），否则编辑表单关掉的 server 与开关
+// 关掉的 server 行为不一致——连接还留在池子里继续被使用。
 func (s *Service) ApplyServer(ctx context.Context, cfg servers.Config) (*ApplyResult, error) {
-	created, err := s.isNewServer(ctx, cfg)
+	// 编辑前的状态：它既回答"这次是新建还是更新"，也回答"这次写入是不是
+	// 把一个正在服务的 server 关掉了"——后者决定连接要不要退役。
+	prev, found, err := s.findExisting(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
+	created := !found
 
 	// 分类校验在 upsert 之前做：落库后才发现缺分类，要么删行回滚
 	// （多一次写、一个竞态窗口），要么留下脏行。
@@ -339,10 +337,6 @@ func (s *Service) ApplyServer(ctx context.Context, cfg servers.Config) (*ApplyRe
 		case strings.TrimSpace(cfg.CategoryID) == "":
 			// 这次没提分类：沿用原分类。原分类可能是空的（存量未分类的
 			// server），那就还是空——不因为"没提"就凭空造一个分类出来。
-			prev, found, err := s.findExisting(ctx, cfg)
-			if err != nil {
-				return nil, err
-			}
 			if found {
 				cfg.CategoryID = prev.CategoryID
 			}
@@ -371,13 +365,26 @@ func (s *Service) ApplyServer(ctx context.Context, cfg servers.Config) (*ApplyRe
 		if err != nil {
 			return nil, err
 		}
+		// 连接要一起退役：停用后池子里那条常驻连接（长连接、stdio 子进程）
+		// 留着既不释放，还可能继续被用到——两条停用路径（开关与编辑）必须
+		// 同语义，与 SetEnabled 的停用分支同序：先让连接退场，再补记录。
+		//
+		// 只在"这次写入把 server 从启用变成停用"时退役：本来就停用的
+		// server 再编辑一次，池里本就没有它的连接；而误退役一个还在服务
+		// 的连接，会把正在跑的调用打断。
+		if prev.Enabled {
+			s.pool.Retire(saved.Spec.ID)
+			s.log.Info("server 已停用", zap.String("server", saved.Spec.Key))
+		}
 		s.recordCascadeDisable(ctx, saved.Spec.ID, saved.Spec.Key, flipped)
 	}
 
 	// 凭据热更新：把最新一份交给现有连接，下一个请求就用它，连接不动、
 	// 在飞调用不受影响——轮换密钥对调用方应当是隐形的。若这次同时动了
 	// 目标，下面的 Reload 会让这条连接退场，热更新白做一次，无害。
-	if s.pool.UpdateCredentials(saved.Spec.ID, saved.Spec.Headers) {
+	// 停用的 server 不做：连接已经退役，没有连接可更新，下次启用时自会
+	// 用最新配置建连。
+	if saved.Enabled && s.pool.UpdateCredentials(saved.Spec.ID, saved.Spec.Headers) {
 		s.log.Info("已热更新下游凭据", zap.String("server", saved.Spec.Key))
 	}
 
