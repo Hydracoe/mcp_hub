@@ -374,6 +374,8 @@ func (s *Service) ApplyServer(ctx context.Context, cfg servers.Config) (*ApplyRe
 		// 的连接，会把正在跑的调用打断。
 		if prev.Enabled {
 			s.pool.Retire(saved.Spec.ID)
+			// 密钥池与连接一起退场：停用后它的密钥不该再被选中发出去。
+			s.pool.DropKeyRing(saved.Spec.ID)
 			s.log.Info("server 已停用", zap.String("server", saved.Spec.Key))
 		}
 		s.recordCascadeDisable(ctx, saved.Spec.ID, saved.Spec.Key, flipped)

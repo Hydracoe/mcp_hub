@@ -134,6 +134,10 @@ func (s *Service) SetEnabled(ctx context.Context, serverID string, enabled bool)
 	}
 	if !enabled {
 		s.pool.Retire(serverID)
+		// 密钥池与连接同一步退场：停用的 server 不该继续持有可用密钥，
+		// 它们随时可能被选中发出去。这一步不等 Reload——刷新失败时
+		// 运行时状态会滞后，而"停用"的语义是"别再用它"。
+		s.pool.DropKeyRing(serverID)
 		s.recordCascadeDisable(ctx, serverID, key, flipped)
 	}
 	// 启停已经提交：刷新失败只是运行时状态没跟上（记日志），

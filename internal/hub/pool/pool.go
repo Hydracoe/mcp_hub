@@ -240,26 +240,41 @@ func (p *Pool) Close() error {
 	return firstErr
 }
 
-// Sync 让连接池与一组最新的 spec 对齐：消失的连接退场、目标变更的重建。
+// Target 是池子认识的一个下游：连接配置 + 当前是否启用。
+//
+// 启用与否不属于连接配置（Spec 里没有这一位），但密钥池需要它：
+// 停用的 server 不该继续持有可用密钥。密钥本身还在库里（重新启用时
+// 会装回来），但留在池里就意味着它们随时可能被选中发出去——停用的
+// 语义是"别再用它"，不只是"从工具列表里消失"。
+type Target struct {
+	Spec    downstream.Spec
+	Enabled bool
+}
+
+// Sync 让连接池与一组最新的目标对齐：消失的连接退场、目标变更的重建。
 //
 // 只处理连接生命周期，不改动 Registry，避免两者互相阻塞。判据是连接
 // 指纹而不是"配置变了没有"：改过滤名单、显示名、密钥都不动连接，
 // 只有真换了目标（url/command/env/超时/协议版本）才重建。
-func (p *Pool) Sync(specs []downstream.Spec) {
-	want := make(map[string]downstream.Spec, len(specs))
-	for _, s := range specs {
-		want[s.ID] = s
+//
+// 连接的退场只看"消失了没有"：停用的 server 的连接由停用路径自己退役
+// （SetEnabled / ApplyServer），不在这里重复处理——重复退役会打断
+// 正在跑的调用。密钥池则相反：已停用的 server 的密钥条目必须清掉。
+func (p *Pool) Sync(targets []Target) {
+	want := make(map[string]Target, len(targets))
+	for _, t := range targets {
+		want[t.Spec.ID] = t
 	}
 
 	p.mu.RLock()
 	var gone, changed []string
 	for id, entry := range p.conns {
-		spec, ok := want[id]
+		t, ok := want[id]
 		if !ok {
 			gone = append(gone, id)
 			continue
 		}
-		if entry.fingerprint != spec.ConnFingerprint() {
+		if entry.fingerprint != t.Spec.ConnFingerprint() {
 			changed = append(changed, id)
 		}
 	}
@@ -273,11 +288,16 @@ func (p *Pool) Sync(specs []downstream.Spec) {
 		p.Retire(id)
 	}
 
-	// 清掉已消失 server 的密钥池：池子里存着密钥明文，
+	// 清掉已消失或已停用的 server 的密钥池：池子里存着密钥明文，
 	// 让它们随 server 一起消失，而不是留在内存里。
+	//
+	// 停用的 server 同样要清：它的密钥还在库里，重新启用时会装回来；
+	// 但留在池里就意味着随时可能被选中发出去。停用必须真的停用，
+	// 而不是只把工具从列表里摘掉。
 	p.ringMu.Lock()
 	for id := range p.rings {
-		if _, ok := want[id]; !ok {
+		t, ok := want[id]
+		if !ok || !t.Enabled {
 			delete(p.rings, id)
 		}
 	}

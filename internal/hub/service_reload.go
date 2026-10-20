@@ -29,10 +29,10 @@ func (s *Service) Reload(ctx context.Context) error {
 	}
 
 	specMap := make(map[string]downstream.Spec, len(srvs))
-	specs := make([]downstream.Spec, 0, len(srvs))
+	targets := make([]pool.Target, 0, len(srvs))
 	for _, sv := range srvs {
 		specMap[sv.Spec.ID] = sv.Spec
-		specs = append(specs, sv.Spec)
+		targets = append(targets, pool.Target{Spec: sv.Spec, Enabled: sv.Enabled})
 	}
 
 	s.specs.Lock()
@@ -41,7 +41,8 @@ func (s *Service) Reload(ctx context.Context) error {
 
 	// 连接池与配置对齐：已删除的 server 关闭连接，
 	// 剩下的保留——重连代价不该由一次配置变更全体承担。
-	s.pool.Sync(specs)
+	// 停用的 server 的密钥池在这一步被清掉（见 pool.Sync）。
+	s.pool.Sync(targets)
 
 	// 密钥池随配置一起装载，失败不阻断 Reload：没有密钥池时退回单密钥
 	// 模式仍然可用，比整个服务起不来要好得多。
@@ -74,6 +75,9 @@ func (s *Service) reloadAfterCommit(ctx context.Context, serverKey, serverID str
 // syncKeyRings 把库里的密钥灌进连接池。
 // 一次读全部密钥再按 server 分组：逐个查是典型的 N+1，而 Reload 是
 // 管理操作的必经路径，不该随 server 数量线性变慢。
+//
+// 停用的 server 不灌：它的密钥还在库里，重新启用时会装回来，但留在
+// 池里就意味着随时可能被选中发出去。停用必须真的停用。
 func (s *Service) syncKeyRings(ctx context.Context, srvs []servers.Server) error {
 	all, err := s.store.Credentials.ListAll(ctx)
 	if err != nil {
@@ -81,6 +85,10 @@ func (s *Service) syncKeyRings(ctx context.Context, srvs []servers.Server) error
 	}
 
 	for _, sv := range srvs {
+		if !sv.Enabled {
+			s.pool.DropKeyRing(sv.Spec.ID)
+			continue
+		}
 		s.pool.SyncKeyRing(sv.Spec.ID, s.keyRingOptions(sv), toCredentialInputs(all[sv.Spec.ID]))
 	}
 	return nil
@@ -100,6 +108,12 @@ func (s *Service) reloadKeyRing(ctx context.Context, serverID string) error {
 	sv, err := s.store.Servers.Get(ctx, serverID)
 	if err != nil {
 		return err
+	}
+	if !sv.Enabled {
+		// 停用的 server 不持有密钥条目：凭据增删改不该让一把密钥
+		// 在停用之后又回到池里被选中。重新启用时会重新装回。
+		s.pool.DropKeyRing(serverID)
+		return nil
 	}
 	list, err := s.store.Credentials.List(ctx, serverID)
 	if err != nil {
