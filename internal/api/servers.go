@@ -236,36 +236,40 @@ func (a *API) handleCreateServer(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
+	// 默认拒绝重复的 key：POST 的语义是"创建"，键已存在时报 409
+	// 比悄悄覆盖更清楚——否则用户会以为自己新建了一个 server，
+	// 而实际上某个正在服务的下游被改了配置。
+	existing, err := a.svc.Store().Servers.GetByKey(ctx, cfg.Spec.Key)
+	keyTaken := err == nil
+	switch {
+	case keyTaken:
+		if !parseBool(c.Query("upsert"), false) {
+			abortErr(c, http.StatusConflict, "key_taken",
+				"工具前缀 "+cfg.Spec.Key+" 已被占用；用 PUT /api/servers/"+existing.Spec.ID+
+					" 更新它，或在 URL 上加 ?upsert=1 表示接受覆盖")
+			return
+		}
+		// 覆盖写已有 key 是更新：请求没带分类就沿用原分类（服务层按
+		// "这条记录已有分类"处理），既不会被抹掉，也不会凭空造一个。
+	case !errors.Is(err, storeutil.ErrNotFound):
+		failFor(c, err)
+		return
+	}
+
 	// 新建必须确定分类（PRD §4.7.3）：分类是工具名前缀段与检索组织
 	// 与语义检索语料的来源，"未分类"的工具在语义组织上是缺席的。
 	// 嵌入启用时允许不带分类创建——服务层会用自动归类补上（过阈值才应用），
 	// 补不上会带候选列表报错，让界面引导用户选；嵌入禁用则无处可补，直接 400。
 	// 显式给了分类还必须真实存在，否则 category_id 会留下悬空引用
 	// ——界面上显示成一行空白分类。
-	if cfg.CategoryID == "" && a.svc.Embed() == nil {
+	// 覆盖写已有 key 是更新，不受"新建必须给分类"这条约束。
+	if !keyTaken && cfg.CategoryID == "" && a.svc.Embed() == nil {
 		failFor(c, badRequest("新建 server 必须指定分类"))
 		return
 	}
 	if cfg.CategoryID != "" {
 		if _, err := a.svc.Store().Categories.Get(ctx, cfg.CategoryID); err != nil {
 			failFor(c, badRequest("分类 %q 不存在", cfg.CategoryID))
-			return
-		}
-	}
-
-	// 默认拒绝重复的 key：POST 的语义是"创建"，键已存在时报 409
-	// 比悄悄覆盖更清楚——否则用户会以为自己新建了一个 server，
-	// 而实际上某个正在服务的下游被改了配置。
-	if !parseBool(c.Query("upsert"), false) {
-		existing, err := a.svc.Store().Servers.GetByKey(ctx, cfg.Spec.Key)
-		switch {
-		case err == nil:
-			abortErr(c, http.StatusConflict, "key_taken",
-				"工具前缀 "+cfg.Spec.Key+" 已被占用；用 PUT /api/servers/"+existing.Spec.ID+
-					" 更新它，或在 URL 上加 ?upsert=1 表示接受覆盖")
-			return
-		case !errors.Is(err, storeutil.ErrNotFound):
-			failFor(c, err)
 			return
 		}
 	}

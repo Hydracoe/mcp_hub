@@ -209,7 +209,20 @@ func (e *CategoryRequiredError) Error() string {
 	return "新建 server 必须指定分类"
 }
 
-// isNewServer 判断这次写入是"新建"还是"更新已有记录"。
+// CategoryNotFoundError 表示引用的分类不存在。
+//
+// 分类是 server 的单值归属：写进去一个不存在的 id 就是悬空引用——
+// 界面上显示成一行空白分类，检索侧则永远查不到它。新建与更新两条路
+// 都要拦，拦在落库之前，不留脏行。
+type CategoryNotFoundError struct {
+	ID string
+}
+
+func (e *CategoryNotFoundError) Error() string {
+	return fmt.Sprintf("分类 %q 不存在", e.ID)
+}
+
+// findExisting 找出这次写入对应的已有记录（没有则 found=false）。
 //
 // 判据是"这条记录在不在"，不是"这个 key 在不在"：更新路径带着已知的
 // id（改了 key 也是原地更新，同一行换前缀），按 key 查会查不到，于是
@@ -218,25 +231,47 @@ func (e *CategoryRequiredError) Error() string {
 //
 // id 为空的创建路径按 key 判重：POST ?upsert=1 覆盖已有 key 时它已有
 // 记录，同样不是新建。
-func (s *Service) isNewServer(ctx context.Context, cfg servers.Config) (bool, error) {
+func (s *Service) findExisting(ctx context.Context, cfg servers.Config) (servers.Server, bool, error) {
+	var (
+		sv  servers.Server
+		err error
+	)
 	if cfg.Spec.ID != "" {
-		_, err := s.store.Servers.Get(ctx, cfg.Spec.ID)
-		if err == nil {
-			return false, nil
-		}
-		if errors.Is(err, storeutil.ErrNotFound) {
-			return true, nil
-		}
+		sv, err = s.store.Servers.Get(ctx, cfg.Spec.ID)
+	} else {
+		sv, err = s.store.Servers.GetByKey(ctx, cfg.Spec.Key)
+	}
+	switch {
+	case err == nil:
+		return sv, true, nil
+	case errors.Is(err, storeutil.ErrNotFound):
+		return servers.Server{}, false, nil
+	default:
+		return servers.Server{}, false, err
+	}
+}
+
+// isNewServer 判断这次写入是"新建"还是"更新已有记录"。
+func (s *Service) isNewServer(ctx context.Context, cfg servers.Config) (bool, error) {
+	_, found, err := s.findExisting(ctx, cfg)
+	if err != nil {
 		return false, err
 	}
-	_, err := s.store.Servers.GetByKey(ctx, cfg.Spec.Key)
-	if err == nil {
-		return false, nil
+	return !found, nil
+}
+
+// checkCategoryExists 校验分类真实存在。
+//
+// 不存在时报领域错误（CategoryNotFoundError），让上层翻译成 400 而不是
+// 500：写一个不存在的分类是请求写错了，不是服务端出故障。
+func (s *Service) checkCategoryExists(ctx context.Context, id string) error {
+	if _, err := s.store.Categories.Get(ctx, id); err != nil {
+		if errors.Is(err, storeutil.ErrNotFound) {
+			return &CategoryNotFoundError{ID: id}
+		}
+		return err
 	}
-	if errors.Is(err, storeutil.ErrNotFound) {
-		return true, nil
-	}
-	return false, err
+	return nil
 }
 
 // ApplyServer 写入一个新 server 或更新已有配置，并让它立即生效。
@@ -249,6 +284,11 @@ func (s *Service) isNewServer(ctx context.Context, cfg servers.Config) (bool, er
 // 新建时分类必填（PRD §4.7.3）：显式指定则校验存在性；未指定且嵌入已
 // 启用则先跑自动归类，top-1 过阈值即应用；都落空则返回
 // CategoryRequiredError（带候选），不落库。
+//
+// 更新时分类同样不能是悬空引用：显式给出就必须真实存在，否则报
+// CategoryNotFoundError，不落库。没带分类（CategoryID 为空且没有
+// ClearCategory）则沿用原分类——把"没提"当成"清空"会在每次没带该
+// 字段的保存里悄悄抹掉分类。
 //
 // 改 key 仍是更新：改的是同一行的前缀，不是新建一条，所以不走上面
 // 那套新建校验（判据见 isNewServer）。
@@ -288,8 +328,29 @@ func (s *Service) ApplyServer(ctx context.Context, cfg servers.Config) (*ApplyRe
 				return nil, &CategoryRequiredError{Suggested: suggestions}
 			}
 		}
-		if _, err := s.store.Categories.Get(ctx, cfg.CategoryID); err != nil {
-			return nil, fmt.Errorf("分类 %q 不存在", cfg.CategoryID)
+		if err := s.checkCategoryExists(ctx, cfg.CategoryID); err != nil {
+			return nil, err
+		}
+	} else {
+		switch {
+		case cfg.ClearCategory:
+			// 明写要清空：退回"未分类"。
+			cfg.CategoryID = ""
+		case strings.TrimSpace(cfg.CategoryID) == "":
+			// 这次没提分类：沿用原分类。原分类可能是空的（存量未分类的
+			// server），那就还是空——不因为"没提"就凭空造一个分类出来。
+			prev, found, err := s.findExisting(ctx, cfg)
+			if err != nil {
+				return nil, err
+			}
+			if found {
+				cfg.CategoryID = prev.CategoryID
+			}
+		default:
+			// 显式给了分类：必须真实存在，否则写下去的是悬空引用。
+			if err := s.checkCategoryExists(ctx, cfg.CategoryID); err != nil {
+				return nil, err
+			}
 		}
 	}
 

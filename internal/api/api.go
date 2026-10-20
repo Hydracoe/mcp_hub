@@ -191,6 +191,7 @@ func failFor(c *gin.Context, err error) {
 	var reqErr *requestError
 	var unavail *pool.UnavailableError
 	var noKey *downstream.ErrNoUsableKey
+	var catMissing *hub.CategoryNotFoundError
 
 	switch {
 	case errors.Is(err, storeutil.ErrNotFound):
@@ -205,6 +206,10 @@ func failFor(c *gin.Context, err error) {
 		abortErr(c, http.StatusBadRequest, "key_pool_unsupported", err.Error())
 	case errors.Is(err, hub.ErrServerDisabled):
 		abortErr(c, http.StatusBadRequest, "server_disabled", err.Error())
+	case errors.As(err, &catMissing):
+		// 引用了不存在的分类：请求写错了，不是服务端故障。
+		// 写下去就成了悬空引用（界面上是一行空白分类），所以是 400。
+		abortErr(c, http.StatusBadRequest, "invalid_request", err.Error())
 	case errors.As(err, &noKey):
 		// 所有密钥此刻都不可用。这是"暂时不行"，不是"请求错了"：
 		// 503 + retryAfter 让客户端知道可以原样重试，而不是去改配置。

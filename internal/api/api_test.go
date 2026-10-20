@@ -869,6 +869,121 @@ func TestUpdateServerKeyChangeIsUpdate(t *testing.T) {
 	}
 }
 
+// 更新时给了不存在的分类必须 400，且原记录不能被写坏。
+//
+// 分类的存在性以前只在新建路径校验，更新路径不校验：写进去的是悬空
+// 引用，界面上那一列显示成空白分类。校验要发生在落库之前。
+func TestUpdateServerRejectsUnknownCategory(t *testing.T) {
+	e := newEnv(t, httpd.Options{})
+	ds := startDownstream(t, "x")
+	catID := e.mustCategory()
+
+	var created serverResp
+	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
+		"key": "srv", "transport": "streamable_http", "url": ds, "categoryId": catID,
+	}, http.StatusCreated, &created)
+
+	resp, raw := e.call(http.MethodPut, "/api/servers/"+created.ID, map[string]any{
+		"key": "srv2", "transport": "streamable_http", "url": ds, "categoryId": "cat_ghost",
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("不存在的分类应 400，实际 %d\n%s", resp.StatusCode, raw)
+	}
+	if !strings.Contains(string(raw), "不存在") {
+		t.Errorf("错误体应说明分类不存在: %s", raw)
+	}
+
+	// 原记录没被写坏：分类还在，key 也没被这次失败的写入改掉。
+	saved, err := e.store.Servers.Get(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("读 server 失败: %v", err)
+	}
+	if saved.CategoryID != catID {
+		t.Errorf("分类 = %q, 期望 %q（失败的写入不该改分类）", saved.CategoryID, catID)
+	}
+	if saved.Spec.Key != "srv" {
+		t.Errorf("失败的写入不该改 key: =%q", saved.Spec.Key)
+	}
+}
+
+// 编辑请求不带 categoryId 时，原分类要留着。
+//
+// "没提"不等于"清空"：请求体没带的字段应沿用旧值（密钥掩码就是这么
+// 还原的），分类同理。
+func TestUpdateServerKeepsCategoryWhenOmitted(t *testing.T) {
+	e := newEnv(t, httpd.Options{})
+	ds := startDownstream(t, "x")
+	catID := e.mustCategory()
+
+	var created serverResp
+	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
+		"key": "srv", "transport": "streamable_http", "url": ds, "categoryId": catID,
+	}, http.StatusCreated, &created)
+
+	var updated serverResp
+	e.mustJSON(http.MethodPut, "/api/servers/"+created.ID, map[string]any{
+		"key": "srv", "transport": "streamable_http", "url": ds,
+	}, http.StatusOK, &updated)
+
+	saved, err := e.store.Servers.Get(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("读 server 失败: %v", err)
+	}
+	if saved.CategoryID != catID {
+		t.Errorf("分类 = %q, 期望 %q（没带 categoryId 不该抹掉原分类）", saved.CategoryID, catID)
+	}
+}
+
+// 显式给空串才是"清空分类"：与"请求体没带这个字段"是两回事。
+func TestUpdateServerExplicitlyClearsCategory(t *testing.T) {
+	e := newEnv(t, httpd.Options{})
+	ds := startDownstream(t, "x")
+	catID := e.mustCategory()
+
+	var created serverResp
+	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
+		"key": "srv", "transport": "streamable_http", "url": ds, "categoryId": catID,
+	}, http.StatusCreated, &created)
+
+	var updated serverResp
+	e.mustJSON(http.MethodPut, "/api/servers/"+created.ID, map[string]any{
+		"key": "srv", "transport": "streamable_http", "url": ds, "categoryId": "",
+	}, http.StatusOK, &updated)
+
+	saved, err := e.store.Servers.Get(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("读 server 失败: %v", err)
+	}
+	if saved.CategoryID != "" {
+		t.Errorf("分类 = %q, 期望空（显式清空后应是未分类）", saved.CategoryID)
+	}
+}
+
+// 覆盖写已有 key（?upsert=1）且没带 categoryId 时，已有分类不该被抹掉，
+// 也不该被写成悬空引用。
+func TestUpsertExistingServerKeepsCategory(t *testing.T) {
+	e := newEnv(t, httpd.Options{})
+	ds := startDownstream(t, "x")
+	catID := e.mustCategory()
+
+	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
+		"key": "srv", "transport": "streamable_http", "url": ds, "categoryId": catID,
+	}, http.StatusCreated, nil)
+
+	// 覆盖写：请求不带分类。
+	e.mustJSON(http.MethodPost, "/api/servers?upsert=1", map[string]any{
+		"key": "srv", "transport": "streamable_http", "url": ds,
+	}, http.StatusCreated, nil)
+
+	saved, err := e.store.Servers.GetByKey(context.Background(), "srv")
+	if err != nil {
+		t.Fatalf("读 server 失败: %v", err)
+	}
+	if saved.CategoryID != catID {
+		t.Errorf("分类 = %q, 期望 %q（覆盖写没带分类不该抹掉原分类）", saved.CategoryID, catID)
+	}
+}
+
 // --- 鉴权 ---
 
 func TestAPIKeyProtectsAdminEndpoints(t *testing.T) {

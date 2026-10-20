@@ -252,7 +252,11 @@ type serverRequest struct {
 	// 元数据（PRD §4.7）。
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
-	CategoryID  string   `json:"categoryId"`
+
+	// CategoryID 是分类 id。用指针区分"请求体没带这个字段"与"显式给了
+	// 空串"：前者表示"这次不改分类"（沿用原值），后者表示"把它退回
+	// 未分类"。少了这个区分，一次没带该字段的保存就会把原分类抹掉。
+	CategoryID *string `json:"categoryId"`
 
 	// Enabled 为空表示"不指定"：新增时默认启用，编辑时保留原状态。
 	Enabled *bool `json:"enabled"`
@@ -314,14 +318,24 @@ func (req serverRequest) toConfig(prev *servers.Server) (servers.Config, error) 
 		autoEnable = *req.AutoEnable
 	}
 
+	// 分类：没带就是"这次不提分类"（CategoryID 空且不 ClearCategory），
+	// 由服务层在更新时沿用原值；显式给空串才是"清空分类"。
+	categoryID := ""
+	clearCategory := false
+	if req.CategoryID != nil {
+		categoryID = strings.TrimSpace(*req.CategoryID)
+		clearCategory = categoryID == ""
+	}
+
 	return servers.Config{
-		Spec:         spec,
-		Enabled:      enabled,
-		AutoEnable:   autoEnable,
-		EnabledTools: enabledTools,
-		Description:  strings.TrimSpace(req.Description),
-		Tags:         req.Tags,
-		CategoryID:   strings.TrimSpace(req.CategoryID),
+		Spec:          spec,
+		Enabled:       enabled,
+		AutoEnable:    autoEnable,
+		EnabledTools:  enabledTools,
+		Description:   strings.TrimSpace(req.Description),
+		Tags:          req.Tags,
+		CategoryID:    categoryID,
+		ClearCategory: clearCategory,
 	}, nil
 }
 

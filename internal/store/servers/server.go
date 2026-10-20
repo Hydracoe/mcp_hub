@@ -158,6 +158,14 @@ type Config struct {
 	Description string
 	Tags        []string
 	CategoryID  string
+
+	// ClearCategory 明确要求把分类清空（退回"未分类"）。
+	//
+	// 它与"CategoryID 为空"不是一回事：后者只说明这次写入没带分类，
+	// 至于沿用原分类还是清空，由上层（hub 层）判断；本字段为 true 时
+	// 写下去的就是空分类。清空必须是明写的意图，不能是"忘了带"的
+	// 副作用——否则一次普通的配置保存就会把分类悄悄抹掉。
+	ClearCategory bool
 }
 
 // CleanToolNames 去掉空白项并保持顺序。
@@ -198,6 +206,14 @@ func (s *Store) Upsert(ctx context.Context, cfg Config) error {
 	}
 	tags := cleanTags(cfg.Tags)
 
+	// 分类：显式清空写空串（未分类），否则照写。
+	// 存储层只认"写什么就存什么"——"没带分类就沿用原值"是 hub 层的
+	// 语义，它在调用本方法之前就已经把最终值算好了。
+	categoryID := cfg.CategoryID
+	if cfg.ClearCategory {
+		categoryID = ""
+	}
+
 	if spec.ID == "" {
 		existing, err := s.GetByKey(ctx, spec.Key)
 		switch {
@@ -236,7 +252,7 @@ func (s *Store) Upsert(ctx context.Context, cfg Config) error {
 		Enabled:          storeutil.BoolToInt(cfg.Enabled),
 		Description:      cfg.Description,
 		Tags:             storeutil.JSONOrEmptySlice(tags),
-		CategoryID:       cfg.CategoryID,
+		CategoryID:       categoryID,
 		CreatedMS:        now,
 		UpdatedMS:        now,
 		// 探活结果与 instructions 不在写入范围内，配置保存不该把
