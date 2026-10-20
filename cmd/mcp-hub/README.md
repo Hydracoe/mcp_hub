@@ -7,12 +7,12 @@
 "读配置 → 起引擎 → 打横幅 → 等信号"。这样做的直接好处是**桌面端（`cmd/mcp-hub-desktop`）不必重写一遍装配**：
 两个入口共用同一个引擎，业务行为、探活调度、优雅退出的语义因此不会有第二份实现。
 
-构建入口在**项目根**，不在本目录（`../Makefile`）。它同时编排后端、前端
+构建入口在**项目根**，不在本目录（与 `mcp-hub/` 同级的 `Makefile`）。它同时编排后端、前端
 （`mcp-hub-admin`）和 `docker-compose.yml`，后两者都在本仓库之外；产物反过来落在本
 仓库的 `bin/` 里——编排脚本跟着编排对象走，构建产物跟着代码走。所以命令都在项目根敲：
 
 ```bash
-cd ..                       # 到项目根，那里才有 Makefile
+cd ../../..                  # 到项目根，那里才有 Makefile
 make build                  # → mcp-hub/bin/mcp-hub
 make run                    # 构建并 serve（会自动 cd 回本目录跑，见下）
 ```
@@ -234,10 +234,10 @@ mcp-hub probe --url http://host/mcp --json
 `Dockerfile` 的第一阶段专门用来构建前端。桌面形态（`cmd/mcp-hub-desktop`）
 不进镜像：它需要 Cocoa/GTK webview，容器里没有窗口系统可承载。
 
-编排文件在**仓库外**（`../docker-compose.yml`），因为它同时管着后端、
+编排文件在**仓库外**（与 `mcp-hub/` 同级的 `docker-compose.yml`），因为它同时管着后端、
 PostgreSQL、Redis 三者。基础镜像清单、容器内的配置边界、`MCPHUB_ADDR` 为什么
 必须是 `:9090`（不是 `127.0.0.1:9090`）、stdio 下游在 alpine 里的限制——
-都写在 [`docs/deployment.md`](../docs/deployment.md)。
+都写在 [`docs/deployment.md`](../../docs/deployment.md)。
 
 ### 选填
 

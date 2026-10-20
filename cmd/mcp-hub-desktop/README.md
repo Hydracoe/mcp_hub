@@ -5,10 +5,10 @@
 
 ## 用法
 
-构建入口在**项目根**（`../Makefile`），产物落在 `mcp-hub/bin/`：
+构建入口在**项目根**（与 `mcp-hub/` 同级的 `Makefile`），产物落在 `mcp-hub/bin/`：
 
 ```bash
-cd ..                                  # 到项目根
+cd ../../..                         # 到项目根
 make build-desktop                     # go build -tags wails -o mcp-hub/bin/mcp-hub-desktop ./cmd/mcp-hub-desktop
 ./mcp-hub/bin/mcp-hub-desktop          # 起引擎 + 开原生窗口
 
