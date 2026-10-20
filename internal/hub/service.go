@@ -87,6 +87,17 @@ type Service struct {
 	// 手动全量刷新是显式动作，允许和周期探活短暂并存）。
 	probeSem chan struct{}
 
+	// credTestSem 是凭据自动试测的名额信号量：所有凭据试测（单条新增与
+	// 批量导入）共用它，保证对下游的试测流量整体有界。
+	credTestSem chan struct{}
+
+	// credTestTimeout 是单把密钥试测的超时。零值取 credentialTestTimeout。
+	credTestTimeout time.Duration
+
+	// probeFn 是凭据试测的探活接缝。留空用真实的 Prober，只有测试会替换它：
+	// "并发有没有上限"要断言就得数得清同时在途几个探活，真实探活数不出来。
+	probeFn func(ctx context.Context, spec downstream.Spec) *downstream.ProbeResult
+
 	// 连败拦截闸：连续探活失败达到阈值后拒绝该上游的调用，
 	// 探活不受影响。见 service_block.go。
 	gate *blockGate
@@ -140,21 +151,22 @@ func NewServiceWithOptions(st *store.Store, logger *zap.Logger, opts Options) *S
 	}
 
 	s := &Service{
-		store:      st,
-		pool:       pool.NewPool(logger),
-		reg:        registry.NewRegistry(),
-		retr:       retrieval.NewEngine(st, logger),
-		log:        logger,
-		specMap:    make(map[string]downstream.Spec),
-		cache:      opts.Cache,
-		servers:    cache.NewTyped[[]servers.Server](opts.Cache, "hub:servers"),
-		stats:      cache.NewTyped[logs.CallStats](opts.Cache, "hub:stats"),
-		logCh:      make(chan logs.LogEntry, logQueueSize),
-		closeCh:    make(chan struct{}),
-		keyEventCh: make(chan pool.KeyEvent, keyEventQueueSize),
-		probeSem:   make(chan struct{}, probeConcurrency),
-		gate:       newBlockGate(opts.BlockAfterFails),
-		reloadFn:   opts.ReloadFn,
+		store:       st,
+		pool:        pool.NewPool(logger),
+		reg:         registry.NewRegistry(),
+		retr:        retrieval.NewEngine(st, logger),
+		log:         logger,
+		specMap:     make(map[string]downstream.Spec),
+		cache:       opts.Cache,
+		servers:     cache.NewTyped[[]servers.Server](opts.Cache, "hub:servers"),
+		stats:       cache.NewTyped[logs.CallStats](opts.Cache, "hub:stats"),
+		logCh:       make(chan logs.LogEntry, logQueueSize),
+		closeCh:     make(chan struct{}),
+		keyEventCh:  make(chan pool.KeyEvent, keyEventQueueSize),
+		probeSem:    make(chan struct{}, probeConcurrency),
+		credTestSem: make(chan struct{}, credentialTestConcurrency),
+		gate:        newBlockGate(opts.BlockAfterFails),
+		reloadFn:    opts.ReloadFn,
 	}
 
 	s.agg = aggregate.NewAggregator(aggregate.Deps{

@@ -128,4 +128,6 @@ go test ./internal/hub/... -count=1   # 等价，含包内
 | `apikey_test.go`      | 接入 key 鉴权与调用日志归因                                                        |
 | `service_test.go`     | `RefreshAll` 对停用 server 的排除语义                                             |
 
+少数白盒用例留在包内（`internal/hub/`）：它们要碰未导出的符号，黑盒目录里够不着——`service_block_test.go` 覆盖连败拦截闸的状态机，`service_credentials_test.go` 覆盖凭据试测的并发上限（要数得清同时在途几个探活，得能替换探活实现）。
+
 需要一台可达的 PostgreSQL（`MCP_HUB_TEST_DSN`，或仓库根目录的 `docker compose up -d`）；每个测试建一个随机命名的独立库。并发相关的改动请加 `-race`。

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hydra/mcp-hub/internal/downstream"
@@ -135,10 +137,14 @@ func (s *Service) ImportCredentials(ctx context.Context, serverID string, in []C
 	s.log.Info("密钥已批量导入",
 		zap.String("server", sv.Spec.Key), zap.Int("count", len(out)))
 	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, serverID)
-	// O2：批量导入逐把自动试测（串行，避免对下游形成突发）。
-	for _, c := range out {
-		s.asyncTestCredential(sv.Spec, c)
-	}
+	// O2：批量导入逐把自动试测。并发有上限（见 testCredentialsBounded）：
+	// 逐把一个 goroutine 的写法在导入几十把密钥时会让几十个探活同时打向
+	// 下游，既是突发流量（可能触发限流甚至封禁），也让"哪一把出了问题"
+	// 难以分辨。
+	//
+	// 顺序不变：先落库、再同步密钥池、最后才试测——试测发生在密钥池已经是
+	// 最新一批之后，不会出现"库里没有、池里已经在了"的错位。
+	s.testCredentialsBounded(sv.Spec, out)
 	return out, nil
 }
 
@@ -454,31 +460,124 @@ func sameHeaders(a, b map[string]string) bool {
 // credentialTestTimeout 是自动试测的单钥超时。
 const credentialTestTimeout = 30 * time.Second
 
+// credentialTestConcurrency 是凭据自动试测的并发上限。
+//
+// 批量导入一次可能带来几十把密钥，每把都要单独试测一次，而试测是真的会
+// 连一次下游（握手 + tools/list）。不设上限的话，这些探活会同时打出去：
+// 对下游是突发流量（可能触发限流甚至封禁），对本机是瞬间拉满的 socket。
+//
+// 4 是折中：够快（几十把密钥一两分钟内试完），又不会把下游打成一片。
+// 它只约束"凭据试测"这一条路径，与错峰探活（probeSem）各自独立。
+const credentialTestConcurrency = 4
+
 // asyncTestCredential 在后台对一把密钥做一次只读探活（O2）。
 // 只记日志，不改任何状态：试测失败可能只是下游在抖，禁用判决必须
 // 留给在线结算（连续次数是状态机的一部分，旁路测试不参与）。
+//
+// 单条路径一次只发一把，天然不构成突发；它与批量导入共用同一把试测
+// 名额，所以批量导入进行中时单条试测最多排在后面，不会给下游加压。
 func (s *Service) asyncTestCredential(spec downstream.Spec, c credentials.Credential) {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), credentialTestTimeout)
-		defer cancel()
+		s.testCredential(spec, c)
+	}()
+}
 
-		probeSpec := spec
-		probeSpec.Headers = c.Headers
-		res := downstream.NewProber(probeSpec).Probe(ctx)
+// testCredentialsBounded 批量试测：并发有上限，逐把独立成败。
+//
+// 用固定数量的 worker 轮流试测，而不是"每把一个 goroutine"：后者在批量
+// 导入几十把密钥时会让几十个探活同时打向下游。剩下的排队即可——试测是
+// 只读旁路，排队不影响导入本身。
+//
+// 每一把的成败互不影响：失败只记日志并计入汇总，不中断整批，也不改密钥
+// 状态。导入已经落库，试测失败不该把一批已经写进去的密钥变成"导入失败"。
+func (s *Service) testCredentialsBounded(spec downstream.Spec, creds []credentials.Credential) {
+	if len(creds) == 0 {
+		return
+	}
 
-		if res.OK {
-			s.log.Info("新密钥试测通过",
-				zap.String("server", spec.Key),
-				zap.String("credential", c.LabelOrFallback()),
-				zap.Int("toolCount", res.ToolCount),
-				zap.Int64("ms", res.Latency.Total))
-			return
-		}
-		s.log.Warn("新密钥试测未通过（已照常入池，可在管理界面复核）",
+	workers := min(credentialTestConcurrency, len(creds))
+	queue := make(chan credentials.Credential, len(creds))
+	for _, c := range creds {
+		queue <- c
+	}
+	close(queue)
+
+	var (
+		wg       sync.WaitGroup
+		okCount  atomic.Int64
+		badCount atomic.Int64
+	)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for c := range queue {
+				if s.testCredential(spec, c) {
+					okCount.Add(1)
+				} else {
+					badCount.Add(1)
+				}
+			}
+		}()
+	}
+
+	// 整批结束后补一条汇总：逐条日志能看出"哪一把没通过"，汇总能一眼
+	// 看出这批的健康度（导入 20 把、通过 3 把，是完全不同的两件事）。
+	go func() {
+		wg.Wait()
+		s.log.Info("批量导入的密钥试测完成",
+			zap.String("server", spec.Key),
+			zap.Int("total", len(creds)),
+			zap.Int("ok", int(okCount.Load())),
+			zap.Int("failed", int(badCount.Load())))
+	}()
+}
+
+// testCredential 试测一把密钥：占一个试测名额，探活并记日志。
+// 返回这次试测是否通过。
+func (s *Service) testCredential(spec downstream.Spec, c credentials.Credential) bool {
+	// 试测名额：所有凭据试测共用一把计数信号量，保证同时在途的探活
+	// 不超过 credentialTestConcurrency 个。
+	s.credTestSem <- struct{}{}
+	defer func() { <-s.credTestSem }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.credentialTestTimeoutOrDefault())
+	defer cancel()
+
+	res := s.probeCredential(ctx, spec, c)
+	if res.OK {
+		s.log.Info("新密钥试测通过",
 			zap.String("server", spec.Key),
 			zap.String("credential", c.LabelOrFallback()),
-			zap.String("kind", string(res.Kind)),
-			zap.String("stage", string(res.Stage)),
-			zap.String("detail", res.Detail))
-	}()
+			zap.Int("toolCount", res.ToolCount),
+			zap.Int64("ms", res.Latency.Total))
+		return true
+	}
+	s.log.Warn("新密钥试测未通过（已照常入池，可在管理界面复核）",
+		zap.String("server", spec.Key),
+		zap.String("credential", c.LabelOrFallback()),
+		zap.String("kind", string(res.Kind)),
+		zap.String("stage", string(res.Stage)),
+		zap.String("detail", res.Detail))
+	return false
+}
+
+// probeCredential 对一把密钥做只读探活。
+//
+// probeFn 是接缝：留空用真实的 Prober，只有测试会替换它。
+func (s *Service) probeCredential(ctx context.Context, spec downstream.Spec, c credentials.Credential) *downstream.ProbeResult {
+	probeSpec := spec
+	probeSpec.Headers = c.Headers
+	if s.probeFn != nil {
+		return s.probeFn(ctx, probeSpec)
+	}
+	return downstream.NewProber(probeSpec).Probe(ctx)
+}
+
+// credentialTestTimeoutOrDefault 返回单把密钥试测的超时。
+func (s *Service) credentialTestTimeoutOrDefault() time.Duration {
+	if s.credTestTimeout > 0 {
+		return s.credTestTimeout
+	}
+	return credentialTestTimeout
 }
