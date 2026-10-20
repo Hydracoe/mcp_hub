@@ -82,6 +82,13 @@ func (r *KeyRing) ResetQuota(id string) bool {
 }
 
 // ClearCooling 解除某把密钥的冷却（人工干预）。
+//
+// 冷却与"进过冷却"的标记一起复位：人工把冷却清掉之后，密钥是被人放回池子的，
+// 下一次成功不是"冷却后的首次成功"，不该报出 Recovered——那个信号说的是
+// "它自己真的回来了"，人工解除的冷却谈不上回来。
+//
+// 只复位冷却相关的标记，不动连续限流计数：M8 明确"人工启用不清计数"，
+// "再犯立刻弃用"是威慑，清了就没了。
 func (r *KeyRing) ClearCooling(id string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -91,6 +98,7 @@ func (r *KeyRing) ClearCooling(id string) bool {
 		return false
 	}
 	e.coolingUntil = time.Time{}
+	e.hadCooling = false
 	return true
 }
 
