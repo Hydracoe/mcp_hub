@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -220,12 +222,25 @@ func fillCredentialLabels(ctx context.Context, st *credentials.Store, items []lo
 // 语义是整体替换：界面提交的是完整表单，服务端不做"字段级局部更新"。
 // 局部更新的边界（空字符串是"不改"还是"清空"）永远说不清，
 // 而说不清的边界最后都会变成一个数据被悄悄改掉的 bug。
+//
+// 例外是 headers / env 这两组密钥字典：它们必须分得清"没带"与"显式清空"，
+// 否则一次只改了别处的保存就会把凭据悄悄抹掉。详见下面两个字段的注释。
 type serverRequest struct {
 	Key       string `json:"key"`
 	Name      string `json:"name"`
 	Transport string `json:"transport"`
 
-	URL     string            `json:"url"`
+	URL string `json:"url"`
+
+	// Headers 是这组密钥字典之一。三态由"字段在不在"与"内容空不空"区分：
+	//
+	//	没带 headers（nil）  这次不动请求头，沿用原值
+	//	显式给了 {}          清空请求头
+	//	给了非空 map         整体替换；值为 *** 的按原值还原（见 mergeSecrets）
+	//
+	// 与 CategoryID *string 同一套语义：清空必须是明写的意图，不能是
+	// "忘了带"的副作用——少了这个区分，一次没带该字段的保存就会把凭据抹掉。
+	// JSON 的 null 与"没带"同义（都是这次不提这组密钥）。
 	Headers map[string]string `json:"headers"`
 
 	// AuthMode：none=无需鉴权，header=需要请求头鉴权，空=按 headers 推断。
@@ -233,7 +248,11 @@ type serverRequest struct {
 
 	Command string   `json:"command"`
 	Args    []string `json:"args"`
-	Env     []string `json:"env"`
+
+	// Env 是 stdio 的环境变量（KEY=VALUE）。三态与 Headers 相同：
+	// 没带 = 这次不动（沿用原值），显式空数组 = 清空，非空 = 整体替换
+	//（值为 *** 的按原值还原）。
+	Env []string `json:"env"`
 
 	TimeoutMS       int64  `json:"timeoutMs"`
 	ProtocolVersion string `json:"protocolVersion"`
@@ -264,8 +283,9 @@ type serverRequest struct {
 
 // toConfig 把请求折算成可落库的配置。
 //
-// prev 是编辑前的配置：新增时为零值。它的用途只有一个——
-// 把回显用的掩码换回真实密钥。
+// prev 是编辑前的配置：新增时为零值。它有两个用途——
+// 把回显用的掩码换回真实密钥，以及在请求体没带 headers / env 时
+// 沿用原值（见 mergeSecrets 的三态）。
 func (req serverRequest) toConfig(prev *servers.Server) (servers.Config, error) {
 	spec := downstream.Spec{
 		Key:             strings.TrimSpace(req.Key),
@@ -288,6 +308,8 @@ func (req serverRequest) toConfig(prev *servers.Server) (servers.Config, error) 
 	}
 	if prev != nil {
 		spec.ID = prev.Spec.ID
+		// headers / env 的三态在这里落地：没带 = 沿用，显式空 = 清空，
+		// 非空 = 整体替换（掩码按原值还原）。
 		spec.Headers = mergeSecrets(req.Headers, prev.Spec.Headers)
 		spec.Env = mergeEnvSecrets(req.Env, prev.Spec.Env)
 	}
@@ -482,14 +504,26 @@ func maskEnv(env []string) []string {
 	return out
 }
 
-// mergeSecrets 把回显用的掩码换回真实值。
+// mergeSecrets 把回显用的掩码换回真实值，并落实"没带/显式空/有值"三态。
+//
+// 三态（与 serverRequest.categoryId *string 同一套语义）：
+//
+//	next == nil    请求体没带这个字段 → 这次不动，沿用 prev
+//	len(next) == 0 请求体显式给了空 map → 清空这些密钥
+//	否则           整体替换：next 的键为准，值为 *** 的从 prev 还原
 //
 // 界面拿到的头上是 ***，用户不改它就会把 *** 原样提交回来。
 // 直接落库等于"每编辑一次就抹掉一次凭据"——这种坑极难自查，
 // 因为界面上一切正常，直到下游开始返回 401。
 func mergeSecrets(next, prev map[string]string) map[string]string {
+	if next == nil {
+		// 没带这个字段：沿用原值。返回副本而不是 prev 本身，免得调用方
+		// 拿到的 map 与库里那份共享内存。
+		return maps.Clone(prev)
+	}
 	if len(next) == 0 {
-		return next
+		// 显式给了空 map：这就是"清空这些密钥"的明写意图。
+		return map[string]string{}
 	}
 	out := make(map[string]string, len(next))
 	for k, v := range next {
@@ -508,8 +542,11 @@ func mergeSecrets(next, prev map[string]string) map[string]string {
 
 // mergeEnvSecrets 同 mergeSecrets，作用于 KEY=VALUE 列表。
 func mergeEnvSecrets(next, prev []string) []string {
+	if next == nil {
+		return slices.Clone(prev)
+	}
 	if len(next) == 0 {
-		return next
+		return []string{}
 	}
 	prevMap := make(map[string]string, len(prev))
 	for _, kv := range prev {
