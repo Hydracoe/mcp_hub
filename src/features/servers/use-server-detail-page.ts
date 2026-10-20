@@ -10,12 +10,13 @@ import {
   useTestServer,
   useUpdateServer,
 } from '@/lib/api/queries'
-import { toastError, toastSuccess } from '@/lib/toast'
+import { toast, toastError, toastSuccess } from '@/lib/toast'
 import type { ProbeResult } from '@/lib/api/types'
 
 import {
   buildServerRequest,
   createInitialForm,
+  keyFormatError,
   type ServerFormState,
 } from './detail/server-form-model'
 
@@ -74,8 +75,17 @@ export function useServerDetailPage() {
 
   /* ── 操作 ── */
 
+  /** Key 格式先在本地挡一道：后端会拒（400），但那是一条英文原文。 */
+  const checkKey = (f: ServerFormState) => {
+    const err = keyFormatError(f.key)
+    if (!err) return true
+    toast.error('Key 不合法', { description: err })
+    return false
+  }
+
   const handleSave = () => {
     if (!form) return
+    if (!checkKey(form)) return
     const req = buildServerRequest(form)
     update.mutate(req, {
       onSuccess: () => {
@@ -89,6 +99,7 @@ export function useServerDetailPage() {
 
   const handleSaveAndTest = async () => {
     if (!form || !id) return
+    if (!checkKey(form)) return
     const req = buildServerRequest(form)
     try {
       await update.mutateAsync(req)

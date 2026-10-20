@@ -72,10 +72,19 @@ export function createInitialForm(server: ServerDetail): ServerFormState {
   }
 }
 
-/** 从表单状态组装请求体。`***` 一律不回传。 */
+/** 从表单状态组装请求体。
+ *
+ * headers / env 是后端的"三态"字段（mergeSecrets / mergeEnvSecrets）：
+ * 请求体没带 = 这次不动、沿用原值；显式给了空 = 清空；给了非空 = 整体替换。
+ * 所以这两组每次都要显式带上，语义才明确：
+ *  - 掩码值 *** 原样回传，后端按原值还原。不能在拼装时丢掉这一行——
+ *    丢掉后 map 可能变空，而空 map 在后端是"显式清空"，凭据会被悄悄抹掉。
+ *  - 当前形态用不到的那组显式给空值：切成"不需要鉴权"或切到 stdio 时，
+ *    把库里残留的旧凭据清掉，否则网关会照旧往下游注入。
+ */
 export function buildServerRequest(s: ServerFormState): ServerRequest {
   const req: ServerRequest = {
-    key: s.key,
+    key: s.key.trim(),
     name: s.name,
     transport: s.transport,
     description: s.description.trim() || undefined,
@@ -92,21 +101,45 @@ export function buildServerRequest(s: ServerFormState): ServerRequest {
     req.command = s.command.trim() || undefined
     req.args = args.length ? args : undefined
     req.env = s.env.filter((r) => r.key.trim()).map((r) => `${r.key.trim()}=${r.value}`)
+    // stdio 不走请求头：从远程切过来时旧 headers 要显式清掉。
+    req.headers = {}
     return req
   }
 
   req.url = s.url.trim() || undefined
   req.authMode = s.authMode
+  // 远程不走环境变量：从 stdio 切过来时旧 env 要显式清掉。
+  req.env = []
   if (s.authMode === 'header') {
     const headers: Record<string, string> = {}
     for (const r of s.headers) {
-      // 回显值仍是 *** 说明未改，沿用原值：不能把 *** 当真值提交回去
-      if (r.key.trim() && r.value !== '***') headers[r.key.trim()] = r.value
+      const k = r.key.trim()
+      if (!k) continue
+      // 值仍是 *** 说明这一行未改：原样回传，后端按原值还原。
+      headers[k] = r.value
     }
     req.headers = headers
+  } else {
+    // 改成"不需要鉴权"：显式清空 headers。否则旧凭据留在库里，
+    // 网关仍会注入下游，与"网关不向下游注入任何凭据"的界面文案矛盾。
+    req.headers = {}
   }
   return req
 }
 
 /** 分类下拉的「未分类」保留值。空 categoryId 在接口里表示"不设分类"。 */
 export const NO_CATEGORY = '__none'
+
+/** 工具前缀的格式规则，必须与后端 downstream 的 keyPattern 一致：
+ *  字母/数字开头，其后只允许字母、数字与 -。 */
+const SERVER_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9-]*$/
+
+/** Key 的本地校验。后端也会拒（400），但那是一条英文原文；
+ *  这里先给出中文提示，也免得白跑一趟。 */
+export function keyFormatError(key: string): string | undefined {
+  const k = key.trim()
+  if (!k) return '必填'
+  if (!SERVER_KEY_RE.test(k)) return '仅允许字母、数字和 -，且必须以字母或数字开头'
+  if (k.toLowerCase() === 'hub') return 'hub 是保留前缀（网关自带工具占用），请换一个'
+  return undefined
+}

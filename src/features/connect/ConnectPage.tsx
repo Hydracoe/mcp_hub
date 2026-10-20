@@ -152,9 +152,9 @@ export function ConnectPage() {
                   <span>
                     管理凭据是另一回事：网关以 <code className="code-chip">--api-key</code> 启动时，
                     访问管理 API 与进入本后台需要该令牌（由{' '}
-                    <code className="code-chip">AuthGate</code> 与{' '}
-                    <code className="code-chip">apiKeyStorage</code> 处理）。两者互不替代 ——
-                    拿接入密钥进不了后台，拿管理令牌也调不了 <code className="code-chip">/mcp</code>。
+                    <code className="code-chip">AuthGate</code> 弹解锁框，令牌只存在本机
+                    localStorage 的一个键里）。两者互不替代 —— 拿接入密钥进不了后台，
+                    拿管理令牌也调不了 <code className="code-chip">/mcp</code>。
                   </span>
                 </li>
               </ul>

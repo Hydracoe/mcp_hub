@@ -19,6 +19,11 @@ export class ApiError extends Error {
 
 const API_KEY_STORAGE = 'mcp-hub.admin.apiKey'
 
+/** 旧版本把同一个令牌也存进了 zustand persist 的 'mcp-hub.auth' 键
+ *  （JSON：`{"state":{"apiKey":"..."},"version":0}`）。令牌现在只有
+ *  apiKeyStorage 一个来源，这个键迁移一次后不再使用。 */
+const LEGACY_AUTH_STORAGE = 'mcp-hub.auth'
+
 /** 管理接口鉴权令牌（`--api-key` 启用时必需）。仅存本机 localStorage。 */
 export const apiKeyStorage = {
   read(): string {
@@ -34,6 +39,23 @@ export const apiKeyStorage = {
       else localStorage.removeItem(API_KEY_STORAGE)
     } catch {
       /* 隐私模式下 localStorage 不可写，忽略即可 */
+    }
+  },
+  /** 一次性迁移：把旧 persist 键里的令牌搬到新键，然后删掉旧键。
+   *
+   *  新键已有值时以新键为准（旧键是历史遗留，不该反过来覆盖）。
+   *  旧键无论有没有令牌都删掉——迁移后不再使用它。 */
+  migrateLegacy() {
+    try {
+      const legacy = localStorage.getItem(LEGACY_AUTH_STORAGE)
+      if (!legacy) return
+      localStorage.removeItem(LEGACY_AUTH_STORAGE)
+      if (apiKeyStorage.read()) return
+      const parsed = JSON.parse(legacy) as { state?: { apiKey?: unknown } }
+      const key = parsed?.state?.apiKey
+      if (typeof key === 'string' && key) apiKeyStorage.write(key)
+    } catch {
+      /* 旧值读不出或不是合法 JSON 就当没有令牌 */
     }
   },
 }

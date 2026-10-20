@@ -75,7 +75,8 @@ export interface KeyValueEditorProps {
   addLabel?: string
 }
 
-/** 键值对编辑器：远程 Headers 与 stdio Env 共用。回显值若仍是 *** 视为未改，保存不回传（见 buildServerRequest）。 */
+/** 键值对编辑器：远程 Headers 与 stdio Env 共用。回显值若仍是 *** 视为未改，
+ *  保存时原样回传，由网关按原值还原（见 buildServerRequest）。 */
 export function KeyValueEditor({
   rows,
   onChange,

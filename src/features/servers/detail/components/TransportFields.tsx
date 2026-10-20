@@ -123,8 +123,8 @@ export function TransportFields({ form, setForm }: TransportFieldsProps) {
           />
           <p className="form-hint">
             <Icon name="info" size={13} className="mr-1 inline-block align-[-2px]" />
-            未改的 Header 值回显为 <span className="font-mono">***</span>，保存时沿用原值，不会把
-            <span className="font-mono">***</span> 当真值提交。
+            未改的 Header 值回显为 <span className="font-mono">***</span>，保存时原样回传给网关，
+            由网关按原值还原 —— <span className="font-mono">***</span> 不会被当真值存下去。
           </p>
         </div>
       ) : (

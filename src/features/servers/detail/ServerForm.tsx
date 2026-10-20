@@ -18,7 +18,7 @@ import type { Category, Transport } from '@/lib/api/types'
 import { TagInput } from './components/FormBits'
 import { FormSection } from './components/FormSection'
 import { TransportFields } from './components/TransportFields'
-import { NO_CATEGORY, type ServerFormState } from './server-form-model'
+import { NO_CATEGORY, keyFormatError, type ServerFormState } from './server-form-model'
 
 /** Server 详情页编辑表单。状态形状与「表单→请求体」换算在 server-form-model（被脏检查依赖），这里只渲染三个小节。 */
 
@@ -30,6 +30,7 @@ export interface ServerFormProps {
 
 export function ServerForm({ form, setForm, categories }: ServerFormProps) {
   const update = (patch: Partial<ServerFormState>) => setForm((prev) => ({ ...prev, ...patch }))
+  const keyError = keyFormatError(form.key)
 
   return (
     <div className="form-card">
@@ -45,15 +46,19 @@ export function ServerForm({ form, setForm, categories }: ServerFormProps) {
             />
           </div>
           <div>
-            <Label htmlFor="sf-key">Key（唯一主键，不可修改）</Label>
+            <Label htmlFor="sf-key">Key（工具前缀，唯一）</Label>
             <Input
               id="sf-key"
               value={form.key}
-              disabled
               className="font-mono"
-              onChange={() => undefined}
+              onChange={(e) => update({ key: e.target.value })}
+              placeholder="例如：web-search"
+              aria-invalid={Boolean(keyError)}
             />
-            <p className="form-hint">工具前缀，唯一约束。改名需另建 Server。</p>
+            <p className="form-hint">
+              工具前缀，唯一约束。改名会改掉已发布给 AI 的工具全名（key__tool），谨慎修改。
+            </p>
+            {keyError ? <p className="form-hint text-error-strong">{keyError}</p> : null}
           </div>
         </div>
 
