@@ -51,7 +51,15 @@ type Pool struct {
 
 	// retiring 是已经摘出池子、正在等收尾的连接。
 	// 单独记一份是为了让管理接口能回答"停用完成了吗，还有几个调用在跑"。
-	retiring map[string]*retirement
+	//
+	// 键是每次退役的唯一编号，不是 serverId：同一个 server 可能同时有多条
+	// 连接在收尾（重复停用、连接指纹变化后的旧连接淘汰），按 serverId 记
+	// 会互相覆盖——后一条顶掉前一条，前一条的完成信号永远等不到，
+	// 收尾的销账也会误关别人的信号。
+	retiring map[uint64]*retirement
+
+	// nextRetireID 为每次退役分配唯一编号，保证登记与销账一一对应。
+	nextRetireID uint64
 
 	// rings 是每 server 的密钥池。为空表示该 server 走单密钥模式
 	// （沿用 spec.Headers），行为与引入密钥池之前完全一致。
@@ -117,10 +125,14 @@ type pooled struct {
 
 // retirement 是一次连接收尾的过程：把连接与收尾开始时刻绑在一起，
 // 供管理接口估算还剩多久（Deadline）、是否已超等待上限。
+//
+// id 是这次收尾的唯一身份：登记进池子与销账出池子都只认它，
+// 收尾的 goroutine 只可能关掉自己那条记录的完成信号。
 type retirement struct {
+	id        uint64
 	serverID  string
 	serverKey string
-	conn      *downstream.Conn
+	conn      drainConn
 	startedAt time.Time
 	deadline  time.Time
 	done      chan struct{}
@@ -151,7 +163,7 @@ func NewPool(logger *zap.Logger) *Pool {
 	return &Pool{
 		conns:    make(map[string]*pooled),
 		fail:     make(map[string]*failure),
-		retiring: make(map[string]*retirement),
+		retiring: make(map[uint64]*retirement),
 		rings:    make(map[string]*downstream.KeyRing),
 		log:      logger,
 		now:      time.Now,
