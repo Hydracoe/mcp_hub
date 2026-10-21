@@ -82,7 +82,7 @@ func (s *Service) RefreshAll(ctx context.Context) *RefreshReport {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			res := downstream.NewProber(sv.Spec).Probe(ctx)
+			res := s.pool.Probe(ctx, sv.Spec)
 
 			// 探活失败不清空工具缓存（由 SaveProbe 保证）：
 			// 下游抖动不该让已聚合的工具消失。
@@ -156,7 +156,7 @@ func (s *Service) ProbeServer(ctx context.Context, serverID string) (*downstream
 		return nil, err
 	}
 
-	res := downstream.NewProber(sv.Spec).Probe(ctx)
+	res := s.pool.Probe(ctx, sv.Spec)
 	stats, err := s.store.Servers.SaveProbeReported(ctx, serverID, res)
 	if err != nil {
 		return nil, err
@@ -544,7 +544,7 @@ func (s *Service) probeOne(ctx context.Context, sv servers.Server, slot *probeSl
 	s.probeSem <- struct{}{}
 	defer func() { <-s.probeSem }()
 
-	res := downstream.NewProber(sv.Spec).Probe(ctx)
+	res := s.pool.Probe(ctx, sv.Spec)
 
 	stats, err := s.store.Servers.SaveProbeReported(ctx, sv.Spec.ID, res)
 	if err != nil {

@@ -137,6 +137,67 @@ func (p *Pool) CallTool(
 	return res, err
 }
 
+// Probe 对下游执行一次探活。
+//
+// 配了密钥池时走与调用相同的选钥与判决路径：探活也是真实请求，只用
+// servers.headers 探活会让"只配了密钥池"的 server 每次都被判 401，
+// 进而把整个 server 拖进退避，拦住池里完全健康的密钥。
+func (p *Pool) Probe(ctx context.Context, spec downstream.Spec) *downstream.ProbeResult {
+	ring := p.KeyRing(spec.ID)
+	if ring == nil {
+		return downstream.NewProber(spec).Probe(ctx)
+	}
+
+	budget := p.attemptsFor(ring)
+	var (
+		excluded map[string]bool
+		last     *downstream.ProbeResult
+	)
+	for attempt := 0; attempt < budget; attempt++ {
+		lease, err := ring.Acquire(excluded)
+		if err != nil {
+			if last != nil {
+				return last
+			}
+			return probeUnavailable(err)
+		}
+
+		probeSpec := spec
+		probeSpec.Headers = lease.Headers()
+		res := downstream.NewProber(probeSpec).Probe(ctx)
+		if res.OK {
+			lease.Done(downstream.LeaseResult{Verdict: downstream.VerdictOK})
+			return res
+		}
+
+		last = res
+		obs := res.Observation()
+		verdict := downstream.VerdictOf(res.Kind, obs)
+		p.emitKeyEvent(spec, lease, lease.Done(downstream.LeaseResult{Verdict: verdict, Obs: obs}))
+		if !verdict.Retryable() {
+			return res
+		}
+		if excluded == nil {
+			excluded = make(map[string]bool, budget)
+		}
+		excluded[lease.ID()] = true
+	}
+	if last != nil {
+		return last
+	}
+	return probeUnavailable(errors.New("探活未执行：密钥池无可用密钥"))
+}
+
+// probeUnavailable 把"借不到密钥"折成一次探活失败，保持调用方只处理一种返回。
+func probeUnavailable(err error) *downstream.ProbeResult {
+	return &downstream.ProbeResult{
+		CheckedAt: time.Now(),
+		Stage:     downstream.StageConnect,
+		Kind:      downstream.KindNoUsableKey,
+		Detail:    err.Error(),
+	}
+}
+
 // ListTools 通过连接池拉取某个 server 的工具清单。
 // 与 CallTool 共用同一条密钥选择与重试路径：探活也是真实调用，限流同样
 // 会打到它，两条路径行为一致才不会出现"调用能过、刷工具却报 429"。

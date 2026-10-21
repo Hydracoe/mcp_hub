@@ -538,3 +538,47 @@ func TestSingleKeyModeUnchanged(t *testing.T) {
 		t.Error("单密钥模式下 401 居然成功了")
 	}
 }
+
+// --- 探活与调用共用密钥池 ---
+
+// startStrictAuthDownstream 拒绝所有未带指定凭据的请求（包括握手）。
+// 与 keyedGate 只拦 tools/call 不同，它能证明探活本身带了池里的密钥。
+func startStrictAuthDownstream(t *testing.T, token string, tools ...toolSpec) string {
+	t.Helper()
+	base := newMCPHandler(tools)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		base.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// 只配密钥池、servers.headers 为空的 server，探活也必须能过。
+//
+// 探活走 servers.headers 的旧行为会在这里稳定 401：状态被判 offline，
+// 连续几次后还把整个 server 拦进 blockGate，池里健康的密钥完全用不上。
+func TestProbeUsesKeyPoolCredentials(t *testing.T) {
+	url := startStrictAuthDownstream(t, "good", echoTool("ping"))
+	e := newEnv(t, []downstream.Spec{remoteSpec("probe-pool", url)})
+	addCredentials(t, e, "probe-pool", "good")
+
+	report := e.svc.RefreshAll(context.Background())
+	if report.Total != 1 || report.Healthy != 1 {
+		t.Fatalf("探活没有使用密钥池凭据: %+v", report.Results)
+	}
+	if len(report.Results) != 1 || !report.Results[0].OK {
+		t.Fatalf("探活结果 = %+v, want OK", report.Results)
+	}
+
+	tools, err := e.store.Servers.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("读取工具缓存失败: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "ping" {
+		t.Fatalf("工具缓存 = %+v, want [ping]", tools)
+	}
+}
