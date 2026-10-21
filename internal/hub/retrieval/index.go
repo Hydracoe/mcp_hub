@@ -72,7 +72,11 @@ func collectToolDocs(ctx context.Context, st *store.Store, fields corpus.Fields)
 
 	out := make([]toolDoc, 0, len(tools))
 	for _, sv := range srvs {
-		if !sv.Enabled || (sv.Status != "healthy" && sv.Status != "degraded") {
+		// 与聚合快照同口径：只要 server 启用且工具通过人工过滤，就在检索面里。
+		// 不按 status 过滤——探活失败不清工具是全局约定，检索若把 offline 的
+		// server 排除掉，meta 模式下这些工具会“搜不到但仍在聚合列表里”，
+		// 一次探活抖动还会让整个 server 从发现面上消失。
+		if !sv.Enabled {
 			continue
 		}
 		rows := byServer[sv.Spec.ID]

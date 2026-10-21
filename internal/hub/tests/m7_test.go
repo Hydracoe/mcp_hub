@@ -460,6 +460,45 @@ func TestSearchToolsModes(t *testing.T) {
 	}
 }
 
+// 探活失败只是“暂时不可用”，工具仍是最近一次已知的那套。检索面必须与
+// 聚合快照同口径：否则 meta 模式下这些工具会“搜不到但还在列表里”，
+// 一次探活抖动就会让整个 server 从发现面上消失。
+func TestSearchKeepsOfflineServerTools(t *testing.T) {
+	st, svc := openSvc(t)
+	ctx := context.Background()
+	id := seedSearchServer(t, svc, "wx")
+
+	if err := st.Servers.SaveProbe(ctx, id, &downstream.ProbeResult{
+		OK:     false,
+		Kind:   downstream.KindTimeout,
+		Stage:  downstream.StageNetwork,
+		Detail: "offline",
+	}); err != nil {
+		t.Fatalf("写入离线状态失败: %v", err)
+	}
+	if err := svc.Reload(ctx); err != nil {
+		t.Fatalf("重载失败: %v", err)
+	}
+
+	hits, err := svc.SearchTools(ctx, retrieval.SearchQuery{Query: "天气", Mode: "bm25"})
+	if err != nil {
+		t.Fatalf("检索失败: %v", err)
+	}
+	if !hitContains(hits, "wx__forecast") {
+		t.Fatalf("server 离线后工具不应从检索面消失: %+v", hits)
+	}
+
+	var visible bool
+	for _, entry := range svc.Registry().Current().ToolEntries() {
+		if entry.Exposed == "wx__forecast" {
+			visible = true
+		}
+	}
+	if !visible {
+		t.Fatal("离线 server 的工具仍在聚合列表里，检索却搜不到：两处口径不一致")
+	}
+}
+
 // ---- 嵌入重建与 rerank（PRD §4.7.5）---------------------------------------
 
 func TestEmbedRebuildIncremental(t *testing.T) {
