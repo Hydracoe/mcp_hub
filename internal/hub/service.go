@@ -202,10 +202,11 @@ func NewServiceWithOptions(st *store.Store, logger *zap.Logger, opts Options) *S
 	}
 
 	s.agg = aggregate.NewAggregator(aggregate.Deps{
-		Sources: s.sources,
-		SpecOf:  s.specOf,
-		Log:     s.enqueueLog,
-		Blocked: s.gate.blocked,
+		Sources:       s.sources,
+		SpecOf:        s.specOf,
+		Log:           s.enqueueLog,
+		Blocked:       s.gate.blocked,
+		OnCallSuccess: s.gate.reset,
 	}, s.reg, s.pool, opts.ListMode)
 
 	// 密钥状态变化由连接池回调到这里落库与记日志。用回调而不是让

@@ -78,6 +78,11 @@ type Deps struct {
 	// 为 nil 时不拦截。拦截只挡调用，不挡探活与列表展示。
 	Blocked func(serverID string) (reason string, yes bool)
 
+	// OnCallSuccess 在真实调用成功后通知上层。可选。一次成功的调用
+	// 已经证明下游可达，应该解除探活连败留下的拦截；否则探活退避期间
+	// 即使调用能通，网关仍会继续拒绝，直到下一次探活成功。
+	OnCallSuccess func(serverID string)
+
 	// Log 记录一次工具调用。可选，为 nil 时不记录。
 	Log func(LogRecord)
 }
@@ -391,6 +396,12 @@ func (a *Aggregator) callTool(ctx context.Context, req mcp.CallToolRequest) (*mc
 		Args:         string(args),
 		Result:       string(resultJSON),
 	})
+
+	// 调用成功说明上游可达：解除探活连败留下的拦截。工具自身返回
+	// isError 也算成功——那是业务结果，不是网络/协议失败。
+	if a.deps.OnCallSuccess != nil {
+		a.deps.OnCallSuccess(route.ServerID)
+	}
 
 	// 原样透传下游结果：content、isError、structuredContent 一字不改。
 	// 网关只搬运不改写——下游标了 isError 就是工具失败了，不该被抹平成成功。
