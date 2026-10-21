@@ -325,23 +325,26 @@ func (s *Service) Close() error {
 // sources 从存储读出聚合输入。
 // 每次读库而不维护内存副本：Refresh 是低频操作，本地读是微秒级，
 // 多一份缓存就多一处可能与库不一致的状态。
-func (s *Service) sources() []registry.ToolSource {
+//
+// 任一读取失败都返回 ok=false：调用方保留上一份快照，不让瞬时数据库
+// 错误演变成"工具全部消失"。
+func (s *Service) sources() ([]registry.ToolSource, bool) {
 	ctx := context.Background()
 
 	srvs, err := s.store.Servers.List(ctx)
 	if err != nil {
 		s.log.Error("聚合时读取 server 列表失败", zap.Error(err))
-		return nil
+		return nil, false
 	}
 	tools, err := s.store.Servers.ListTools(ctx)
 	if err != nil {
 		s.log.Error("聚合时读取工具缓存失败", zap.Error(err))
-		return nil
+		return nil, false
 	}
 	cats, err := s.store.Categories.List(ctx)
 	if err != nil {
 		s.log.Error("聚合时读取分类失败", zap.Error(err))
-		return nil
+		return nil, false
 	}
 	// 分类只取中文展示名：它不进工具名（对外名 = serverKey__工具名），
 	// 只用于展示、过滤与词法检索，所以这里不需要 slug。
@@ -384,7 +387,7 @@ func (s *Service) sources() []registry.ToolSource {
 			Hidden:    disabledByServer[sv.Spec.ID],
 		})
 	}
-	return out
+	return out, true
 }
 
 func (s *Service) specOf(serverID string) (downstream.Spec, bool) {

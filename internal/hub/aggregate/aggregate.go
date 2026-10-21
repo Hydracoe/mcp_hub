@@ -67,7 +67,9 @@ const MetaPrefix = "hub__"
 // 不必在配置变更时重新构造它。
 type Deps struct {
 	// Sources 返回当前全部 server 的聚合输入。
-	Sources func() []registry.ToolSource
+	// ok 为 false 表示这次读取失败：此时应保留上一份快照，而不是拿空
+	// 列表重建，否则一次短暂的数据库错误就会让所有下游工具消失。
+	Sources func() (sources []registry.ToolSource, ok bool)
 
 	// SpecOf 按 serverID 取出下游连接配置。取不到表示该 server 已删除。
 	SpecOf func(serverID string) (downstream.Spec, bool)
@@ -239,7 +241,10 @@ func (a *Aggregator) Refresh() *registry.Snapshot {
 	a.refreshMu.Lock()
 	defer a.refreshMu.Unlock()
 
-	snap := a.reg.Build(a.deps.Sources())
+	snap := a.reg.Current()
+	if sources, ok := a.deps.Sources(); ok {
+		snap = a.reg.Build(sources)
+	}
 
 	// meta-tool 与聚合工具必须在同一次 SetTools 里注册：全量替换，
 	// 漏掉就等于下次刷新时把它们从端点上抹掉。

@@ -73,7 +73,7 @@ func TestMetaFilterExcludesDownstreamToolsClaimingMetaPrefix(t *testing.T) {
 		t.Fatal("前提不成立：hub__list_tools 不是下游路由")
 	}
 
-	a := NewAggregator(Deps{Sources: func() []registry.ToolSource { return sources }}, reg, nil, ListModeMeta)
+	a := NewAggregator(Deps{Sources: func() ([]registry.ToolSource, bool) { return sources, true }}, reg, nil, ListModeMeta)
 
 	got := a.metaOnlyFilter(context.Background(), registeredTools(a))
 	if len(got) != 0 {
@@ -101,7 +101,7 @@ func TestMetaFilterKeepsRealMetaToolWhenDownstreamSharesName(t *testing.T) {
 	}}
 	reg.Build(sources)
 
-	a := NewAggregator(Deps{Sources: func() []registry.ToolSource { return sources }}, reg, nil, ListModeMeta)
+	a := NewAggregator(Deps{Sources: func() ([]registry.ToolSource, bool) { return sources, true }}, reg, nil, ListModeMeta)
 	a.SetMetaTools(func() []mcpserver.ServerTool {
 		return []mcpserver.ServerTool{
 			metaTool(MetaPrefix+"list_tools", "真元工具 list_tools"),
@@ -136,12 +136,49 @@ func TestMetaFilterKeepsRealMetaToolWhenDownstreamSharesName(t *testing.T) {
 	}
 }
 
+// 一次读库失败不能把已有快照换成空列表：工具"最近一次已知"的语义
+// 必须由聚合层兜住，而不是指望调用方每次都读到成功。
+func TestRefreshKeepsSnapshotWhenSourcesFail(t *testing.T) {
+	reg := registry.NewRegistry()
+	fail := false
+	sources := []registry.ToolSource{{
+		ServerID: "srv-dk", ServerKey: "dk", Name: "dk",
+		Enabled: true, Available: true,
+		Tools: []downstream.ToolInfo{
+			{Name: "ping", Description: "探活", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}}
+
+	a := NewAggregator(Deps{Sources: func() ([]registry.ToolSource, bool) {
+		if fail {
+			return nil, false
+		}
+		return sources, true
+	}}, reg, nil, ListModeMeta)
+
+	before := a.reg.Current()
+	if _, ok := before.Lookup("dk__ping"); !ok {
+		t.Fatal("前提不成立：初始快照里没有 dk__ping")
+	}
+
+	fail = true
+	a.Refresh()
+
+	after := a.reg.Current()
+	if after != before {
+		t.Fatalf("读库失败后快照被替换: before=%p after=%p", before, after)
+	}
+	if _, ok := after.Lookup("dk__ping"); !ok {
+		t.Fatal("读库失败后 dk__ping 从聚合快照里消失了")
+	}
+}
+
 // 真元工具必须照常通过：把下游工具摘掉的那条判断不能误伤它们。
 func TestMetaFilterKeepsRealMetaTools(t *testing.T) {
 	reg := registry.NewRegistry()
 	reg.Build(nil)
 
-	a := NewAggregator(Deps{Sources: func() []registry.ToolSource { return nil }}, reg, nil, ListModeMeta)
+	a := NewAggregator(Deps{Sources: func() ([]registry.ToolSource, bool) { return nil, true }}, reg, nil, ListModeMeta)
 	a.SetMetaTools(func() []mcpserver.ServerTool {
 		return []mcpserver.ServerTool{metaTool(MetaPrefix+"search_tools", "搜索")}
 	})
@@ -170,7 +207,7 @@ func TestMetaFilterSeparatesListFromCall(t *testing.T) {
 	}}
 	reg.Build(sources)
 
-	a := NewAggregator(Deps{Sources: func() []registry.ToolSource { return sources }}, reg, nil, ListModeMeta)
+	a := NewAggregator(Deps{Sources: func() ([]registry.ToolSource, bool) { return sources, true }}, reg, nil, ListModeMeta)
 	a.SetMetaTools(func() []mcpserver.ServerTool {
 		return []mcpserver.ServerTool{
 			metaTool(MetaPrefix+"search_tools", "搜索"),
@@ -210,7 +247,7 @@ func TestMetaFilterSingleToolScenarioUnchanged(t *testing.T) {
 		reg := registry.NewRegistry()
 		reg.Build(nil)
 
-		a := NewAggregator(Deps{Sources: func() []registry.ToolSource { return nil }}, reg, nil, ListModeMeta)
+		a := NewAggregator(Deps{Sources: func() ([]registry.ToolSource, bool) { return nil, true }}, reg, nil, ListModeMeta)
 		a.SetMetaTools(func() []mcpserver.ServerTool {
 			return []mcpserver.ServerTool{metaTool(MetaPrefix+"search_tools", "搜索")}
 		})
@@ -234,7 +271,7 @@ func TestMetaFilterSingleToolScenarioUnchanged(t *testing.T) {
 
 		// 元工具还没注册（启动窗口）：列表与调用给过滤器的输入一样，
 		// 按旧行为放行。
-		a := NewAggregator(Deps{Sources: func() []registry.ToolSource { return sources }}, reg, nil, ListModeMeta)
+		a := NewAggregator(Deps{Sources: func() ([]registry.ToolSource, bool) { return sources, true }}, reg, nil, ListModeMeta)
 
 		got := a.metaOnlyFilter(context.Background(), registeredTools(a))
 		if len(got) != 1 || got[0].Name != "dk__ping" {
