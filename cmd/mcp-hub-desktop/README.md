@@ -56,7 +56,7 @@ desktop.log      运行日志（含 Wails 自身的系统日志）
 | | `cmd/mcp-hub serve` | `cmd/mcp-hub-desktop` |
 |---|---|---|
 | 数据目录 | 当前工作目录 | 应用数据目录 |
-| 监听地址 | `:9090`（全部网卡） | 默认 `127.0.0.1:9090` |
+| 监听地址 | 默认 `127.0.0.1:9090` | 默认 `127.0.0.1:9090` |
 | 生命周期 | 等 SIGTERM | 关窗 / SIGTERM |
 | 管理界面 | 同一个 `internal/webassets` | 同一个 `internal/webassets` |
 | 配置查找 | `$MCPHUB_ENV_FILE → ./.env → exe 旁 .env` | `$MCPHUB_ENV_FILE → <数据目录>/.env`，**不回退到 cwd** |

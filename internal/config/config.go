@@ -204,8 +204,8 @@ var configItems = []configItem{
 		note:    "缓存后端；auto 按 MCPHUB_CACHE 的形态推断（redis:// 前缀即 redis，留空即 memory）。内存后端不跨进程共享，单机单进程部署才选它",
 	},
 	{
-		env: EnvAddr, kind: kindString, def: ":9090",
-		note: "监听地址；端口写 0 由系统分配。只写 :9090 等于监听全部网卡",
+		env: EnvAddr, kind: kindString, def: "127.0.0.1:9090",
+		note: "监听地址；端口写 0 由系统分配。写 :9090 等于监听全部网卡，仅在容器等确需外部访问时使用",
 	},
 	{
 		env: EnvAPIKey, kind: kindString,

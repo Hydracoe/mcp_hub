@@ -129,7 +129,7 @@ func TestLoadDefaults(t *testing.T) {
 		DBDriver:        DriverAuto,
 		Cache:           "redis://127.0.0.1:6379/0",
 		CacheDriver:     DriverAuto,
-		Addr:            ":9090",
+		Addr:            "127.0.0.1:9090",
 		ProbeInterval:   DefaultProbeInterval,
 		ProbeOnStart:    true,
 		ProbeBlockAfter: 3,

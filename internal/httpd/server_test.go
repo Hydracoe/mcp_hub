@@ -146,6 +146,14 @@ func TestCORSPreflight(t *testing.T) {
 	if resp.Header.Get("Access-Control-Allow-Origin") == "" {
 		t.Error("普通请求缺少 Access-Control-Allow-Origin")
 	}
+
+	// 非本地来源不能拿到 CORS 头：否则任意网页都能读取本机管理 API。
+	resp, _ = do(t, http.MethodGet, ts.URL+"/api/overview", map[string]string{
+		"Origin": "https://evil.example",
+	})
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("非本地来源拿到了 Allow-Origin = %q", got)
+	}
 }
 
 // 鉴权作用域：/api/* 归管理 API 管，健康探针与 /api/status 刻意不设防。

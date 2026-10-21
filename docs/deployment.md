@@ -521,7 +521,7 @@ mcp-hub env          # 打印全部配置项：变量名 / 默认值 / 说明
 | `MCPHUB_DB_DRIVER` | `auto` | `auto` \| `postgres` \| `sqlite` |
 | `MCPHUB_CACHE` | 空 | `redis://…` 走 Redis，留空走进程内缓存 |
 | `MCPHUB_CACHE_DRIVER` | `auto` | `auto` \| `redis` \| `memory` |
-| `MCPHUB_ADDR` | `:9090` | 监听地址；只写 `:9090` 等于监听全部网卡 |
+| `MCPHUB_ADDR` | `127.0.0.1:9090` | 监听地址；只写 `:9090` 等于监听全部网卡 |
 | `MCPHUB_API_KEY` | 空 | 管理接口鉴权密钥；留空不校验 |
 | `MCPHUB_ENV_FILE` | 空 | 显式指定配置文件路径 |
 | `MCPHUB_LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error` |

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -99,7 +100,7 @@ func New(svc *hub.Service, opts Options) *Server {
 		opts.Logger, _ = zap.NewProduction()
 	}
 	if opts.Addr == "" {
-		opts.Addr = ":9090"
+		opts.Addr = "127.0.0.1:9090"
 	}
 
 	// 模式由调用方（配置层）决定；没给就按 release 算，
@@ -400,13 +401,15 @@ func (s *Server) recover() gin.HandlerFunc {
 	}
 }
 
-// cors 允许本地管理界面跨源访问。
+// cors 只对本地来源开放跨源访问。
 //
-// 生产形态里前端由 go:embed 内嵌，与后端同源，不需要 CORS；
-// 但 Vite 开发服务器是另一个端口，缺了这段就没法联调。
+// 生产形态里前端由 go:embed 内嵌，与后端同源，不需要 CORS；Vite 开发
+// 服务器是另一个端口，需要联调。但反射任意 Origin 会让用户浏览的任意
+// 网页都能读取本机管理 API 的响应——默认监听回环地址也挡不住这种请求。
+// 因此只回显 localhost / 127.0.0.1 / ::1 的来源，其余来源不拿 CORS 头。
 func (s *Server) cors() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if origin := c.GetHeader("Origin"); origin != "" {
+		if origin := c.GetHeader("Origin"); isLocalOrigin(origin) {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Vary", "Origin")
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -421,6 +424,24 @@ func (s *Server) cors() gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// isLocalOrigin 判断 Origin 是否指向本机回环地址。
+//
+// 只接受 http/https：Origin 是 "null" 或带其他 scheme 的值一律拒绝。
+func isLocalOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	switch strings.ToLower(u.Hostname()) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
 func (s *Server) accessLog() gin.HandlerFunc {
