@@ -121,6 +121,9 @@ type EmbedManager struct {
 
 	catMu   sync.Mutex
 	catVecs map[string][]float64
+	// catText 记录每个分类向量对应的是哪份“名称+描述”。分类改名/改描述后
+	// 旧向量必须重算，否则自动归类会一直用旧语义，直到进程重启。
+	catText map[string]string
 }
 
 // genOf 从配置算出代身份。
@@ -170,6 +173,7 @@ func NewEmbedManager(st *store.Store, log *zap.Logger, o EmbedOptions) *EmbedMan
 		rerankAPIKey: o.RerankAPIKey,
 		cfg:          cfg,
 		catVecs:      make(map[string][]float64),
+		catText:      make(map[string]string),
 	}
 	m.buildClients()
 	return m

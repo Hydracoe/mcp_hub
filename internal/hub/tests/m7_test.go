@@ -811,6 +811,45 @@ func TestAutoCategorizeThreshold(t *testing.T) {
 	}
 }
 
+// 分类改名/改描述后必须重算向量：旧向量继续参与相似度，自动归类会按
+// 一份已经不存在的语义做决定，而且进程不重启就永远错下去。
+func TestAutoCategorizeReembedsUpdatedCategory(t *testing.T) {
+	st, svc := openSvc(t)
+	ctx := context.Background()
+
+	vecOf := func(text string) []float64 {
+		switch {
+		case strings.Contains(text, "旧语义"), strings.Contains(text, "旧话题"):
+			return []float64{1, 0}
+		case strings.Contains(text, "新语义"), strings.Contains(text, "新话题"):
+			return []float64{0, 1}
+		}
+		return []float64{0, 1}
+	}
+	_, modelURL := fakeModelURL(t, vecOf)
+	em := retrieval.NewEmbedManager(st, nil, retrieval.EmbedOptions{
+		BaseURL: modelURL, APIKey: "k", Model: "m", Dimensions: 2,
+	})
+	svc.AttachEmbedding(em)
+
+	cat, err := svc.CreateCategory(ctx, "旧语义", "old", "")
+	if err != nil {
+		t.Fatalf("建分类失败: %v", err)
+	}
+	applied, _, err := em.AutoCategorize(ctx, "旧话题")
+	if err != nil || applied == nil || applied.ID != cat.ID {
+		t.Fatalf("首次归类应命中旧分类: applied=%v err=%v", applied, err)
+	}
+
+	if _, err := svc.UpdateCategory(ctx, cat.ID, "新语义", "new", ""); err != nil {
+		t.Fatalf("改分类失败: %v", err)
+	}
+	applied, _, err = em.AutoCategorize(ctx, "新话题")
+	if err != nil || applied == nil || applied.ID != cat.ID {
+		t.Fatalf("分类改名后应使用新向量重新归类: applied=%v err=%v", applied, err)
+	}
+}
+
 func TestApplyServerAutoCategorize(t *testing.T) {
 	st, svc := openSvc(t)
 	ctx := context.Background()

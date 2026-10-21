@@ -21,6 +21,9 @@ type SuggestedCategory struct {
 // RefreshCategoryVectors 把分类的名称+描述嵌入进内存缓存。
 // 不持久化：分类数量少，启动时重嵌一遍比多一张表划算。失败保留旧缓存
 // ——自动归类是辅助能力，不该被它拖死。
+//
+// 缓存按“名称+描述”的文本判新旧，而不只看 id 是否存在：分类改名/改描述
+// 后旧向量继续参与相似度计算，自动归类会用一份已经不存在的语义做决定。
 func (m *EmbedManager) RefreshCategoryVectors(ctx context.Context) {
 	m.mu.Lock()
 	e := m.embedder
@@ -34,24 +37,35 @@ func (m *EmbedManager) RefreshCategoryVectors(ctx context.Context) {
 		return
 	}
 
-	var missing []categories.Category
+	texts := make(map[string]string, len(cats))
 	for _, c := range cats {
-		m.catMu.Lock()
-		_, ok := m.catVecs[c.ID]
-		m.catMu.Unlock()
-		if !ok {
+		texts[c.ID] = strings.TrimSpace(c.Name + " " + c.Description)
+	}
+
+	var missing []categories.Category
+	m.catMu.Lock()
+	for _, c := range cats {
+		if m.catText[c.ID] != texts[c.ID] {
 			missing = append(missing, c)
 		}
 	}
+	// 已删除的分类不再参与比较：不清理的话缓存会随删除操作只增不减。
+	for id := range m.catText {
+		if _, ok := texts[id]; !ok {
+			delete(m.catText, id)
+			delete(m.catVecs, id)
+		}
+	}
+	m.catMu.Unlock()
 	if len(missing) == 0 {
 		return
 	}
 
-	texts := make([]string, 0, len(missing))
+	textList := make([]string, 0, len(missing))
 	for _, c := range missing {
-		texts = append(texts, strings.TrimSpace(c.Name+" "+c.Description))
+		textList = append(textList, texts[c.ID])
 	}
-	vecs, err := e.Embed(ctx, texts)
+	vecs, err := e.Embed(ctx, textList)
 	if err != nil {
 		m.log.Warn("分类向量化失败，保留旧缓存", zap.Error(err))
 		return
@@ -69,6 +83,7 @@ func (m *EmbedManager) RefreshCategoryVectors(ctx context.Context) {
 			continue
 		}
 		m.catVecs[c.ID] = unit
+		m.catText[c.ID] = texts[c.ID]
 	}
 	m.catMu.Unlock()
 }
