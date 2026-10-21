@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hydra/mcp-hub/internal/downstream"
 	"github.com/hydra/mcp-hub/internal/hub"
 	"github.com/hydra/mcp-hub/internal/hub/pool"
 	"github.com/hydra/mcp-hub/internal/hub/retrieval"
+	"github.com/hydra/mcp-hub/internal/store/servers"
 	"github.com/hydra/mcp-hub/internal/store/storeutil"
 	"go.uber.org/zap"
 )
@@ -228,30 +230,38 @@ func (a *API) handleCreateServer(c *gin.Context) {
 		return
 	}
 
-	cfg, err := req.toConfig(nil)
-	if err != nil {
-		failFor(c, err)
-		return
-	}
-
 	ctx := c.Request.Context()
 
 	// 默认拒绝重复的 key：POST 的语义是"创建"，键已存在时报 409
 	// 比悄悄覆盖更清楚——否则用户会以为自己新建了一个 server，
 	// 而实际上某个正在服务的下游被改了配置。
-	existing, err := a.svc.Store().Servers.GetByKey(ctx, cfg.Spec.Key)
+	existing, err := a.svc.Store().Servers.GetByKey(ctx, strings.TrimSpace(req.Key))
 	keyTaken := err == nil
 	switch {
 	case keyTaken:
 		if !parseBool(c.Query("upsert"), false) {
 			abortErr(c, http.StatusConflict, "key_taken",
-				"工具前缀 "+cfg.Spec.Key+" 已被占用；用 PUT /api/servers/"+existing.Spec.ID+
+				"工具前缀 "+existing.Spec.Key+" 已被占用；用 PUT /api/servers/"+existing.Spec.ID+
 					" 更新它，或在 URL 上加 ?upsert=1 表示接受覆盖")
 			return
 		}
 		// 覆盖写已有 key 是更新：请求没带分类就沿用原分类（服务层按
 		// "这条记录已有分类"处理），既不会被抹掉，也不会凭空造一个。
 	case !errors.Is(err, storeutil.ErrNotFound):
+		failFor(c, err)
+		return
+	}
+
+	// 覆盖写命中已有行时，把它交给 toConfig 作为 prev：headers / env
+	// 的"没带就沿用"、enabled / autoEnable 的"没带就保留原值"以及
+	// 原 ID 都依赖它。少了这一步，一次只改 URL 的 upsert 会把凭据、
+	// 环境变量和启停状态一起清掉。
+	var prev *servers.Server
+	if keyTaken {
+		prev = &existing
+	}
+	cfg, err := req.toConfig(prev)
+	if err != nil {
 		failFor(c, err)
 		return
 	}

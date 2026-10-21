@@ -984,6 +984,44 @@ func TestUpsertExistingServerKeepsCategory(t *testing.T) {
 	}
 }
 
+// 覆盖写已有 key（?upsert=1）时，请求没带的 headers / env / enabled /
+// autoEnable 都该沿用原值；只有显式给了才覆盖。否则一次只改 URL 的
+// 覆盖写会把凭据与启停状态悄悄清掉。
+func TestUpsertExistingServerKeepsUnsetFields(t *testing.T) {
+	e := newEnv(t, httpd.Options{})
+	ds := startDownstream(t, "x")
+	catID := e.mustCategory()
+
+	e.mustJSON(http.MethodPost, "/api/servers", map[string]any{
+		"key": "srv", "transport": "streamable_http", "url": ds, "categoryId": catID,
+		"headers":    map[string]string{"Authorization": "Bearer secret"},
+		"env":        []string{"TOKEN=secret"},
+		"autoEnable": true,
+		"enabled":    false,
+	}, http.StatusCreated, nil)
+
+	e.mustJSON(http.MethodPost, "/api/servers?upsert=1", map[string]any{
+		"key": "srv", "transport": "streamable_http", "url": ds,
+	}, http.StatusCreated, nil)
+
+	saved, err := e.store.Servers.GetByKey(context.Background(), "srv")
+	if err != nil {
+		t.Fatalf("读 server 失败: %v", err)
+	}
+	if got := saved.Spec.Headers["Authorization"]; got != "Bearer secret" {
+		t.Errorf("Authorization = %q, 期望保留原凭据", got)
+	}
+	if len(saved.Spec.Env) != 1 || saved.Spec.Env[0] != "TOKEN=secret" {
+		t.Errorf("Env = %v, 期望保留原环境变量", saved.Spec.Env)
+	}
+	if !saved.AutoEnable {
+		t.Error("autoEnable 被覆盖写清掉了")
+	}
+	if saved.Enabled {
+		t.Error("enabled 被覆盖写改成了启用")
+	}
+}
+
 // --- 鉴权 ---
 
 func TestAPIKeyProtectsAdminEndpoints(t *testing.T) {
