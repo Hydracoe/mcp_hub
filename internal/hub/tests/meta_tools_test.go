@@ -92,6 +92,44 @@ func TestMetaToolsHideDisabledTool(t *testing.T) {
 	}
 }
 
+// 两个 server 有同名工具时，按下游原始名查询必须报歧义，而不是
+// 静默返回排序靠前那份 schema；对外名精确查询仍然可用。
+func TestMetaToolRejectsAmbiguousRawName(t *testing.T) {
+	downA := startDownstream(t, toolSpec{name: "ping", desc: "Ping A"})
+	downB := startDownstream(t, toolSpec{name: "ping", desc: "Ping B"})
+
+	e := newMetaEnv(t, nil)
+	ctx := context.Background()
+	for key, url := range map[string]string{"a": downA, "b": downB} {
+		if err := e.store.Servers.Upsert(ctx, servers.Config{
+			Spec:    remoteSpec(key, url),
+			Enabled: true,
+		}); err != nil {
+			t.Fatalf("写入 server %s 失败: %v", key, err)
+		}
+	}
+	e.svc.RefreshAll(ctx)
+	enableAllCachedTools(t, e.store, e.svc)
+
+	got := e.callTool(t, "hub__tool", `{"name":"ping"}`)
+	if !got.IsError {
+		t.Fatalf("同名原始工具名应报歧义，实际返回定义: %s", textOf(t, got))
+	}
+	msg := textOf(t, got)
+	for _, want := range []string{"a__ping", "b__ping", "exposedName"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("歧义错误缺少候选/指引 %q: %s", want, msg)
+		}
+	}
+
+	// 对外名唯一，必须仍然能精确取到定义。
+	var def map[string]any
+	metaJSON(t, e.callTool(t, "hub__tool", `{"name":"a__ping"}`), &def)
+	if def["exposedName"] != "a__ping" || def["serverKey"] != "a" {
+		t.Errorf("按对外名查询失败: %+v", def)
+	}
+}
+
 // 管理接口与 AI 入口的差异是有意的：管理侧必须看得到禁用的工具，
 // 否则"被禁用的工具"就成了看不见也放不回来的黑洞。
 func TestDisabledToolStillVisibleToAdmin(t *testing.T) {

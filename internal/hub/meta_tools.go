@@ -298,14 +298,47 @@ func (m *MetaTools) tool(_ context.Context, req mcp.CallToolRequest) (*mcp.CallT
 		return mcp.NewToolResultErrorf("name 必填"), nil
 	}
 
-	for _, e := range m.svc.Registry().Current().ToolEntries() {
-		if e.Exposed != name && e.Name != name {
-			continue
+	entries := m.svc.Registry().Current().ToolEntries()
+
+	// 对外名是唯一键，先精确匹配：同名工具跨 server 时，只有它不会歧义。
+	idx := -1
+	for i, e := range entries {
+		if e.Exposed == name {
+			idx = i
+			break
 		}
+	}
+	if idx < 0 {
+		// 兼容按下游原始工具名查询，但原始名不保证全局唯一。命中多个时
+		// 不能挑排序靠前的那个——AI 会拿着另一台 server 的 schema 去调用。
+		var matches []int
+		for i, e := range entries {
+			if e.Name == name {
+				matches = append(matches, i)
+			}
+		}
+		switch len(matches) {
+		case 0:
+			// 走到下面的未找到分支。
+		case 1:
+			idx = matches[0]
+		default:
+			candidates := make([]string, 0, len(matches))
+			for _, i := range matches {
+				candidates = append(candidates, entries[i].Exposed)
+			}
+			return mcp.NewToolResultErrorf(
+				"工具名 %q 在多个 server 中存在，无法确定目标：%s。请改用 exposedName 精确指定。",
+				name, strings.Join(candidates, "、")), nil
+		}
+	}
+
+	if idx >= 0 {
+		e := entries[idx]
 		// 未启用的工具不该给出定义：给一份 schema 却调不动，比直接说没找到
 		// 更糟——AI 会拿着参数去试，失败后还不知道是"没启用"还是"参数错"。
 		if !e.Enabled {
-			break
+			return mcp.NewToolResultErrorf("工具 %q 未启用：请让管理员在管理界面启用后再调用。", e.Exposed), nil
 		}
 		return jsonResult(map[string]any{
 			"exposedName": e.Exposed,
