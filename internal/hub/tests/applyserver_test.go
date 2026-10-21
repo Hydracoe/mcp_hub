@@ -108,6 +108,89 @@ func TestApplyServerSameKeyIsNotCreate(t *testing.T) {
 	}
 }
 
+// 换目标后，旧探活状态与旧工具缓存必须立刻失效。
+//
+// 旧工具属于另一个端点。继续暴露它们，调用会带着旧工具名打到新下游；
+// 而状态还显示 healthy，会让"改完 URL 看起来就好了"变成假象。
+func TestApplyServerTargetChangeInvalidatesProbeCache(t *testing.T) {
+	st, svc := openSvc(t)
+	ctx := context.Background()
+
+	cat, err := svc.CreateCategory(ctx, "天气", "weather", "天气查询")
+	if err != nil {
+		t.Fatalf("建分类失败: %v", err)
+	}
+
+	downA := startDownstream(t, echoTool("old"))
+	if _, err := svc.ApplyServer(ctx, servers.Config{
+		Spec:       remoteSpec("swap", downA),
+		Enabled:    true,
+		CategoryID: cat.ID,
+	}); err != nil {
+		t.Fatalf("建 server 失败: %v", err)
+	}
+	svc.RefreshAll(ctx)
+
+	before, err := st.Servers.GetByKey(ctx, "swap")
+	if err != nil {
+		t.Fatalf("读 server 失败: %v", err)
+	}
+	if before.Status != "healthy" {
+		t.Fatalf("探活后状态应为 healthy，实际 %q", before.Status)
+	}
+	tools, err := st.Servers.ListToolsByServer(ctx, before.Spec.ID)
+	if err != nil {
+		t.Fatalf("读工具缓存失败: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "old" {
+		t.Fatalf("探活后应缓存 old 工具，实际 %+v", tools)
+	}
+
+	downB := startDownstream(t, echoTool("new"))
+	spec := before.Spec
+	spec.URL = downB
+	if _, err := svc.ApplyServer(ctx, servers.Config{Spec: spec, Enabled: true}); err != nil {
+		t.Fatalf("换目标失败: %v", err)
+	}
+
+	after, err := st.Servers.GetByKey(ctx, "swap")
+	if err != nil {
+		t.Fatalf("读 server 失败: %v", err)
+	}
+	if after.Status != "unknown" {
+		t.Errorf("换目标后状态应重置为 unknown，实际 %q", after.Status)
+	}
+	tools, err = st.Servers.ListToolsByServer(ctx, after.Spec.ID)
+	if err != nil {
+		t.Fatalf("读工具缓存失败: %v", err)
+	}
+	if len(tools) != 0 {
+		t.Errorf("换目标后旧工具缓存应清空，实际 %+v", tools)
+	}
+	for _, e := range svc.Registry().Current().ToolEntries() {
+		if e.Exposed == "swap__old" {
+			t.Errorf("聚合快照仍暴露旧目标工具 %s", e.Exposed)
+		}
+	}
+
+	// 下一次探活按新目标重新建立缓存。
+	svc.RefreshAll(ctx)
+	after, err = st.Servers.GetByKey(ctx, "swap")
+	if err != nil {
+		t.Fatalf("读 server 失败: %v", err)
+	}
+	if after.Status != "healthy" {
+		t.Errorf("新目标探活后状态应为 healthy，实际 %q", after.Status)
+	}
+	tools, err = st.Servers.ListToolsByServer(ctx, after.Spec.ID)
+	if err != nil {
+		t.Fatalf("读工具缓存失败: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "new" {
+		t.Errorf("新目标探活后应缓存 new 工具，实际 %+v", tools)
+	}
+}
+
 // 更新时给了不存在的分类必须被拦下。
 //
 // 分类只有"新建"那条路校验过存在性，更新这条路不校验：写进去的是一个

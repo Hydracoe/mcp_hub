@@ -398,6 +398,11 @@ func TestTargetChangeRebuildsConnection(t *testing.T) {
 	changed.URL = urlB
 	e.apply(t, changed)
 
+	// 目标换了，旧工具缓存必须先失效；新目标要重新探活并重新启用工具
+	// 才会回到聚合列表。
+	e.svc.RefreshAll(context.Background())
+	enableAllCachedTools(t, e.store, e.svc)
+
 	if got := textOf(t, e.callTool(t, "node__which", "")); got != "B" {
 		t.Errorf("改地址后仍打到旧目标: %q", got)
 	}

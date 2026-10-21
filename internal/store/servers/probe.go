@@ -45,6 +45,41 @@ func (s *Store) SaveProbe(ctx context.Context, serverID string, res *downstream.
 	return err
 }
 
+// InvalidateProbe 清掉一个 server 的探活结果与工具缓存。
+//
+// 只在"目标已经换了"时调用：旧工具属于另一个 URL/命令，继续留在缓存里
+// 会被聚合层当成新目标的工具暴露出去，调用时带着旧工具名打到新下游。
+// 探活失败不清缓存是另一条规则——同一个目标抖动时，上次已知的工具仍然有效。
+func (s *Store) InvalidateProbe(ctx context.Context, serverID string) (int64, error) {
+	var removed int64
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&serverRow{}).Where("id = ?", serverID).Updates(map[string]any{
+			"status":          "unknown",
+			"protocol_era":    "",
+			"server_name":     "",
+			"server_version":  "",
+			"capabilities":    storeutil.JSONOrEmptySlice(nil),
+			"instructions":    "",
+			"last_check_at":   nil,
+			"last_latency_ms": nil,
+			"last_error_kind": "",
+			"last_error":      "",
+			"updated_at":      time.Now().UnixMilli(),
+		})
+		if err := storeutil.RequireAffected(res.RowsAffected, res.Error, "重置探活状态"); err != nil {
+			return err
+		}
+
+		del := tx.Where("server_id = ?", serverID).Delete(&toolRow{})
+		removed = del.RowsAffected
+		return del.Error
+	})
+	if err != nil {
+		return 0, err
+	}
+	return removed, nil
+}
+
 // SaveProbeReported 与 SaveProbe 相同，额外返回本轮对账的变更计数。
 // 周期探活用它打"上游变了什么"的运维日志。
 func (s *Store) SaveProbeReported(ctx context.Context, serverID string, res *downstream.ProbeResult) (ProbeChangeStats, error) {

@@ -738,6 +738,7 @@ func TestStdioDownstreamIsolatesFailure(t *testing.T) {
 	if r := e.callTool(t, "ghost__echo", `{}`); r.IsError {
 		t.Fatalf("前置条件不成立，ghost 一开始就不可用: %s", textOf(t, r))
 	}
+	ghostID := e.serverIDOf(t, "ghost")
 
 	// 把 ghost 指向不存在的可执行文件，并让它立即生效。
 	if _, err := e.svc.ApplyServer(context.Background(), servers.Config{
@@ -747,12 +748,18 @@ func TestStdioDownstreamIsolatesFailure(t *testing.T) {
 		t.Fatalf("更新配置失败: %v", err)
 	}
 
-	res := e.callTool(t, "ghost__echo", `{}`)
-	if !res.IsError {
-		t.Fatal("命令无法启动的下游应返回 isError")
+	// 目标已换，旧工具不应再对外暴露；探活要把新目标的失败分类带出来。
+	probe, err := e.svc.RefreshTools(context.Background(), ghostID)
+	if err != nil {
+		t.Fatalf("刷新工具失败: %v", err)
 	}
-	if !strings.Contains(textOf(t, res), "SPAWN_FAILED") {
-		t.Errorf("错误分类没透出: %s", textOf(t, res))
+	if probe.OK || probe.Kind != downstream.KindSpawnFailed {
+		t.Fatalf("坏目标探活应返回 SPAWN_FAILED，实际 ok=%v kind=%s", probe.OK, probe.Kind)
+	}
+	for _, entry := range e.svc.Registry().Current().ToolEntries() {
+		if entry.Exposed == "ghost__echo" {
+			t.Errorf("目标已坏，聚合快照仍暴露 %s", entry.Exposed)
+		}
 	}
 
 	// 另一个 stdio 下游不受影响——这是进程级隔离，不是同进程内的异常吞掉。

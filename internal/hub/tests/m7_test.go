@@ -493,9 +493,13 @@ func TestEmbedRebuildIncremental(t *testing.T) {
 		t.Fatalf("语料未变不应重嵌: total=%d embeds=%d→%d", rs.Total, before, fm.embedCount())
 	}
 
-	// server 描述变更：语料 hash 变，全部重嵌
+	// server 描述变更：语料 hash 变，全部重嵌。保留原目标，只改元数据。
+	sv, err := st.Servers.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("读 server 失败: %v", err)
+	}
 	if _, err := svc.ApplyServer(ctx, servers.Config{
-		Spec:        remoteSpec("wx", deadURL(t)),
+		Spec:        sv.Spec,
 		Enabled:     true,
 		Description: "新的描述",
 	}); err != nil {

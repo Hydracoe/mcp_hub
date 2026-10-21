@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -265,6 +266,19 @@ func (s *Service) checkCategoryExists(ctx context.Context, id string) error {
 	return nil
 }
 
+// sameTarget 判断两份配置是否仍指向同一个下游。
+//
+// 只有目标变了，缓存的探活状态与工具清单才失效：改名字、描述、分类、
+// 凭据、超时都不影响"那边有哪些工具"。stdio 的 env 是凭据也是进程环境，
+// 换 env 等于换目标，必须计入。
+func sameTarget(a, b downstream.Spec) bool {
+	return a.Transport == b.Transport &&
+		a.URL == b.URL &&
+		a.Command == b.Command &&
+		slices.Equal(a.Args, b.Args) &&
+		slices.Equal(a.Env, b.Env)
+}
+
 // ApplyServer 写入一个新 server 或更新已有配置，并让它立即生效。
 //
 // 要不要重建连接取决于目标是否换了，判据是 ConnFingerprint：换密钥、
@@ -355,6 +369,21 @@ func (s *Service) ApplyServer(ctx context.Context, cfg servers.Config) (*ApplyRe
 	saved, err := s.store.Servers.GetByKey(ctx, cfg.Spec.Key)
 	if err != nil {
 		return nil, err
+	}
+
+	// 目标换了，旧状态与旧工具就不再属于这条配置：状态会误导成"新地址
+	// 已经健康"，旧工具名则会被发到新下游。清掉它们，等下一次探活重新
+	// 建立"最近一次已知"。只改名称/描述/分类/凭据不触发。
+	if !created && !sameTarget(prev.Spec, saved.Spec) {
+		removed, err := s.store.Servers.InvalidateProbe(ctx, saved.Spec.ID)
+		if err != nil {
+			return nil, err
+		}
+		// 旧目标的连败不应拦住新目标：新地址还没被探过，闸门先回到初始态。
+		s.gate.reset(saved.Spec.ID)
+		s.log.Info("目标已变更，旧探活结果与工具缓存已清空",
+			zap.String("server", saved.Spec.Key),
+			zap.Int64("tools", removed))
 	}
 
 	// 编辑表单也能把 server 关掉（cfg.Enabled=false）：与启停开关同一约束——

@@ -280,6 +280,19 @@ func (p *Pool) Sync(targets []Target) {
 	}
 	p.mu.RUnlock()
 
+	// 退避窗口属于"上一次那个目标"：目标换了或 server 被删了，旧窗口
+	// 不该继续拦住新目标。否则改完 URL 还要等旧退避到点才能重试。
+	if len(gone) > 0 || len(changed) > 0 {
+		p.mu.Lock()
+		for _, id := range gone {
+			delete(p.fail, id)
+		}
+		for _, id := range changed {
+			delete(p.fail, id)
+		}
+		p.mu.Unlock()
+	}
+
 	// 两条路径都走优雅退场：配置变更不是打断在飞调用的理由。
 	for _, id := range gone {
 		p.Retire(id)

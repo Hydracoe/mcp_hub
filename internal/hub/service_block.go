@@ -75,6 +75,15 @@ func (g *blockGate) note(serverID string, ok bool, detail string) blockEvent {
 	return ev
 }
 
+// reset 忘掉某个 server 的连败记录。目标换掉时调用：旧地址的失败
+// 不能拿来拦新地址的调用，否则用户改完 URL 仍然要等一次成功探活才解封。
+func (g *blockGate) reset(serverID string) {
+	g.mu.Lock()
+	delete(g.streaks, serverID)
+	delete(g.details, serverID)
+	g.mu.Unlock()
+}
+
 // blocked 报告该 server 是否被拦截，给调用路径用。调用路径高频，
 // 必须只读、无副作用。
 func (g *blockGate) blocked(serverID string) (string, bool) {
