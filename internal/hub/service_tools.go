@@ -46,6 +46,13 @@ func (s *Service) SetToolEnabled(ctx context.Context, serverID, toolName string,
 		return err
 	}
 	if !ok {
+		// 启用方向返回 false 可能是并发停用 server 让 WHERE 条件落空。
+		// 回读一次给出准确原因，别把「server 刚被停用」误报成「工具不存在」。
+		if enabled {
+			if sv, err := s.store.Servers.Get(ctx, serverID); err == nil && !sv.Enabled {
+				return fmt.Errorf("%w（%s）", ErrServerDisabled, key)
+			}
+		}
 		return storeutil.ErrNotFound
 	}
 

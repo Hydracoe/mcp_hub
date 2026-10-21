@@ -115,6 +115,22 @@ func TestSetToolEnabled(t *testing.T) {
 		t.Error("未知工具应返回 false")
 	}
 
+	// server 停用后，启用单个工具必须在同一条 UPDATE 里被拒绝：并发窗口
+	// 里 Service 的预检查可能已经过期，不能靠它兜底。
+	if _, err := st.Servers.SetEnabledCascade(ctx, srv.Spec.ID, false); err != nil {
+		t.Fatalf("停用 server 失败: %v", err)
+	}
+	ok, err = st.Servers.SetToolEnabled(ctx, srv.Spec.ID, "alpha", true)
+	if err != nil {
+		t.Fatalf("停用 server 后启用工具不应报错: %v", err)
+	}
+	if ok {
+		t.Error("停用 server 后不应能启用工具")
+	}
+	if toolByName(t, st.Servers, ctx, srv.Spec.ID, "alpha").Enabled {
+		t.Error("停用 server 后工具仍被启用")
+	}
+
 	ok, err = st.Servers.SetToolEnabled(ctx, srv.Spec.ID, "alpha", false)
 	if err != nil || !ok {
 		t.Fatalf("禁用失败: ok=%v err=%v", ok, err)

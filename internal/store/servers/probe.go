@@ -368,9 +368,16 @@ func hasBool(set map[string]struct{}, key string) bool {
 // SetToolEnabled 启用或禁用单个工具。
 // 返回 false 表示该 server 下没有这个工具（上层映射 404）。
 func (s *Store) SetToolEnabled(ctx context.Context, serverID, toolName string, enabled bool) (bool, error) {
-	res := s.db.WithContext(ctx).Model(&toolRow{}).
-		Where("server_id = ? AND name = ?", serverID, toolName).
-		Update("enabled", storeutil.BoolToInt(enabled))
+	// 启用方向必须与 server 的启用状态在同一个 UPDATE 里判定。Service 层
+	// 的预检查与这里之间有一个窗口：并发停用 server 时，预检查看到启用、
+	// 随后把工具翻成启用，就会留下「server 停用但工具启用」的矛盾状态。
+	// 把条件写进 WHERE，数据库最终只会落在一致的一侧。
+	q := s.db.WithContext(ctx).Model(&toolRow{}).
+		Where("server_id = ? AND name = ?", serverID, toolName)
+	if enabled {
+		q = q.Where("EXISTS (SELECT 1 FROM servers WHERE servers.id = ? AND servers.enabled != 0)", serverID)
+	}
+	res := q.Update("enabled", storeutil.BoolToInt(enabled))
 	if res.Error != nil {
 		return false, fmt.Errorf("更新工具启用状态失败: %w", res.Error)
 	}
