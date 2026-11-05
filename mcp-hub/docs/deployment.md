@@ -15,22 +15,21 @@
 
 ## 0. 先看这里
 
-本文档里的所有 `make` 命令都在**项目根**执行 —— 也就是有 `Makefile` 和
+本文档里的所有 `make` 命令都在**仓库根**执行 —— 也就是有 `Makefile` 和
 `docker-compose.yml` 的那一层：
 
 ```
-<项目根>/            ← make 命令在这里敲
+<仓库根>/            ← make 命令在这里敲
 ├── Makefile
 ├── docker-compose.yml
 ├── .dockerignore
-├── mcp-hub/         ← 本文档所在仓库（Go 后端，独立的 git 仓库）
-└── mcp-hub-admin/   ← 前端（独立的 git 仓库）
+├── mcp-hub/         ← Go 后端（同一仓库内的子目录）
+└── mcp-hub-admin/   ← 前端（同一仓库内的子目录）
 ```
 
-仓库边界值得先说一句：`mcp-hub/` 自己是一个 git 仓库，项目根不是。
-所以 `mcp-hub/docs/deployment.md` 跟后端代码一起进版本库，而
-`docker-compose.yml` 与 `Makefile` 留在根上管着两个子项目 —— 编排脚本跟着
-编排对象走。
+仓库边界值得先说一句：这是**单一仓库**，`mcp-hub/` 与 `mcp-hub-admin/` 是仓库内的
+两个子目录，历史分别保留在这两个前缀下；`docker-compose.yml` 与 `Makefile` 放在
+根上管着两个子项目 —— 编排脚本跟着编排对象走。
 
 三分钟速查：
 
@@ -560,10 +559,10 @@ mcp-hub env          # 打印全部配置项：变量名 / 默认值 / 说明
 
 | 事实 | 出处 |
 |---|---|
-| 三个服务的镜像、端口、卷、健康检查、环境变量 | `../../docker-compose.yml`（项目根，在本仓库之外） |
-| 各 make 目标的语义与互斥关系 | `../../Makefile`（项目根，在本仓库之外） |
+| 三个服务的镜像、端口、卷、健康检查、环境变量 | `../../docker-compose.yml`（仓库根） |
+| 各 make 目标的语义与互斥关系 | `../../Makefile`（仓库根） |
 | 构建上下文、三阶段、基础镜像参数、运行阶段 | `../Dockerfile` |
-| 构建上下文收敛清单 | `../../.dockerignore`（项目根，在本仓库之外） |
+| 构建上下文收敛清单 | `../../.dockerignore`（仓库根） |
 | 配置项清单、优先级、查找顺序 | `../internal/config/config.go`、`../cmd/mcp-hub/README.md` |
 | `/healthz` 与 `/readyz` 的语义 | `../internal/httpd/server.go` |
 | 管理接口鉴权与接入 key | `../internal/api/api.go` |

@@ -7,19 +7,19 @@
 "读配置 → 起引擎 → 打横幅 → 等信号"。这样做的直接好处是**桌面端（`cmd/mcp-hub-desktop`）不必重写一遍装配**：
 两个入口共用同一个引擎，业务行为、探活调度、优雅退出的语义因此不会有第二份实现。
 
-构建入口在**项目根**，不在本目录（与 `mcp-hub/` 同级的 `Makefile`）。它同时编排后端、前端
-（`mcp-hub-admin`）和 `docker-compose.yml`，后两者都在本仓库之外；产物反过来落在本
-仓库的 `bin/` 里——编排脚本跟着编排对象走，构建产物跟着代码走。所以命令都在项目根敲：
+构建入口在**仓库根**，不在本目录（与 `mcp-hub/` 同级的 `Makefile`）。它同时编排后端、前端
+（`mcp-hub-admin`）和 `docker-compose.yml`，两者都是同一仓库内的子目录；产物反过来落在
+`mcp-hub/bin/` 里——编排脚本跟着编排对象走，构建产物跟着代码走。所以命令都在仓库根敲：
 
 ```bash
-cd ../../..                  # 到项目根，那里才有 Makefile
+cd ../../..                  # 到仓库根，那里才有 Makefile
 make build                  # → mcp-hub/bin/mcp-hub
 make run                    # 构建并 serve（会自动 cd 回本目录跑，见下）
 ```
 
 `make run` / `make servers` / `make probe` 会在**本目录**里执行二进制。这不是路径洁癖：
 命令行形态的 dataDir 取进程工作目录，而配置文件查找是
-`$MCPHUB_ENV_FILE → ./.env → 可执行文件旁的 .env`。从项目根直接跑
+`$MCPHUB_ENV_FILE → ./.env → 可执行文件旁的 .env`。从仓库根直接跑
 `./mcp-hub/bin/mcp-hub` 会找不到 `.env`，静默退回"零配置"（SQLite + 内存缓存），
 而 `.env` 里写着 PostgreSQL。
 
