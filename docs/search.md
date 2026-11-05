@@ -1,6 +1,6 @@
 # search — mcp-hub 检索基座
 
-纯算法检索模块：不依赖 store 与 hub，不知道数据库表和 HTTP 路由。它提供 BM25 / 向量两路检索的原子能力以及融合、精排配套件；取数、建索引与流程编排在 [internal/hub/retrieval](../hub/retrieval)。
+纯算法检索模块：不依赖 store 与 hub，不知道数据库表和 HTTP 路由。它提供 BM25 / 向量两路检索的原子能力以及融合、精排配套件；取数、建索引与流程编排在 [internal/hub/retrieval](../mcp-hub/internal/hub/retrieval)。
 
 ## 包结构
 

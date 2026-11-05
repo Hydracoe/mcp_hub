@@ -1,16 +1,16 @@
 # cmd/mcp-hub — 程序入口
 
-本文件夹是 mcp-hub 的 `main` 包，`go build ./cmd/mcp-hub` 产出的可执行文件从这里编译。它负责读取配置、提供 CLI 子命令、启动网关服务；业务逻辑在 `internal/` 各包里，装配由 `internal/engine` 完成，`cmd/mcp-hub-desktop` 共用同一引擎。
+`cmd/mcp-hub` 是 mcp-hub 的 `main` 包，`go build ./cmd/mcp-hub` 产出的可执行文件从这里编译。它负责读取配置、提供 CLI 子命令、启动网关服务；业务逻辑在 `internal/` 各包里，装配由 `internal/engine` 完成，`cmd/mcp-hub-desktop` 共用同一引擎。
 
 构建入口在**仓库根**，`Makefile` 与 `mcp-hub/` 同级，产物落在 `mcp-hub/bin/`：
 
 ```bash
-cd ../../..                  # 到仓库根，那里才有 Makefile
+cd <仓库根>
 make build                  # → mcp-hub/bin/mcp-hub
-make run                    # 构建并 serve（会自动 cd 回本目录跑）
+make run                    # 构建并 serve（在 mcp-hub/ 下执行二进制）
 ```
 
-`make run` / `make servers` / `make probe` 会在**本目录**里执行二进制。命令行形态的 dataDir 取进程工作目录，配置查找是 `$MCPHUB_ENV_FILE → ./.env → 可执行文件旁的 .env`；从仓库根直接跑 `./mcp-hub/bin/mcp-hub` 会找不到 `.env`，静默退回零配置（SQLite + 内存缓存）。
+`make run` / `make servers` / `make probe` 会在 `mcp-hub/` 里执行二进制。命令行形态的 dataDir 取进程工作目录，配置查找是 `$MCPHUB_ENV_FILE → ./.env → 可执行文件旁的 .env`；从仓库根直接跑 `./mcp-hub/bin/mcp-hub` 会找不到 `.env`，静默退回零配置（SQLite + 内存缓存）。
 
 ## 文件一览
 
@@ -155,7 +155,7 @@ mcp-hub probe --url http://host/mcp --json
 
 ### 管理界面与部署形态
 
-带界面（`make ui && make build`，或 `make release`）：产物经 `go:embed` 打进二进制，挂在路由表最后（gin 的 NoRoute），`/api`、`/mcp` 的未命中仍是 404。不带界面（直接 `make build`）：`internal/webassets.Available()` 返回 false，`/` 是干净的 404，启动横幅会给出补上界面的命令。容器部署说明（`MCPHUB_ADDR` 为什么必须是 `:9090`、stdio 下游限制等）见 [`docs/deployment.md`](../../docs/deployment.md)。
+带界面（`make ui && make build`，或 `make release`）：产物经 `go:embed` 打进二进制，挂在路由表最后（gin 的 NoRoute），`/api`、`/mcp` 的未命中仍是 404。不带界面（直接 `make build`）：`internal/webassets.Available()` 返回 false，`/` 是干净的 404，启动横幅会给出补上界面的命令。容器部署说明（`MCPHUB_ADDR` 为什么必须是 `:9090`、stdio 下游限制等）见 [部署说明](deployment.md)。
 
 ## 最小上手路径
 

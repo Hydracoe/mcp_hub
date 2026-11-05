@@ -386,7 +386,7 @@ db-logs:
 # 与上面的 db-* 是两条互斥的路：
 #   db-*      只起数据库和缓存，后端在宿主机跑（make dev / make run）
 #   docker-*  后端也在容器里，整条链路一键起
-# 两条同时用会撞 9090。完整的容器说明见 mcp-hub/docs/deployment.md。
+# 两条同时用会撞 9090。完整的容器说明见 docs/deployment.md。
 
 ## docker-build: 构建后端镜像（三阶段：前端产物 → Go 编译 → alpine 运行）。
 docker-build:

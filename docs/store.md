@@ -1,6 +1,6 @@
 # store — mcp-hub 持久层
 
-mcp-hub 唯一的持久化包。数据落在 PostgreSQL（pgvector 扩展支撑 `tool_embeddings` 的向量列；SQLite 无向量类型，检索走内存余弦），SQL 由 GORM 生成，建表 DDL 由 [migrations/](migrations/postgres/000001_init.up.sql) 迁移文件独占。
+mcp-hub 唯一的持久化包。数据落在 PostgreSQL（pgvector 扩展支撑 `tool_embeddings` 的向量列；SQLite 无向量类型，检索走内存余弦），SQL 由 GORM 生成，建表 DDL 由 [migrations/](../mcp-hub/internal/store/migrations/postgres/000001_init.up.sql) 迁移文件独占。
 
 ## 包结构
 

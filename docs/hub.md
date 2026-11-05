@@ -1,6 +1,6 @@
 # hub — mcp-hub 聚合核心
 
-mcp-hub 的中枢包：把一批下游 MCP server 的工具聚合成**一个**对外 MCP 端点，负责连接生死、工具列表刷新、自然语言检索与密钥池调度。它消费 [internal/downstream](../../internal/downstream) 的连接与探活、[internal/store](../../internal/store) 的持久层、[internal/search](../../internal/search) 的检索原语，自己只做编排。
+mcp-hub 的中枢包：把一批下游 MCP server 的工具聚合成**一个**对外 MCP 端点，负责连接生死、工具列表刷新、自然语言检索与密钥池调度。它消费 [internal/downstream](../mcp-hub/internal/downstream) 的连接与探活、[internal/store](../mcp-hub/internal/store) 的持久层、[internal/search](../mcp-hub/internal/search) 的检索原语，自己只做编排。
 
 ## 包结构
 

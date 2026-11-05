@@ -7,7 +7,7 @@
 构建入口在**仓库根**（`Makefile` 与 `mcp-hub/` 同级），产物落在 `mcp-hub/bin/`：
 
 ```bash
-cd ../../..                         # 到仓库根
+cd <仓库根>
 make build-desktop                     # go build -tags wails -o mcp-hub/bin/mcp-hub-desktop ./cmd/mcp-hub-desktop
 ./mcp-hub/bin/mcp-hub-desktop          # 起引擎 + 开原生窗口
 

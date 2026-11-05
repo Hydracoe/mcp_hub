@@ -218,7 +218,7 @@ mcp-hub 的 `depends_on` postgres / redis 条件为 `service_healthy`。
 
 优先级：进程环境变量 > `.env` 文件 > 内置默认值。例如 `MCPHUB_ADDR=:8080 mcp-hub serve` 可一次性覆盖 `.env` 里的值。compose 的 `environment`、K8s 的 `env` 都是进程环境变量，因此部署参数压过 `.env`。
 
-`.env` 只加载**第一个命中的**文件：`$MCPHUB_ENV_FILE` → `./.env` → 可执行文件旁的 `.env`。`MCPHUB_ENV_FILE` 只能来自进程环境变量。桌面形态（`mcp-hub-desktop`）多一条锚点 `<应用数据目录>/.env`，且**不回退**到当前工作目录，详见 [cmd/mcp-hub-desktop/README.md](../cmd/mcp-hub-desktop/README.md)。
+`.env` 只加载**第一个命中的**文件：`$MCPHUB_ENV_FILE` → `./.env` → 可执行文件旁的 `.env`。`MCPHUB_ENV_FILE` 只能来自进程环境变量。桌面形态（`mcp-hub-desktop`）多一条锚点 `<应用数据目录>/.env`，且**不回退**到当前工作目录，详见 [桌面端说明](desktop.md)。
 
 命令行形态的 dataDir 与配置查找都基于进程当前工作目录。从仓库根跑 `./mcp-hub/bin/mcp-hub serve` 会找不到 `mcp-hub/.env`，并静默退回 SQLite + 内存缓存；`make run` 内部会先 `cd mcp-hub`。
 
@@ -253,7 +253,8 @@ mcp-hub env          # 打印全部配置项：变量名 / 默认值 / 说明
 | 宿主机：起全套（库 + 后端 + 前端） | `make dev` |
 | 宿主机：只起后端 | `make run` |
 | 宿主机：状态 / 日志 / 停止 | `make dev-status` / `make dev-logs` / `make dev-stop` |
-| 宿主机：带界面 | `make ui && make build` |
+| 构建后端 / 带界面 | `make build` / `make ui && make build` |
+| 检查 / 测试 / 仅格式检查 | `make check`（gofmt + vet + test） / `make test` / `make fmtcheck` |
 | 库：起 / 停 / 清空 | `make db-up` / `make db-down` / `make db-reset CONFIRM=1` |
 | 库：日志 | `make db-logs` |
 | 容器：构建 / 起 / 日志 / 停 | `make docker-build` / `make docker-up` / `make docker-logs` / `make docker-down` |
