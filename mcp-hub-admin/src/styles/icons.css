@@ -1,0 +1,323 @@
+/* ═══════════════════════════════════════════════════════════════
+   icons.css — 本地图标（CSS mask，离线可用，无 CDN 依赖）
+   Source: src/assets/icons/apple/*.svg · 24x24 stroke 风格
+   用法: <Icon name="server" className="size-4" />
+   本文件由 scripts/gen-icons.mjs 生成，请勿手改。
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 尺寸刻意不在此定义：本文件排在 tailwind 之后，一旦写 width 会静默压掉 size-*，图标变 1em 且无报错。
+   尺寸一律由调用处的 size-* 决定，与 lucide 原生行为一致。 */
+[data-icon] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+[data-icon="activity"] {
+  -webkit-mask-image: url("../assets/icons/apple/activity.svg");
+  mask-image: url("../assets/icons/apple/activity.svg");
+}
+[data-icon="alert-triangle"] {
+  -webkit-mask-image: url("../assets/icons/apple/alert-triangle.svg");
+  mask-image: url("../assets/icons/apple/alert-triangle.svg");
+}
+[data-icon="arrow-down"] {
+  -webkit-mask-image: url("../assets/icons/apple/arrow-down.svg");
+  mask-image: url("../assets/icons/apple/arrow-down.svg");
+}
+[data-icon="arrow-left"] {
+  -webkit-mask-image: url("../assets/icons/apple/arrow-left.svg");
+  mask-image: url("../assets/icons/apple/arrow-left.svg");
+}
+[data-icon="arrow-right"] {
+  -webkit-mask-image: url("../assets/icons/apple/arrow-right.svg");
+  mask-image: url("../assets/icons/apple/arrow-right.svg");
+}
+[data-icon="arrow-up"] {
+  -webkit-mask-image: url("../assets/icons/apple/arrow-up.svg");
+  mask-image: url("../assets/icons/apple/arrow-up.svg");
+}
+[data-icon="box"] {
+  -webkit-mask-image: url("../assets/icons/apple/box.svg");
+  mask-image: url("../assets/icons/apple/box.svg");
+}
+[data-icon="check"] {
+  -webkit-mask-image: url("../assets/icons/apple/check.svg");
+  mask-image: url("../assets/icons/apple/check.svg");
+}
+[data-icon="check-circle"] {
+  -webkit-mask-image: url("../assets/icons/apple/check-circle.svg");
+  mask-image: url("../assets/icons/apple/check-circle.svg");
+}
+[data-icon="check-circle-2"] {
+  -webkit-mask-image: url("../assets/icons/apple/check-circle-2.svg");
+  mask-image: url("../assets/icons/apple/check-circle-2.svg");
+}
+[data-icon="chevron-down"] {
+  -webkit-mask-image: url("../assets/icons/apple/chevron-down.svg");
+  mask-image: url("../assets/icons/apple/chevron-down.svg");
+}
+[data-icon="chevron-left"] {
+  -webkit-mask-image: url("../assets/icons/apple/chevron-left.svg");
+  mask-image: url("../assets/icons/apple/chevron-left.svg");
+}
+[data-icon="chevron-right"] {
+  -webkit-mask-image: url("../assets/icons/apple/chevron-right.svg");
+  mask-image: url("../assets/icons/apple/chevron-right.svg");
+}
+[data-icon="chevron-up"] {
+  -webkit-mask-image: url("../assets/icons/apple/chevron-up.svg");
+  mask-image: url("../assets/icons/apple/chevron-up.svg");
+}
+[data-icon="chevrons-down-up"] {
+  -webkit-mask-image: url("../assets/icons/apple/chevrons-down-up.svg");
+  mask-image: url("../assets/icons/apple/chevrons-down-up.svg");
+}
+[data-icon="chevrons-up-down"] {
+  -webkit-mask-image: url("../assets/icons/apple/chevrons-up-down.svg");
+  mask-image: url("../assets/icons/apple/chevrons-up-down.svg");
+}
+[data-icon="circle-alert"] {
+  -webkit-mask-image: url("../assets/icons/apple/circle-alert.svg");
+  mask-image: url("../assets/icons/apple/circle-alert.svg");
+}
+[data-icon="circle-check"] {
+  -webkit-mask-image: url("../assets/icons/apple/circle-check.svg");
+  mask-image: url("../assets/icons/apple/circle-check.svg");
+}
+[data-icon="circle-info"] {
+  -webkit-mask-image: url("../assets/icons/apple/circle-info.svg");
+  mask-image: url("../assets/icons/apple/circle-info.svg");
+}
+[data-icon="circle-minus"] {
+  -webkit-mask-image: url("../assets/icons/apple/circle-minus.svg");
+  mask-image: url("../assets/icons/apple/circle-minus.svg");
+}
+[data-icon="circle-pause"] {
+  -webkit-mask-image: url("../assets/icons/apple/circle-pause.svg");
+  mask-image: url("../assets/icons/apple/circle-pause.svg");
+}
+[data-icon="circle-play"] {
+  -webkit-mask-image: url("../assets/icons/apple/circle-play.svg");
+  mask-image: url("../assets/icons/apple/circle-play.svg");
+}
+[data-icon="circle-plus"] {
+  -webkit-mask-image: url("../assets/icons/apple/circle-plus.svg");
+  mask-image: url("../assets/icons/apple/circle-plus.svg");
+}
+[data-icon="circle-question-mark"] {
+  -webkit-mask-image: url("../assets/icons/apple/circle-question-mark.svg");
+  mask-image: url("../assets/icons/apple/circle-question-mark.svg");
+}
+[data-icon="code"] {
+  -webkit-mask-image: url("../assets/icons/apple/code.svg");
+  mask-image: url("../assets/icons/apple/code.svg");
+}
+[data-icon="copy"] {
+  -webkit-mask-image: url("../assets/icons/apple/copy.svg");
+  mask-image: url("../assets/icons/apple/copy.svg");
+}
+[data-icon="download"] {
+  -webkit-mask-image: url("../assets/icons/apple/download.svg");
+  mask-image: url("../assets/icons/apple/download.svg");
+}
+[data-icon="eye-off"] {
+  -webkit-mask-image: url("../assets/icons/apple/eye-off.svg");
+  mask-image: url("../assets/icons/apple/eye-off.svg");
+}
+[data-icon="external-link"] {
+  -webkit-mask-image: url("../assets/icons/apple/external-link.svg");
+  mask-image: url("../assets/icons/apple/external-link.svg");
+}
+[data-icon="file"] {
+  -webkit-mask-image: url("../assets/icons/apple/file.svg");
+  mask-image: url("../assets/icons/apple/file.svg");
+}
+[data-icon="file-json"] {
+  -webkit-mask-image: url("../assets/icons/apple/file-json.svg");
+  mask-image: url("../assets/icons/apple/file-json.svg");
+}
+[data-icon="filter"] {
+  -webkit-mask-image: url("../assets/icons/apple/filter.svg");
+  mask-image: url("../assets/icons/apple/filter.svg");
+}
+[data-icon="flask-conical"] {
+  -webkit-mask-image: url("../assets/icons/apple/flask-conical.svg");
+  mask-image: url("../assets/icons/apple/flask-conical.svg");
+}
+[data-icon="folder"] {
+  -webkit-mask-image: url("../assets/icons/apple/folder.svg");
+  mask-image: url("../assets/icons/apple/folder.svg");
+}
+[data-icon="folder-open"] {
+  -webkit-mask-image: url("../assets/icons/apple/folder-open.svg");
+  mask-image: url("../assets/icons/apple/folder-open.svg");
+}
+[data-icon="funnel"] {
+  -webkit-mask-image: url("../assets/icons/apple/funnel.svg");
+  mask-image: url("../assets/icons/apple/funnel.svg");
+}
+[data-icon="grip"] {
+  -webkit-mask-image: url("../assets/icons/apple/grip.svg");
+  mask-image: url("../assets/icons/apple/grip.svg");
+}
+[data-icon="heart"] {
+  -webkit-mask-image: url("../assets/icons/apple/heart.svg");
+  mask-image: url("../assets/icons/apple/heart.svg");
+}
+[data-icon="heart-pulse"] {
+  -webkit-mask-image: url("../assets/icons/apple/heart-pulse.svg");
+  mask-image: url("../assets/icons/apple/heart-pulse.svg");
+}
+[data-icon="house"] {
+  -webkit-mask-image: url("../assets/icons/apple/house.svg");
+  mask-image: url("../assets/icons/apple/house.svg");
+}
+[data-icon="info"] {
+  -webkit-mask-image: url("../assets/icons/apple/info.svg");
+  mask-image: url("../assets/icons/apple/info.svg");
+}
+[data-icon="key-round"] {
+  -webkit-mask-image: url("../assets/icons/apple/key-round.svg");
+  mask-image: url("../assets/icons/apple/key-round.svg");
+}
+[data-icon="layout-dashboard"] {
+  -webkit-mask-image: url("../assets/icons/apple/layout-dashboard.svg");
+  mask-image: url("../assets/icons/apple/layout-dashboard.svg");
+}
+[data-icon="lightbulb"] {
+  -webkit-mask-image: url("../assets/icons/apple/lightbulb.svg");
+  mask-image: url("../assets/icons/apple/lightbulb.svg");
+}
+[data-icon="mail"] {
+  -webkit-mask-image: url("../assets/icons/apple/mail.svg");
+  mask-image: url("../assets/icons/apple/mail.svg");
+}
+[data-icon="map-pin"] {
+  -webkit-mask-image: url("../assets/icons/apple/map-pin.svg");
+  mask-image: url("../assets/icons/apple/map-pin.svg");
+}
+[data-icon="message-circle-more"] {
+  -webkit-mask-image: url("../assets/icons/apple/message-circle-more.svg");
+  mask-image: url("../assets/icons/apple/message-circle-more.svg");
+}
+[data-icon="mouse-pointer-click"] {
+  -webkit-mask-image: url("../assets/icons/apple/mouse-pointer-click.svg");
+  mask-image: url("../assets/icons/apple/mouse-pointer-click.svg");
+}
+[data-icon="pen-line"] {
+  -webkit-mask-image: url("../assets/icons/apple/pen-line.svg");
+  mask-image: url("../assets/icons/apple/pen-line.svg");
+}
+[data-icon="plug"] {
+  -webkit-mask-image: url("../assets/icons/apple/plug.svg");
+  mask-image: url("../assets/icons/apple/plug.svg");
+}
+[data-icon="plus"] {
+  -webkit-mask-image: url("../assets/icons/apple/plus.svg");
+  mask-image: url("../assets/icons/apple/plus.svg");
+}
+[data-icon="radio"] {
+  -webkit-mask-image: url("../assets/icons/apple/radio.svg");
+  mask-image: url("../assets/icons/apple/radio.svg");
+}
+[data-icon="refresh-cw"] {
+  -webkit-mask-image: url("../assets/icons/apple/refresh-cw.svg");
+  mask-image: url("../assets/icons/apple/refresh-cw.svg");
+}
+[data-icon="rotate-cw"] {
+  -webkit-mask-image: url("../assets/icons/apple/rotate-cw.svg");
+  mask-image: url("../assets/icons/apple/rotate-cw.svg");
+}
+[data-icon="scroll-text"] {
+  -webkit-mask-image: url("../assets/icons/apple/scroll-text.svg");
+  mask-image: url("../assets/icons/apple/scroll-text.svg");
+}
+[data-icon="search"] {
+  -webkit-mask-image: url("../assets/icons/apple/search.svg");
+  mask-image: url("../assets/icons/apple/search.svg");
+}
+[data-icon="send-horizontal"] {
+  -webkit-mask-image: url("../assets/icons/apple/send-horizontal.svg");
+  mask-image: url("../assets/icons/apple/send-horizontal.svg");
+}
+[data-icon="server"] {
+  -webkit-mask-image: url("../assets/icons/apple/server.svg");
+  mask-image: url("../assets/icons/apple/server.svg");
+}
+[data-icon="shield-alert"] {
+  -webkit-mask-image: url("../assets/icons/apple/shield-alert.svg");
+  mask-image: url("../assets/icons/apple/shield-alert.svg");
+}
+[data-icon="shield-check"] {
+  -webkit-mask-image: url("../assets/icons/apple/shield-check.svg");
+  mask-image: url("../assets/icons/apple/shield-check.svg");
+}
+[data-icon="star"] {
+  -webkit-mask-image: url("../assets/icons/apple/star.svg");
+  mask-image: url("../assets/icons/apple/star.svg");
+}
+[data-icon="tag"] {
+  -webkit-mask-image: url("../assets/icons/apple/tag.svg");
+  mask-image: url("../assets/icons/apple/tag.svg");
+}
+[data-icon="terminal"] {
+  -webkit-mask-image: url("../assets/icons/apple/terminal.svg");
+  mask-image: url("../assets/icons/apple/terminal.svg");
+}
+[data-icon="thumbs-down"] {
+  -webkit-mask-image: url("../assets/icons/apple/thumbs-down.svg");
+  mask-image: url("../assets/icons/apple/thumbs-down.svg");
+}
+[data-icon="thumbs-up"] {
+  -webkit-mask-image: url("../assets/icons/apple/thumbs-up.svg");
+  mask-image: url("../assets/icons/apple/thumbs-up.svg");
+}
+[data-icon="timer"] {
+  -webkit-mask-image: url("../assets/icons/apple/timer.svg");
+  mask-image: url("../assets/icons/apple/timer.svg");
+}
+[data-icon="trash-2"] {
+  -webkit-mask-image: url("../assets/icons/apple/trash-2.svg");
+  mask-image: url("../assets/icons/apple/trash-2.svg");
+}
+[data-icon="trending-up"] {
+  -webkit-mask-image: url("../assets/icons/apple/trending-up.svg");
+  mask-image: url("../assets/icons/apple/trending-up.svg");
+}
+[data-icon="triangle-alert"] {
+  -webkit-mask-image: url("../assets/icons/apple/triangle-alert.svg");
+  mask-image: url("../assets/icons/apple/triangle-alert.svg");
+}
+[data-icon="upload"] {
+  -webkit-mask-image: url("../assets/icons/apple/upload.svg");
+  mask-image: url("../assets/icons/apple/upload.svg");
+}
+[data-icon="user"] {
+  -webkit-mask-image: url("../assets/icons/apple/user.svg");
+  mask-image: url("../assets/icons/apple/user.svg");
+}
+[data-icon="wrench"] {
+  -webkit-mask-image: url("../assets/icons/apple/wrench.svg");
+  mask-image: url("../assets/icons/apple/wrench.svg");
+}
+[data-icon="x"] {
+  -webkit-mask-image: url("../assets/icons/apple/x.svg");
+  mask-image: url("../assets/icons/apple/x.svg");
+}
+[data-icon="x-circle"] {
+  -webkit-mask-image: url("../assets/icons/apple/x-circle.svg");
+  mask-image: url("../assets/icons/apple/x-circle.svg");
+}
+[data-icon="zap"] {
+  -webkit-mask-image: url("../assets/icons/apple/zap.svg");
+  mask-image: url("../assets/icons/apple/zap.svg");
+}

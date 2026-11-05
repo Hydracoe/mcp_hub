@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+build/
+
+# Logs
+# 必须写成 /logs/（根级限定）：裸写 logs/ 会连同任意层级的同名目录一起忽略，
+# 而 src/features/logs/ 正是日志功能页 —— 它被忽略后不只是 git 看不到，
+# Tailwind v4 的源扫描也遵循 .gitignore，于是那个目录里所有工具类都生成不出来
+# （表现：筛选栏断点失效、列宽/截断类失灵）。只忽略仓库根的运行日志目录。
+/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Caches
+.cache/
+.temp/
+.vite/

@@ -1,0 +1,1144 @@
+/* apple-ui.css — Apple 级别的界面层。
+   加载顺序必须是：tailwind.css → tokens.css → apple-ui.css → icons.css
+   （本文件未分层，天然压过 Tailwind 的 @layer theme）。 */
+
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--apple-font-sans);
+  font-size: 13px;
+  line-height: 1.47;
+  letter-spacing: -0.004em;
+  color: var(--apple-foreground);
+  background: var(--background-100);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis-weight: none;
+}
+
+/* Apple 的选区色：品牌蓝 22% */
+::selection {
+  background: color-mix(in srgb, var(--brand-500) 22%, transparent);
+}
+
+/* 数字一律等宽，列才对得齐 —— 表格与指标卡里差别最明显 */
+table,
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* 细滚动条，贴近系统行为 */
+* { scrollbar-width: thin; scrollbar-color: var(--fill-primary) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--fill-secondary);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--fill-primary); background-clip: content-box; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* 统一的键盘焦点环（:focus-visible，鼠标点击不触发），保持 Apple 的克制感。 */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2.5px solid color-mix(in srgb, var(--brand-500) 42%, transparent);
+  outline-offset: 1.5px;
+  border-radius: inherit;
+}
+
+
+/* body 钩子：锁住视口高度，避免 iOS 上地址栏收放造成的跳动 */
+.app-body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+}
+
+.app-shell {
+  display: flex;
+  flex: 1;
+  min-height: 100vh;
+  min-height: 100dvh;
+  /* 一点点顶部品牌色晕染：给侧边栏的 backdrop-filter 提供可采样的底 */
+  background:
+    radial-gradient(110% 55% at 8% 0%, color-mix(in srgb, var(--brand-500) 5%, transparent), transparent 62%),
+    var(--background-100);
+  background-attachment: fixed;
+}
+
+/* 视口锁定的变体（server-detail 这类「主区独立滚动」的页面） */
+.app-shell.is-fixed {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.app-main.is-fixed { min-height: 0; overflow: hidden; }
+
+.app-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 侧边栏：Apple 的 vibrancy 材质 */
+.app-sidebar {
+  width: 232px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--material-sidebar);
+  -webkit-backdrop-filter: var(--material-blur);
+  backdrop-filter: var(--material-blur);
+  border-right: 1px solid var(--apple-sidebar-border);
+}
+
+.sidebar-head { padding: 12px 12px 6px; }
+
+/* 折叠态只留图标：列表页列多，窄屏下 232px 侧边栏会逼表格横向滚动。 */
+.app-sidebar[data-collapsed="true"] { width: 56px; }
+.app-sidebar[data-collapsed="true"] .brand-text,
+.app-sidebar[data-collapsed="true"] .nav-group-label,
+.app-sidebar[data-collapsed="true"] .nav-item > span,
+.app-sidebar[data-collapsed="true"] .sidebar-foot > span:not(.status-dot) { display: none; }
+.app-sidebar[data-collapsed="true"] .sidebar-brand { justify-content: center; }
+.app-sidebar[data-collapsed="true"] .nav-item { justify-content: center; padding: 0; }
+.app-sidebar[data-collapsed="true"] .sidebar-foot { justify-content: center; padding-inline: 0; }
+/* 折叠态头部只留一个居中的展开按钮：56px 栏放不下「logo+按钮」横排，
+   logo 收起、按钮顶替它的位置（尺寸对齐 brand-mark，头部高度不变）。
+   按钮必须留在栏内——挂在栏外会被主区盖住，is-fixed 页更被
+   overflow:hidden 直接裁掉，导致折叠后没有展开入口。 */
+.app-sidebar[data-collapsed="true"] .sidebar-head { padding-inline: 0; }
+.app-sidebar[data-collapsed="true"] .brand-mark { display: none; }
+.app-sidebar[data-collapsed="true"] .sidebar-collapse-btn {
+  position: static;
+  margin-left: 0;
+  width: 28px;
+  height: 28px;
+}
+.app-sidebar { transition: width var(--dur) var(--ease-apple); }
+.sidebar-collapse-btn { width: 22px; height: 22px; }
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(180deg, #4aa2ff 0%, var(--brand-500) 55%, #0062cc 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.10),
+    0 1px 2px rgba(0, 78, 158, 0.28);
+}
+.brand-mark [data-icon] { width: 15px; height: 15px; }
+
+.brand-name {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--apple-sidebar-foreground);
+  line-height: 1.25;
+}
+.brand-sub {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--apple-muted-foreground);
+}
+
+.sidebar-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px 14px;
+}
+
+.nav-group-label {
+  margin: 12px 0 3px;
+  padding: 0 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+  color: var(--icon-muted);
+}
+.nav-group-label:first-child { margin-top: 2px; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--apple-sidebar-foreground);
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    background-color var(--dur-fast) var(--ease-apple),
+    color var(--dur-fast) var(--ease-apple);
+}
+.nav-item .nav-icon {
+  flex: none;
+  color: var(--icon-muted);
+  transition: color var(--dur-fast) var(--ease-apple);
+}
+.nav-item > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.nav-item:hover { background: var(--fill-quaternary); }
+.nav-item:hover .nav-icon { color: var(--apple-sidebar-foreground); }
+.nav-item:active { background: var(--fill-tertiary); }
+
+/* 选中态：品牌色染色 + 图标同色，而不是一块中性灰 */
+.nav-item[aria-current="page"],
+.nav-item[data-active="true"] {
+  background: var(--selection);
+  color: var(--brand-600);
+  font-weight: 600;
+}
+.nav-item[aria-current="page"] .nav-icon,
+.nav-item[data-active="true"] .nav-icon { color: var(--brand-600); }
+.nav-item[aria-current="page"]:hover,
+.nav-item[data-active="true"]:hover { background: var(--selection-strong); }
+
+.sidebar-foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--separator);
+  font-size: 11px;
+  color: var(--apple-muted-foreground);
+}
+.sidebar-foot .foot-meta { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* 状态圆点：带一圈同色淡光晕，比纯色小圆更「活」 */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--icon-muted);
+  color: var(--icon-muted);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, currentColor 15%, transparent);
+}
+.status-dot[data-state="ok"] { background: var(--state-success); color: var(--state-success); }
+.status-dot[data-state="warn"] { background: var(--state-warning); color: var(--state-warning); }
+.status-dot[data-state="error"] { background: var(--state-error); color: var(--state-error); }
+.status-dot[data-state="idle"] { background: var(--icon-muted); color: var(--icon-muted); }
+
+
+.app-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex: none;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 24px;
+  background: var(--material-toolbar);
+  -webkit-backdrop-filter: var(--material-blur);
+  backdrop-filter: var(--material-blur);
+  border-bottom: 1px solid var(--separator);
+}
+
+.toolbar-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.016em;
+  color: var(--apple-foreground);
+}
+.toolbar-trail {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  color: var(--apple-muted-foreground);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  background: var(--fill-quaternary);
+  color: var(--apple-muted-foreground);
+  white-space: nowrap;
+}
+.chip-quiet { background: transparent; padding: 0 2px; font-variant-numeric: tabular-nums; }
+.chip-ok {
+  background: var(--state-success-surface);
+  color: var(--state-success-strong);
+  font-weight: 600;
+}
+
+
+.app-content {
+  flex: 1;
+  width: 100%;
+  max-width: 1320px;
+  margin-inline: auto;
+  padding: 26px 28px 64px;
+}
+.app-content > * + * { margin-top: 28px; }
+
+/* 详情页这种自带分栏的页面：同样限宽，但由页面自己排内部栅格 */
+.app-content-wide {
+  width: 100%;
+  max-width: 1240px;
+  margin-inline: auto;
+  padding: 24px 26px 56px;
+}
+
+@media (max-width: 1023px) {
+  .app-content { padding: 20px 20px 48px; }
+  .app-content > * + * { margin-top: 22px; }
+  .app-content-wide { padding: 18px 18px 44px; }
+}
+
+/* 内容区排版：以 .app-content 为锚点，权重 (0,1,1) 压过 Tailwind 的 text-/font- 单类工具，
+   故右对齐表头要单独写 .text-right 出口。注意：注释里别出现斜杠星号序列，会提前闭合 CSS 注释、让后续规则失效。 */
+.app-content h2 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  color: var(--apple-foreground);
+}
+.app-content h3 {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.app-content p { line-height: 1.5; }
+
+/* 区块头：标题 + 右侧说明，底部留出呼吸 */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* 页面级功能按钮行（右对齐）：只落这里、不落 .app-toolbar，否则会退化成第二排页面工具栏。 */
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+
+.ui-card,
+.ui-panel {
+  position: relative;
+  background: var(--apple-card);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--radius-xl);
+}
+
+.ui-card {
+  box-shadow: var(--shadow-sm);
+  transition:
+    box-shadow var(--dur) var(--ease-apple),
+    border-color var(--dur) var(--ease-apple),
+    transform var(--dur) var(--ease-apple);
+}
+.ui-card:hover {
+  border-color: color-mix(in srgb, var(--apple-border) 55%, var(--icon-muted));
+  box-shadow: var(--shadow-md);
+}
+
+/* 不裁剪：面板里的筛选行需要能撑开，表格容器自带圆角与裁剪 */
+.ui-panel { overflow: visible; }
+
+/* 顶部 1px 内高光做玻璃边缘（材质感最省力一招）。 */
+.ui-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.9) 18%,
+    rgba(255, 255, 255, 0.9) 82%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* 可点击卡片：抬起 1px + 描边转品牌色（保留原有 hover 语义，只做得更收敛） */
+.key-card:hover,
+.tool-card:hover {
+  border-color: color-mix(in srgb, var(--brand-500) 55%, var(--apple-border));
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.tool-card.is-unavailable,
+.tool-card.is-unavailable:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--apple-border);
+}
+
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.004em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    background-color var(--dur-fast) var(--ease-apple),
+    border-color var(--dur-fast) var(--ease-apple),
+    box-shadow var(--dur-fast) var(--ease-apple),
+    transform var(--dur-fast) var(--ease-apple);
+}
+.ui-btn [data-icon] { width: 13px; height: 13px; }
+.ui-btn:active { transform: scale(0.97); }
+.ui-btn:disabled,
+.ui-btn[disabled] { opacity: 0.45; pointer-events: none; }
+
+.ui-btn-primary {
+  background: var(--brand-500);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 1px 2px rgba(0, 70, 150, 0.26);
+}
+.ui-btn-primary:hover { background: var(--brand-600); }
+
+/* Apple 的「灰色按钮」：没有描边，靠填充和三段明度区分 */
+.ui-btn-secondary {
+  background: var(--fill-tertiary);
+  color: var(--apple-foreground);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+}
+.ui-btn-secondary:hover { background: var(--fill-secondary); }
+
+.ui-btn-ghost { background: transparent; color: var(--apple-foreground); }
+.ui-btn-ghost:hover { background: var(--fill-quaternary); }
+
+.ui-btn-quiet { color: var(--apple-muted-foreground); }
+.ui-btn-quiet:hover { color: var(--apple-foreground); }
+
+.ui-btn-destructive {
+  background: transparent;
+  color: var(--state-error);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-error) 42%, transparent);
+}
+.ui-btn-destructive:hover {
+  background: var(--state-error-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-error) 55%, transparent);
+}
+
+/* 图标按钮：列表行里的探活 / 编辑 / 删除 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--icon-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-apple),
+    color var(--dur-fast) var(--ease-apple);
+}
+.icon-btn [data-icon] { width: 14px; height: 14px; }
+.icon-btn:hover { background: var(--fill-secondary); color: var(--apple-foreground); }
+.icon-btn:active { background: var(--fill-primary); }
+.icon-btn.danger:hover { background: var(--state-error-surface); color: var(--state-error-strong); }
+
+/* 详情页按钮：与 .ui-btn 同一套视觉（沿用旧类名）。 */
+.btn-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.004em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    background-color var(--dur-fast) var(--ease-apple),
+    border-color var(--dur-fast) var(--ease-apple),
+    box-shadow var(--dur-fast) var(--ease-apple),
+    transform var(--dur-fast) var(--ease-apple);
+}
+.btn-action:active { transform: scale(0.97); }
+.btn-action-primary {
+  background: var(--brand-500);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 1px 2px rgba(0, 70, 150, 0.26);
+}
+.btn-action-primary:hover { background: var(--brand-600); }
+.btn-action-secondary {
+  background: var(--fill-tertiary);
+  color: var(--apple-foreground);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+}
+.btn-action-secondary:hover { background: var(--fill-secondary); }
+.btn-action-ghost { background: transparent; color: var(--apple-foreground); }
+.btn-action-ghost:hover { background: var(--fill-quaternary); }
+
+/* 分页按钮 */
+.pg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--apple-border);
+  border-radius: var(--radius-sm);
+  background: var(--apple-card);
+  color: var(--apple-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-apple),
+    border-color var(--dur-fast) var(--ease-apple);
+}
+.pg-btn:hover:not([data-active="true"]) { background: var(--apple-accent); }
+.pg-btn[data-active="true"] {
+  background: var(--brand-500);
+  border-color: var(--brand-500);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+
+/* 文本类控件。下拉触发器独立到 .ui-select-trigger（原生 select 与 Radix 触发器需求打架，故拆开）。 */
+.form-input,
+.form-textarea,
+.filter-input {
+  width: 100%;
+  min-width: 0;            /* 允许在 flex 里收缩 —— 否则双日期输入会撑破面板 */
+  height: 32px;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--apple-foreground);
+  background: var(--apple-background);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  transition:
+    border-color var(--dur-fast) var(--ease-apple),
+    box-shadow var(--dur-fast) var(--ease-apple),
+    background-color var(--dur-fast) var(--ease-apple);
+}
+
+/* 带前置图标的搜索框：图标由标记里的 absolute 定位提供，输入框让出左侧 */
+.filter-input.pl-9 { padding-left: 34px; }
+.form-input:hover,
+.filter-input:hover { border-color: var(--icon-muted); }
+
+.form-input:focus,
+.form-textarea:focus,
+.filter-input:focus {
+  outline: none;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--brand-500) 20%, transparent);
+}
+
+.form-input::placeholder,
+.form-textarea::placeholder,
+.filter-input::placeholder { color: var(--icon-muted); }
+
+.form-textarea {
+  height: auto;
+  min-height: 76px;
+  padding: 8px 10px;
+  resize: vertical;
+  font-family: var(--apple-font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--apple-muted-foreground);
+}
+.form-hint {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--apple-muted-foreground);
+}
+
+/* 浮层统一皮：下拉 / 弹层 / 日期面板共用同一份外观。
+   改这里全场生效，勿在调用点写外观类。 */
+.ui-popover {
+  border: 1px solid var(--apple-border);
+  border-radius: var(--radius-xl);
+  background: var(--apple-popover);
+  color: var(--apple-popover-foreground);
+  box-shadow: var(--shadow-xl);
+}
+
+/* 下拉触发器：高度/字号/内边距锁死，调用方只声明宽度（宽度是语义：表单 w-full、工具条定宽）。
+   调用点勿写 h-7!/text-[12px] 补丁；箭头用 Radix SelectIcon，不走 background-image（颜色硬编码，深色不跟随）。 */
+.ui-select-trigger {
+  height: 32px;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--apple-foreground);
+  background: var(--apple-background);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  outline: none;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease-apple),
+    box-shadow var(--dur-fast) var(--ease-apple),
+    background-color var(--dur-fast) var(--ease-apple);
+}
+.ui-select-trigger:hover:not(:disabled) { border-color: var(--icon-muted); }
+.ui-select-trigger:focus-visible,
+.ui-select-trigger[data-state='open'] {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--brand-500) 20%, transparent);
+}
+.ui-select-trigger[data-size='sm'] {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12.5px;
+  border-radius: var(--radius-sm);
+}
+.ui-select-trigger[data-placeholder] { color: var(--icon-muted); }
+.ui-select-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.ui-select-trigger[aria-invalid='true'] { border-color: var(--state-error); }
+
+/* 时间输入刻意不设 appearance:none：设 none 会丢 WebKit 的分段编辑与图标，datetime-local 看着像灰框。 */
+.ui-time-input {
+  height: 30px;
+  padding: 0 8px;
+  font-family: var(--apple-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--apple-foreground);
+  background: var(--apple-background);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-apple);
+}
+.ui-time-input:hover { border-color: var(--icon-muted); }
+.ui-time-input:focus {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--brand-500) 20%, transparent);
+}
+
+/* 开关：由 Radix 提供 role="switch" 与键盘操作，样式挂 data-state —— 同一份 CSS 可承载任意多个开关
+   （旧版用全局选择器驱动，一次只表达一个开关、且 id 撞车即串台）。 */
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fill-secondary);
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background-color var(--dur) var(--ease-apple);
+}
+.switch[data-state="checked"] { background: var(--state-success); }
+.switch:disabled,
+.switch[data-disabled] { cursor: not-allowed; opacity: 0.45; }
+
+.switch .knob {
+  position: absolute;
+  top: 1.5px;
+  left: 1.5px;
+  display: block;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.18),
+    0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  transition: transform var(--dur) var(--ease-apple);
+}
+.switch[data-state="checked"] .knob { transform: translateX(16px); }
+
+
+/* 外壳只此一层：帧（背景/描边/圆角/阴影/裁切）与 .ui-table-scroll（横向滚动）拆开，
+   避免嵌套时双描边双滚动条。宽表 min-width 由各表自声明，小表不该被撑出横滚。 */
+.ui-table-wrap {
+  overflow: hidden;
+  background: var(--apple-card);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+.ui-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* 兜底：有人把 <table> 直接塞进帧里（没走原语的滚动层）时仍能横向滚动，
+   否则 overflow:hidden 会把宽表裁掉。 */
+.ui-table-wrap:has(> table) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ui-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-table thead th {
+  text-align: left;
+  padding: 9px 16px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+  color: var(--icon-muted);
+  background: color-mix(in srgb, var(--apple-muted) 45%, var(--apple-card));
+  border-bottom: 1px solid var(--apple-border);
+  white-space: nowrap;
+  /* 窄窗口下列宽按百分比收缩，可能比表头文字还窄。不裁的话 nowrap 的
+     表头会直接压到隔壁列的字上（"错误分类" 四个字就够压过去）。 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 表头对齐出口：本文件未分层，优先级压过 @layer utilities，`<th class="text-right">` 会输给上面的 left，
+   故此处单独写一条更具体的选择器。 */
+.ui-table thead th.text-right { text-align: right; }
+
+/* 单元格字号只在这里定一次，组件勿叠 text-sm/text-xs（否则同表出现多档字号且 CSS 改不动）；
+   弱化层次用 .cell-sub。 */
+.ui-table tbody td {
+  padding: 11px 16px;
+  font-size: 13px;
+  color: var(--apple-foreground);
+  border-bottom: 1px solid color-mix(in srgb, var(--apple-border) 55%, transparent);
+  vertical-align: middle;
+}
+/* 单元格第二行小字（Key、相对时间、次要计数）。只定字号、不定颜色，避免和 Tailwind 单类工具抢优先级。 */
+.ui-table .cell-sub {
+  font-size: 11px;
+}
+
+.ui-table tbody tr {
+  transition: background-color var(--dur-fast) var(--ease-apple);
+}
+.ui-table tbody tr:hover { background: var(--apple-accent); }
+
+.ui-table tbody tr:last-child td { border-bottom: 0; }
+
+/* 非数据行：空态 / 错误态 / 加载骨架。它们不该跟着鼠标变色 ——
+   悬停高亮是「这行能点」的暗示，状态行没有这个语义。 */
+.ui-table tbody tr.is-static:hover { background: transparent; }
+/* 状态行整幅占满，内边距交给里面的组件（EmptyState 自带 py-14）。 */
+.ui-table tbody tr.is-state > td {
+  padding: 0;
+  border-bottom: 0;
+}
+
+/* 错误行强调：整行左侧一条红边，一眼能从日志里挑出失败调用。 */
+.ui-table tbody tr.is-error {
+  box-shadow: inset 3px 0 0 var(--state-error);
+}
+.ui-table tbody tr.is-error:hover { background: var(--state-error-surface); }
+
+
+.badge,
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 999px; /* 胶囊形：状态徽标一眼可辨，也和圆点/开关的语言一致 */
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.002em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.badge-success { background: var(--state-success-surface); color: var(--state-success-strong); }
+.badge-error { background: var(--state-error-surface); color: var(--state-error-strong); }
+.badge-warning { background: var(--state-warning-surface); color: var(--state-warning-strong); }
+.badge-neutral { background: var(--fill-tertiary); color: var(--apple-muted-foreground); }
+
+/* 等宽代码片：内嵌于正文的小 chip 与成块代码 */
+.code-chip {
+  font-family: var(--apple-font-mono);
+  font-size: 11.5px;
+  padding: 1.5px 5px;
+  border-radius: 5px;
+  background: var(--fill-tertiary);
+  color: var(--apple-foreground);
+}
+
+.code-block {
+  background: var(--background-100);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--radius-lg);
+  font-family: var(--apple-font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-x: auto;
+}
+.code-block pre { margin: 0; }
+
+.json-key { color: var(--brand-600); }
+.json-str { color: var(--state-success-strong); }
+.json-punct { color: var(--apple-muted-foreground); }
+.json-brace { color: var(--apple-foreground); }
+
+/* 复制按钮：常态极淡，悬停浮现，复制完成变绿 */
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--icon-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-apple),
+    color var(--dur-fast) var(--ease-apple);
+}
+.copy-btn:hover { background: var(--fill-secondary); color: var(--apple-foreground); }
+.copy-btn:active { background: var(--fill-primary); }
+.copy-btn.copied { background: var(--state-success); color: #fff; }
+
+
+.progress-track {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--fill-tertiary);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width var(--dur-slow) var(--ease-apple);
+}
+
+
+.stat-grid,
+.pool-grid,
+.endpoint-grid,
+.client-grid,
+.key-grid,
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (min-width: 640px) {
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .key-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 768px) {
+  .pool-grid,
+  .endpoint-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .client-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 1280px) {
+  .pool-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* 工具市场：分类条 + 二级条件行 + 网格，全部纵向排布。
+   断点按「内容区宽度」算，而不是按视口宽度。 */
+.tool-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 639px) {
+  .tool-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (min-width: 1400px) {
+  .tool-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.market-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+/* 分类栏横向滑动一条：分类数量不可控，纵向撑长页面、横向只占一行；不用 flex-wrap（换行变回标签墙）。 */
+.market-rail {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.market-rail-label {
+  flex: none;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--icon-muted);
+}
+
+.market-rail-item {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--apple-muted-foreground);
+  white-space: nowrap;
+  transition:
+    background var(--dur) var(--ease-apple),
+    color var(--dur) var(--ease-apple);
+}
+.market-rail-item:hover { background: var(--fill-quaternary); }
+.market-rail-item.is-active {
+  background: var(--fill-tertiary);
+  color: var(--apple-foreground);
+  font-weight: 600;
+}
+
+.market-rail-count {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--icon-muted);
+}
+
+
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+
+.chev,
+.chevron {
+  transition: transform var(--dur) var(--ease-apple);
+  color: var(--icon-muted);
+}
+/* 收起朝右、展开朝下（全站统一）。 */
+details:not([open]) > summary .chev,
+details:not([open]) > summary .chevron { transform: rotate(-90deg); }
+details[open] > summary .chev,
+details[open] > summary .chevron { transform: rotate(0deg); }
+
+/* 分段控件（NSSegmentedControl 的等价物） */
+.tab-toggle {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: var(--radius-md);
+  background: var(--fill-tertiary);
+}
+.tab-toggle button {
+  height: 24px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--apple-muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-apple),
+    color var(--dur-fast) var(--ease-apple),
+    box-shadow var(--dur-fast) var(--ease-apple);
+}
+.tab-toggle button:hover { color: var(--apple-foreground); }
+.tab-toggle button[data-active="true"] {
+  background: var(--apple-card);
+  color: var(--apple-foreground);
+  font-weight: 600;
+  box-shadow: var(--shadow-xs), 0 0 0 0.5px var(--separator);
+}
+
+/* 抽屉 */
+.drawer-backdrop { transition: opacity var(--dur) var(--ease-apple); }
+.drawer-panel { transition: transform var(--dur-slow) var(--ease-apple); }
+.drawer-hidden .drawer-backdrop { opacity: 0; pointer-events: none; }
+.drawer-hidden .drawer-panel { transform: translateX(100%); pointer-events: none; }
+
+/* 弹窗 */
+.schema-modal { display: none; }
+.schema-modal[data-open="true"],
+.schema-modal.is-open { display: flex; }
+
+
+.form-card {
+  background: var(--apple-card);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.form-section + .form-section { border-top: 1px solid var(--apple-border); }
+.form-section-header {
+  padding: 10px 18px;
+  background: var(--apple-accent);
+  border-bottom: 1px solid var(--apple-border);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--apple-foreground);
+}
+.form-section-body { padding: 18px; }
+
+/* 键值明细行 */
+.probe-level {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 0;
+}
+.probe-level + .probe-level { border-top: 1px solid var(--separator); }
+
+.fingerprint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 12.5px;
+}
+.fingerprint-row + .fingerprint-row { border-top: 1px solid var(--separator); }
+
+@media (min-width: 1024px) {
+  .sticky-panel { position: sticky; top: 68px; }
+}
+
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
