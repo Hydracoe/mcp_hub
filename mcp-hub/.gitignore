@@ -1,0 +1,52 @@
+# 编译产物
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go 测试与覆盖率
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Go 工作区文件
+go.work
+go.work.sum
+
+# 依赖（默认不提交，需要离线构建时由 make vendor 生成）
+/vendor/
+
+# 前端构建产物（由 make ui 生成后拷进来，被 go:embed 打进二进制）。
+# 只保留 .placeholder：它让"还没跑过 make ui"时 go:embed 也有东西可嵌
+# （embed 不接受空目录），且不会被服务出去。
+# 界面本身不进版本库——它是构建产物，提交进来只会产生"二进制里是旧界面"
+# 这种最难发现的偏差。
+/internal/webassets/dist/*
+!/internal/webassets/dist/.placeholder
+# make ui / ui-clean 的暂存目录（整体替换时短暂存在，正常流程会自己收掉）。
+# 单列一条：上面那条通配只盖住 dist/ 里面的东西，盖不住同级的兄弟目录。
+/internal/webassets/dist.staging/
+
+# 日志与 make dev 的运行时文件（日志/pid）
+*.log
+/logs/
+
+# 本地环境变量与密钥
+.env
+.env.*
+# 模板要先忽略再放行：上面的 .env.* 会连 .env.example 一起挡掉，
+# 而模板恰恰是唯一该进版本库的那个（Config as Documentation）。
+!.env.example
+
+# macOS
+.DS_Store
+
+# 编辑器与 IDE
+.idea/
+*.swp
+*.swo
+*~
+.codegraph/
