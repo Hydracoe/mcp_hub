@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: docker.1ms.run/pgvector/pgvector:0.8.6-pg18-bookworm
+    container_name: mcp-hub-postgres
+    environment:
+      POSTGRES_USER: mcphub
+      POSTGRES_PASSWORD: mcphub
+      POSTGRES_DB: mcphub
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcphub -d mcphub"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:latest
+    container_name: mcp-hub-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # ─── 后端本体 ──────────────────────────────────────────────────
+  # 镜像在本地构建（三个基础镜像：node、golang、alpine）。
+  # 构建上下文是项目根，因为镜像要同时装入 Go 后端与 Node 前端，
+  # 配套的 .dockerignore 也在项目根。
+  mcp-hub:
+    build:
+      # 上下文必须是根目录：Dockerfile 里要 COPY mcp-hub-admin/。
+      # 指向 mcp-hub/ 的话，../mcp-hub-admin 根本不在上下文里。
+      context: .
+      dockerfile: mcp-hub/Dockerfile
+      args:
+        # 基础镜像来源。默认国内源 —— dockerd 在 OrbStack VM 里，
+        # 不吃宿主机的 HTTP_PROXY，直连 Docker Hub 拉不动。
+        # 换源：BASE_REGISTRY=docker.io docker compose build mcp-hub
+        BASE_REGISTRY: ${BASE_REGISTRY:-docker.m.daocloud.io}
+    image: mcp-hub:local
+    container_name: mcp-hub
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # 容器内有自己的网络拓扑：主机名是**服务名**，不是 127.0.0.1。
+      # 这三个值刻意硬编码，不吃宿主机的 .env ——
+      # 那份 .env 指向 127.0.0.1:5432，在容器里指的是容器自己，
+      # 会连出一个"连接被拒绝"然后让人去查数据库有没有起。
+      MCPHUB_DB: postgres://mcphub:mcphub@postgres:5432/mcphub?sslmode=disable
+      MCPHUB_CACHE: redis://redis:6379/0
+      # 绑全部网卡，否则宿主机端口映射打不进来。
+      # 对外的可见范围由下面的 ports 收口。
+      MCPHUB_ADDR: ":9090"
+    ports:
+      # 只绑回环：管理接口能增删下游 server，等于半个 shell，
+      # 不该出现在局域网上。要暴露请自行改，并同时配上 MCPHUB_API_KEY。
+      - "127.0.0.1:9090:9090"
+    volumes:
+      # 引擎的 dataDir 是进程工作目录（/data）。用 PostgreSQL 时这个卷
+      # 基本是空的；切到 SQLite 时库文件落在这里，保证换后端不丢数据。
+      - hubdata:/data
+    # Go 程序作为 PID 1 不会回收孤儿进程。配了 stdio 下游时，
+    # 下游被反复重启会积累僵尸进程 —— init 让 tini 当 PID 1 收这个尾。
+    init: true
+    healthcheck:
+      # 健康检查放在这里而不是 Dockerfile：它探测的地址由 MCPHUB_ADDR
+      # 决定，写在知道端口的地方才不会同一件事写两遍。
+      # /readyz 不能用 —— 没有可用下游时它刻意返回 503，
+      # 那描述的是"就绪"而不是"活着"。
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      # 首次启动要跑数据库迁移，给足起步时间。
+      start_period: 15s
+
+volumes:
+  pgdata:
+  redisdata:
+  hubdata:
