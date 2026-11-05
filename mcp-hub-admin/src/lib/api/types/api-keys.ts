@@ -1,6 +1,4 @@
-/** 一把接入密钥：上游 AI 客户端调 `/mcp` 时出示的凭据，由网关签发。
- *  与「密钥池」区分：密钥池是网关调下游 server 的凭据（按 Server 隔离）。
- *  字段与后端 apikeyItem 对应，刻意不含调用次数。 */
+/** 一把接入密钥：上游 AI 客户端调 `/mcp` 的凭据。区别于「密钥池」——后者是网关调下游 server 的凭据（按 Server 隔离）。字段对应后端 apikeyItem，刻意不含调用次数。 */
 export interface ApiKeyView {
   id: string
   /** 标识调用方，例如「Claude Desktop · 我的 Mac」。 */

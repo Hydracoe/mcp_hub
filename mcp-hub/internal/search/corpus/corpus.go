@@ -22,14 +22,9 @@ const (
 	MaxParamNote       = 48
 )
 
-// Fields 勾选进向量化语料的字段（PRD §4.7.5）。
-//
-// 只收工具自身、创建后不再变化的字段：字段变了说明工具变了，重嵌是应该的。
-// 分类等可变元数据刻意排除——改一次分类名不该触发一批重嵌；分类仍参与
-// 词法检索与过滤（纯内存重建，零 API 成本）。
-//
-// 每个字段都必须有 json 标签：SpecString 靠它生成代编码，缺标签会得到
-// 一个空名字段。TestFieldsHaveJSONTags 钉住这一点。
+// Fields 勾选进向量化语料的字段。只收工具自身、创建后不再变化的字段；
+// 分类等可变元数据刻意排除（改分类名不触发重嵌，它仍参与词法检索与过滤）。
+// 每个字段都必须有 json 标签：SpecString 靠它生成代编码，缺标签会得到空名字段。
 type Fields struct {
 	ToolName        bool `json:"toolName"`
 	ToolDescription bool `json:"toolDescription"`
@@ -38,9 +33,8 @@ type Fields struct {
 	SchemaHints     bool `json:"schemaHints"`
 }
 
-// fieldSpec 把"规范名"与"在 Fields 上的开关"绑在一起。新增语料字段只改
-// 这一处加一份声明：FieldNames、默认值、解析都从它派生，不会再出现
-// "加了字段却漏改某一处"的静默漂移。
+// fieldSpec 把"规范名"与"在 Fields 上的开关"绑在一起。新增语料字段只改这一处：
+// FieldNames、默认值、解析都从它派生，避免"加了字段却漏改某一处"的静默漂移。
 type fieldSpec struct {
 	name string
 	set  func(*Fields)
@@ -65,8 +59,7 @@ var FieldNames = func() []string {
 }()
 
 // DefaultFields 返回默认勾选：声明表里的字段全开。
-// 走表而不是手写一遍，新增字段自动进入默认口径——默认漏一个字段，
-// 语料就少一段信息，而且不会有任何报错。
+// 走表而不是手写：默认漏一个字段，语料就少一段信息，而且不会有任何报错。
 func DefaultFields() Fields {
 	var f Fields
 	for _, fs := range fieldTable {
@@ -75,9 +68,8 @@ func DefaultFields() Fields {
 	return f
 }
 
-// ParseFields 解析 MCPHUB_CORPUS_FIELDS：逗号分隔，大小写与空格
-// 不敏感；all 或留空表示全开。不做模糊匹配——语料口径决定整代向量的
-// 构建成本，猜错代价高，报错比猜更便宜。
+// ParseFields 解析 MCPHUB_CORPUS_FIELDS：逗号分隔，大小写与空格不敏感；
+// all 或留空表示全开。不做模糊匹配——猜错代价高，报错比猜更便宜。
 func ParseFields(spec string) (Fields, error) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" || strings.EqualFold(spec, "all") {
@@ -112,9 +104,7 @@ func ParseFields(spec string) (Fields, error) {
 
 // SpecString 是语料字段组合的稳定编码，与 model、dims 共同构成一代
 // 向量的身份：字段组合变了即新代，须整代重建而非原地覆盖。
-//
-// 用反射按 Fields 的 json 标签生成，新增字段自动进入编码。手工列举的
-// 后果是"口径变了但代身份没变"——该重建的向量不重建，而且不报错。
+// 用反射按 Fields 的 json 标签生成；手工列举会导致"口径变了但代身份没变"而不报错。
 func SpecString(f Fields) string {
 	v := reflect.ValueOf(f)
 	t := v.Type()
@@ -125,22 +115,16 @@ func SpecString(f Fields) string {
 	return strings.Join(parts, ",")
 }
 
-// NaturalName 把工具标识符折成自然词（search_repositories → search
-// repositories）。embedding 模型按自然语言训练，下划线/连字符/点/斜杠
-// 都是噪声，一律折成空格。
+// NaturalName 把工具标识符折成自然词（search_repositories → search repositories）。
+// embedding 模型按自然语言训练，下划线/连字符/点/斜杠都是噪声，一律折成空格。
 func NaturalName(name string) string {
 	r := strings.NewReplacer("_", " ", "-", " ", ".", " ", "/", " ")
 	return strings.Join(strings.Fields(r.Replace(name)), " ")
 }
 
-// SchemaHints 从 inputSchema 摘出"参数名 + 一句话说明"的参数线索。
-// 参数名是强信号（描述里未必有"经纬度"，参数名 geocode/lng 会有）；
-// 不整段塞 schema——type/required 之类对语义是噪声。
+// SchemaHints 从 inputSchema 摘出"参数名 + 一句话说明"的参数线索，不整段塞 schema。
 // 键序排序保证语料确定，否则哈希逐轮抖动导致全量重嵌。
-//
-// 返回 error 的理由：JSON 解析失败是下游数据质量问题，必须让调用方看见；
-// 而"工具没有参数"是正常形态，返回空串。两者曾经合并成同一个空结果，
-// 于是一整批 schema 坏掉时，语料静默退化且没有任何线索。
+// JSON 解析失败必须返回错误（数据质量问题），而"工具没有参数"是正常形态返回空串。
 func SchemaHints(raw json.RawMessage) (string, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return "", nil
@@ -179,9 +163,7 @@ func SchemaHints(raw json.RawMessage) (string, error) {
 		units = append(units, k+"（"+note+"）")
 	}
 
-	// 按"完整单元"截断：超限就停在单元边界上。
-	// 截在单元中间会留下半个括号或半句话——事后再去修补括号配平是治不好的
-	// （末尾通常不是括号，TrimRight 什么也删不掉）。
+	// 按"完整单元"截断：超限就停在单元边界上，避免留下半个括号或半句话。
 	const sep = " · "
 	sepLen := utf8.RuneCountInString(sep)
 	var b strings.Builder
@@ -236,9 +218,8 @@ func Text(toolName, toolDescription string, tags []string, serverDesc, schemaHin
 	return strings.Join(parts, "\n")
 }
 
-// Hash 是语料的增量判定指纹。刻意不含 model 与 dims：换模型/维度
-// 是"整代重嵌"，由代身份 (model, dims, spec) 表达；哈希只回答
-// "这段语料本身变没变"。
+// Hash 是语料的增量判定指纹。刻意不含 model 与 dims：那是"整代重嵌"，
+// 由代身份 (model, dims, spec) 表达，哈希只回答"这段语料本身变没变"。
 func Hash(text string) string {
 	h := fnv.New64a()
 	// hash.Hash.Write 按接口约定永不返回错误（文档明示），两个返回值都无需检查。
@@ -248,9 +229,7 @@ func Hash(text string) string {
 
 // clipRunes 按字符（而非字节）截断，避免把一个 UTF-8 汉字切成半个。
 // 只遍历到第 n 个字符为止，不把整串转成 []rune。
-//
-// 前置条件 n > 0：调用点传的都是编译期常量，非正数只能是改错了代码，
-// 而不是"用户配了个 0"——所以直接 panic，不做"不截断"这种静默降级。
+// 前置条件 n > 0：非正数只能是改错了代码，所以直接 panic，不做静默降级。
 func clipRunes(s string, n int) string {
 	if n <= 0 {
 		panic("corpus.clipRunes: n 必须为正")
@@ -265,10 +244,7 @@ func clipRunes(s string, n int) string {
 	return s
 }
 
-// clipNote 截断参数说明，超长时以省略号收尾。省略号让"这里被截过"在语料
-// 里可见，也保证外层的 "（…）" 始终配平——留着半截句子再接括号，
-// 括号就永远对不上。
-//
+// clipNote 截断参数说明，超长时以省略号收尾，保证外层的 "（…）" 始终配平。
 // 结果可能比 n 多一个省略号字符；调用方按实际长度计数即可。
 func clipNote(s string, n int) string {
 	if n <= 0 {

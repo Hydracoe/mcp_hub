@@ -9,10 +9,8 @@ import (
 )
 
 // probeNetwork 执行 L1 可达性探测：DNS → TCP → TLS。
-//
-// 刻意不发 HTTP 请求，只确认"能不能连上"。好处是错误类型干净：失败时拿到的是
-// *net.DNSError、*tls.CertificateVerificationError 这类结构化错误，而不是被上层
-// 库压平的字符串。HTTP 语义（401/404/5xx）需要真的发请求，由 Recorder 在 L2/L3 捕获。
+// 刻意不发 HTTP 请求，只确认"能不能连上"，失败类型保持结构化（DNS/TLS）；
+// HTTP 语义（401/4xx/5xx）需要真的发请求，由 Recorder 在 L2/L3 捕获。
 func probeNetwork(ctx context.Context, rawURL string, timeout time.Duration) (time.Duration, ErrorKind, error) {
 	start := time.Now()
 

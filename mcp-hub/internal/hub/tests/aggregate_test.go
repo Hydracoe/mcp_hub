@@ -37,9 +37,7 @@ type toolSpec struct {
 }
 
 // echoTool 回显收到的 arguments 原文。
-//
-// 用 raw 字节而不是解析后的 map：这条路径要证明的正是网关
-// 没有在中间对参数做任何有损转换。
+// 用 raw 字节而不是解析后的 map：要证明网关没有在中间对参数做任何有损转换。
 func echoTool(name string) toolSpec {
 	return toolSpec{
 		name: name,
@@ -66,8 +64,7 @@ func taggedTool(name, tag string) toolSpec {
 }
 
 // newMCPHandler 组一个真实的 MCP server handler。
-//
-// 单独抽出来是为了让测试能在它外面再包一层（比如校验凭据的中间件），
+// 单独抽出来是为了让测试能在外面再包一层（比如校验凭据的中间件），
 // 从而观察到"请求究竟带了什么"——那比断言网关内部状态可靠得多。
 func newMCPHandler(tools []toolSpec) http.Handler {
 	srv := mcpserver.NewMCPServer("fake-downstream", "1.0.0",
@@ -89,8 +86,7 @@ func newMCPHandler(tools []toolSpec) http.Handler {
 
 // startDownstream 起一个真实的 MCP server，返回它的端点 URL。
 //
-// 不 mock 协议：httptest + mcp-go 内建 server 就能跑出完整的
-// Streamable HTTP 往返，包括握手、协商与错误语义。
+// 不 mock 协议：httptest + mcp-go 内建 server 就能跑出完整的 Streamable HTTP 往返。
 func startDownstream(t *testing.T, tools ...toolSpec) string {
 	t.Helper()
 
@@ -99,10 +95,8 @@ func startDownstream(t *testing.T, tools ...toolSpec) string {
 	return httpSrv.URL
 }
 
-// deadURL 返回一个确定连不上的地址。
-//
-// 先起一个 server 再立刻关掉，端口随即被回收——比手写一个
-// 固定端口可靠，那个端口随时可能被别的进程占着。
+// deadURL 返回一个确定连不上的地址：起一个 server 再立刻关掉，端口随即被回收，
+// 比手写固定端口可靠（那个端口随时可能被别的进程占着）。
 func deadURL(t *testing.T) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
@@ -171,11 +165,8 @@ func newEnv(t *testing.T, specs []downstream.Spec) *env {
 }
 
 // enableAllCachedTools 把缓存里的工具全部显式启用并重建聚合快照。
-//
-// 生产语义是"探活新发现的工具默认禁用，由管理员逐个开启"；大多数用例
-// 验证的是开启之后的聚合/过滤/调用链路，用这个辅助统一模拟
-// "管理员已开启"的存量环境。默认禁用、人工启停与探活对账另有
-// toolcontrol_test.go 专门覆盖。
+// 生产语义是"探活新发现的工具默认禁用，由管理员逐个开启"；大多数用例验证的是
+// 开启之后的链路，这里统一模拟"管理员已开启"的存量环境（默认禁用另有测试覆盖）。
 func enableAllCachedTools(t *testing.T, st *store.Store, svc *hub.Service) {
 	t.Helper()
 	ctx := context.Background()
@@ -254,8 +245,6 @@ func textOf(t *testing.T, res *mcp.CallToolResult) string {
 	}
 	return text.Text
 }
-
-// --- 聚合列表 ---
 
 func TestAggregationExposesPrefixedTools(t *testing.T) {
 	alphaURL := startDownstream(t, echoTool("echo"), taggedTool("ping", "pong"))
@@ -336,8 +325,6 @@ func TestToolSchemaIsPassedThrough(t *testing.T) {
 	t.Fatal("没找到 geo__needs_args")
 }
 
-// --- 路由 ---
-
 func TestCallRoutesToCorrectDownstream(t *testing.T) {
 	alphaURL := startDownstream(t, taggedTool("search", "from-alpha"))
 	betaURL := startDownstream(t, taggedTool("search", "from-beta"))
@@ -412,8 +399,6 @@ func TestEmptyArgumentsBecomeEmptyObject(t *testing.T) {
 	}
 }
 
-// --- 结果透传 ---
-
 func TestResultPassThrough(t *testing.T) {
 	srv := mcpserver.NewMCPServer("rich-downstream", "1.0.0", mcpserver.WithToolCapabilities(false))
 	srv.AddTool(mcp.NewTool("rich"), func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -452,8 +437,6 @@ func TestResultPassThrough(t *testing.T) {
 		t.Errorf("下游错误信息没有透传: %s", textOf(t, failed))
 	}
 }
-
-// --- 故障隔离 ---
 
 func TestDownstreamFailureIsIsolated(t *testing.T) {
 	goodURL := startDownstream(t, taggedTool("ok", "alive"))
@@ -530,8 +513,6 @@ func TestUnknownToolIsRejectedClearly(t *testing.T) {
 	}
 }
 
-// --- 工具缓存语义 ---
-
 func TestProbeFailureKeepsCachedTools(t *testing.T) {
 	dsURL := startDownstream(t, taggedTool("persist", "v1"))
 
@@ -594,8 +575,6 @@ func TestDisabledServerIsExcluded(t *testing.T) {
 	}
 }
 
-// --- 创建引导名单 ---
-
 // 端到端钉住创建向导的勾选语义：创建时带的 EnabledTools 决定首次探活后
 // 哪些工具直接进入聚合端点，其余保持禁用等人工开启；名单一次性消费。
 func TestBootEnabledToolsEndToEnd(t *testing.T) {
@@ -626,8 +605,6 @@ func TestBootEnabledToolsEndToEnd(t *testing.T) {
 		t.Fatalf("全部启用后 = %v, want 2 个工具", got)
 	}
 }
-
-// --- 调用日志 ---
 
 func TestCallsAreLogged(t *testing.T) {
 	dsURL := startDownstream(t, taggedTool("logged", "ok"))
@@ -663,8 +640,6 @@ func TestCallsAreLogged(t *testing.T) {
 		t.Errorf("日志状态 = %q, 期望 ok", entry.Status)
 	}
 }
-
-// --- 并发 ---
 
 func TestConcurrentCalls(t *testing.T) {
 	// 一个慢工具 + 高并发，验连接能被复用而不是每条请求重建。
@@ -709,15 +684,12 @@ func TestConcurrentCalls(t *testing.T) {
 	}
 }
 
-// --- stdio 常驻连接 ---
-
 func TestStdioDownstreamSurvivesAcrossRequests(t *testing.T) {
 	bin := buildEchoServer(t)
 	e := newEnv(t, []downstream.Spec{stdioSpec("std", bin)})
 
-	// 关键回归点：stdio 传输底层是 exec.CommandContext，若把某个请求的
-	// ctx 传给 Start，那个请求一结束子进程就被杀，其后每次调用都只能
-	// 看到一个已死的连接。这个测试跨越多个独立请求，专门守住这条。
+	// 关键：stdio 传输底层是 exec.CommandContext，若把某个请求的 ctx 传给 Start，
+	// 那个请求一结束子进程就被杀，其后每次调用都只能看到一个已死的连接。
 	for i := 1; i <= 5; i++ {
 		res := e.callTool(t, "std__echo", `{"n":1}`)
 		if res.IsError {
@@ -769,8 +741,7 @@ func TestStdioDownstreamIsolatesFailure(t *testing.T) {
 }
 
 // buildEchoServer 现场编译测试用的 stdio MCP server。
-//
-// 不把二进制提交进仓库：那样会因为平台差异与陈旧版本带来更难查的问题。
+// 不把二进制提交进仓库：平台差异与陈旧版本会带来更难查的问题。
 func buildEchoServer(t *testing.T) string {
 	t.Helper()
 
@@ -785,16 +756,9 @@ func buildEchoServer(t *testing.T) string {
 	return out
 }
 
-// --- 辅助 ---
-
-// TestMetaToolsRegisteredAfterToolsAlreadyExist 回归：meta-tool 的注册不能被
-// "工具列表没变就不动 MCP server"的指纹短路吃掉。
-//
-// 复现的是进程启动顺序，而不是某个管理操作：构造函数里的 Reload 先刷新一次
-// （此刻下游工具已经写进指纹），AttachEmbedding 紧随其后才注册 meta-tool。
-// 若指纹只覆盖下游工具，这一次刷新会被判成"没变"直接返回，meta-tool 从此
-// 永远注册不上——meta 列表模式下过滤器只保留 hub__*，AI 拿到的 tools/list
-// 会是空列表，一个工具都看不到，而且看不出任何错误。
+// meta-tool 的注册不能被"工具列表没变就不动 MCP server"的指纹短路吃掉。
+// 复现启动顺序：Reload 先刷新（下游工具已写进指纹），AttachEmbedding 随后才注册
+// meta-tool；指纹若只覆盖下游工具，这次刷新被跳过，meta 模式下 tools/list 为空且无错误。
 func TestMetaToolsRegisteredAfterToolsAlreadyExist(t *testing.T) {
 	echoURL := startDownstream(t, echoTool("echo"))
 

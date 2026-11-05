@@ -23,7 +23,7 @@ interface CredentialFormDialogProps {
   onOpenChange: (open: boolean) => void
   initial: CredentialView | null
   mutations: Mutations
-  /** 当前 server 已有的密钥：提交前查重，同一 server 内标签不允许重复（与后端唯一索引同口径）。 */
+  /** 同一 server 内标签不允许重复（与后端唯一索引同口径）。 */
   existing?: CredentialView[]
 }
 
@@ -64,8 +64,7 @@ export function CredentialFormDialog({
       setError('请填写 Label')
       return null
     }
-    // 同一 server 内标签唯一（后端有部分唯一索引兜底，这里提前拦下给出内联提示）。
-    // 编辑时排除自身；比对用 trim 后的值，与提交值一致。
+    // 同一 server 内标签唯一（后端有唯一索引兜底，这里提前拦下）；编辑时排除自身，比对用 trim 后的值。
     const name = label.trim()
     const dup = existing.find((c) => c.id !== initial?.id && c.label === name)
     if (dup) {
@@ -98,7 +97,7 @@ export function CredentialFormDialog({
         return null
       }
     }
-    /* 限额须为非负整数：负数会绕过 x>0 直接锁死调度，且 number input 允许键入 e/+/-，不能只靠 min。 */
+    /* rpmLimit 须为非负整数：负数会绕过 x>0 直接锁死调度；number input 允许键入 e/+/-，不能只靠 min。 */
     if (rpmLimit.trim()) {
       const n = Number(rpmLimit)
       if (!Number.isInteger(n) || n < 0) {

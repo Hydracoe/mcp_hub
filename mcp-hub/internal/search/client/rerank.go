@@ -55,11 +55,8 @@ type rerankResponse struct {
 }
 
 // Rerank 对 docs 精排，返回按相关度降序的 topN 条（带原始下标）。
-//
-// 结果在这里就规范化：丢掉越界下标、按 index 去重、按分数降序排序、
-// 截断 topN。这几件事曾经留给调用方做，等于把"服务端返回不可信"这件事
-// 复制给每一个调用点，而且注释承诺的"降序"其实没人保证——服务端返回什么
-// 顺序就透传什么顺序。
+// 结果在这里规范化：丢掉越界下标、按 index 去重、按分数降序排序、截断 topN，
+// 不把"服务端返回不可信"复制给每一个调用点。
 func (r *Reranker) Rerank(ctx context.Context, query string, docs []string, topN int) ([]RankedDoc, error) {
 	if len(docs) == 0 {
 		return nil, nil

@@ -12,12 +12,8 @@ import (
 	"github.com/hydra/mcp-hub/internal/store"
 )
 
-// 这两种后端都是"生产的后端"，不是"测试后端"：
-// PostgreSQL 用于服务端/多实例部署，SQLite 用于桌面/单机部署，
-// 所以两边都必须满足同一套最基本的使用契约。
-//
-// 本文件只测 SQLite —— 它在 CI 上不需要任何外部依赖，
-// 而 PostgreSQL 侧的既有测试已经覆盖了同样这些行为。
+// 两种后端都是"生产的后端"：PostgreSQL 用于服务端/多实例，SQLite 用于桌面/单机，
+// 两边都必须满足同一套最基本的使用契约。本文件只测 SQLite，CI 上无需外部依赖。
 
 // newStore 按指定后端开一个库。
 func newStore(t *testing.T, driver, dsn, dataDir string) *store.Store {
@@ -52,11 +48,9 @@ func TestSQLiteDialectEngine(t *testing.T) {
 	}
 }
 
-// DSN 上的 PRAGMA 必须真的生效。
-//
-// 这三条都不是"可选优化"：foreign_keys 关掉级联删除会静默失效；
-// journal_mode 不是 WAL 时一次写会挡住所有读；busy_timeout 为 0 时
-// 并发写会立刻返回 SQLITE_BUSY 而不是等待。
+// DSN 上的 PRAGMA 必须真的生效。三条都不是可选优化：
+// foreign_keys 关掉级联删除会静默失效；非 WAL 时一次写会挡住所有读；
+// busy_timeout 为 0 时并发写立刻返回 SQLITE_BUSY 而不是等待。
 func TestSQLitePragmasEffective(t *testing.T) {
 	st, _ := sqliteStore(t, "pragma.db")
 
@@ -90,12 +84,9 @@ func TestSQLitePragmasEffective(t *testing.T) {
 	}
 }
 
-// 外键级联必须真的生效：tools 随 servers 级联删除这件事，
-// 是"删上游不留残渣"的唯一保证。
-//
-// 这里刻意绕开领域 Store、直接写 SQL：领域层的 Upsert 会顺手清理，
-// 就验不出数据库本身有没有级联。PRAGMA 只在连接建立时生效，
-// 所以这条同时验证了"每个新连接都拿到了正确的 PRAGMA"。
+// 外键级联必须真的生效：tools 随 servers 级联删除是"删上游不留残渣"的保证。
+// 这里绕开领域 Store 直接写 SQL，才验得出数据库本身；PRAGMA 只在连接建立时生效，
+// 所以同时验证了每个新连接都拿到正确的 PRAGMA。
 func TestSQLiteForeignKeyCascade(t *testing.T) {
 	st, _ := sqliteStore(t, "fk.db")
 	ctx := t.Context()
@@ -125,12 +116,8 @@ func TestSQLiteForeignKeyCascade(t *testing.T) {
 	}
 }
 
-// 并发写同一张表是最容易踩到 SQLite 锁问题的地方。
-//
-// 形状刻意做得和引擎里"并发探活 → 各自落库"一模一样：每个写事务
-// 先 SELECT 再写。SQLite 默认的 deferred 事务在这种形状下会以
-// SQLITE_BUSY_SNAPSHOT 失败，而且 busy_timeout 对它无效——
-// 这正是"8 个上游同时探活，几个的工具列表静默丢失"的根因。
+// 并发写同一张表最容易踩到 SQLite 锁问题：形状与引擎里"并发探活 → 各自落库"一致，
+// 每个写事务先 SELECT 再写。deferred 事务会以 SQLITE_BUSY_SNAPSHOT 失败且 busy_timeout 无效，
 // 连接串上的 _txlock=immediate 就是为它准备的（见 dialect_sqlite.go）。
 func TestSQLiteConcurrentReadThenWriteTx(t *testing.T) {
 	st, _ := sqliteStore(t, "concurrent.db")

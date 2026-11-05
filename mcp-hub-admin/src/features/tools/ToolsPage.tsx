@@ -25,9 +25,8 @@ import { ToolGrid } from './components/ToolGrid'
 import { ToolSchemaDialog } from './components/ToolSchemaDialog'
 import { useToolsPage } from './use-tools-page'
 
-/** 工具管理。左栏分类为一级导航，右侧启用状态/可用性/Server/搜索为二级条件。
- *  被禁用的工具也在这里（标成"未启用"）：开关必须和列表在一起，
- *  否则关掉一个工具就等于把它弄丢了。 */
+/** 工具管理：左栏分类为一级导航，右侧启用状态/可用性/Server/搜索为二级条件。
+ *  被禁用的工具也留在列表里——开关必须和列表在一起。 */
 export function ToolsPage() {
   const {
     overview,

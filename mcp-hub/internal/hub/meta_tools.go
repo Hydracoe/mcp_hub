@@ -13,9 +13,7 @@ import (
 )
 
 // MetaTools 是检索与发现的 meta-tool 集。
-//
-// handler 调用时现读 Service 的实时数据；定义本身虽静态，却必须随每次
-// 聚合 Refresh 一起注册——SetTools 是全量替换，只注册一次会被清掉。
+// 定义虽静态，却必须随每次聚合 Refresh 一起注册：SetTools 是全量替换，只注册一次会被清掉。
 type MetaTools struct {
 	svc *Service
 	log *zap.Logger
@@ -112,8 +110,7 @@ func (m *MetaTools) searchTools(ctx context.Context, req mcp.CallToolRequest) (*
 		WithSchema: a.WithSchema,
 	})
 	if err != nil {
-		// 错误自愈（PRD §4.7.6）：告诉 AI 下一步可以做什么，
-		// 而不是丢一个内部错误让它瞎猜。
+		// 错误自愈：告诉 AI 下一步可以做什么，而不是丢一个内部错误让它瞎猜。
 		return mcp.NewToolResultErrorf("%v。可换更具体的措辞重试，或用 hub__list_categories / hub__list_servers 浏览。", err), nil
 	}
 	return jsonResult(map[string]any{
@@ -129,10 +126,8 @@ func (m *MetaTools) listCategories(ctx context.Context, _ mcp.CallToolRequest) (
 		return mcp.NewToolResultErrorf("读取分类失败: %v", err), nil
 	}
 
-	// 计数是给 AI 的导航信号，必须与 hub__list_servers / 检索实际能给出的
-	// 一致（T22 的教训：说明书与实现不符，AI 会照着空跑）。库里的原始计数
-	// 含停用 server 与未启用工具，那是管理口径；这里换算成"AI 可用"口径：
-	// 只数已启用且至少有一个已启用工具的 server，工具数只数已启用的。
+	// 计数是给 AI 的导航信号，必须与 hub__list_servers / 检索实际能给出的一致。
+	// 这里换算成"AI 可用"口径：只数已启用且至少有一个已启用工具的 server，工具数只数已启用的。
 	servers, err := m.svc.Servers(ctx)
 	if err != nil {
 		return mcp.NewToolResultErrorf("读取 server 列表失败: %v", err), nil
@@ -215,9 +210,8 @@ func (m *MetaTools) listServers(ctx context.Context, req mcp.CallToolRequest) (*
 			continue
 		}
 		v, ok := snap[sv.Spec.Key]
-		// 没有任何可调用工具的 server 对 AI 不存在：列出一台"什么都调不了"
-		// 的 server，AI 只会白跑一轮 list_tools 再困惑。工具的启停决定的是
-		// 发现面，不是 server 的生死——管理接口照常能看到这台 server。
+		// 没有任何可调用工具的 server 对 AI 不存在：列出来只会让 AI 白跑一轮。
+		// 工具的启停决定的是发现面，不是 server 的生死——管理接口照常能看到它。
 		if !ok || v.tools == 0 {
 			continue
 		}
@@ -264,10 +258,8 @@ func (m *MetaTools) listTools(ctx context.Context, req mcp.CallToolRequest) (*mc
 		if !strings.EqualFold(e.ServerKey, a.Server) {
 			continue
 		}
-		// 未启用的工具只属于管理界面。这是给 AI 的浏览入口：列出来的每一个
-		// 都必须是真能调的——推一个调不动的工具，AI 只会白试一轮还很困惑。
-		// entries 里带 Enabled=false 的那些，与 all 模式下 tools/list 看不到
-		// 的是同一批，两条入口必须一致。
+		// 未启用的工具只属于管理界面：给 AI 的浏览入口列出的每个工具都必须真能调。
+		// entries 里 Enabled=false 的那些，与 all 模式下 tools/list 看不到的是同一批。
 		if !e.Enabled {
 			continue
 		}
@@ -319,7 +311,6 @@ func (m *MetaTools) tool(_ context.Context, req mcp.CallToolRequest) (*mcp.CallT
 		}
 		switch len(matches) {
 		case 0:
-			// 走到下面的未找到分支。
 		case 1:
 			idx = matches[0]
 		default:
@@ -335,8 +326,7 @@ func (m *MetaTools) tool(_ context.Context, req mcp.CallToolRequest) (*mcp.CallT
 
 	if idx >= 0 {
 		e := entries[idx]
-		// 未启用的工具不该给出定义：给一份 schema 却调不动，比直接说没找到
-		// 更糟——AI 会拿着参数去试，失败后还不知道是"没启用"还是"参数错"。
+		// 未启用的工具不该给出定义：AI 会拿着参数去试，失败后分不清是"没启用"还是"参数错"。
 		if !e.Enabled {
 			return mcp.NewToolResultErrorf("工具 %q 未启用：请让管理员在管理界面启用后再调用。", e.Exposed), nil
 		}
@@ -351,7 +341,7 @@ func (m *MetaTools) tool(_ context.Context, req mcp.CallToolRequest) (*mcp.CallT
 		})
 	}
 
-	// 错误自愈（PRD §4.7.6）：未知工具时给出可执行的下一步。
+	// 错误自愈：未知工具时给出可执行的下一步。
 	return mcp.NewToolResultErrorf(
 		"工具 %q 未找到：可能拼写有误或已被下线。请用 hub__search_tools 重新搜索，或用 hub__list_tools 浏览。", name), nil
 }

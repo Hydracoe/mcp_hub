@@ -72,11 +72,9 @@ type LogEntry struct {
 	// CredentialID 归因到具体密钥（单密钥模式为空串），只记 id 不记明文。
 	CredentialID string
 
-	// APIKeyID / APIKeyName 是发起调用的接入 key 及其**调用当时**的名字。
+	// APIKeyID / APIKeyName 是发起调用的接入 key 及其调用当时的名字。
 	// 名字落快照而不是查询时 join：改名或删 key 不该改写历史归因。
-	//
-	// Args / Result 是请求现场（入参 JSON 与返回序列化，均已截断）：
-	// 排障时最想要的正是"当时发出去什么、拿回来什么"。
+	// Args / Result 是请求现场（入参 JSON 与返回序列化，均已截断）。
 	APIKeyID   string
 	APIKeyName string
 	Args       string
@@ -185,13 +183,9 @@ var logSortColumns = map[LogSort]string{
 // 空串在查询参数里一律表示"不筛"，所以"只要匿名"必须用非空字面量表达。
 const LogCallerAnonymous = "anonymous"
 
-// searchClause 拼出自由文本搜索的 WHERE 子句。
-// 只搜"身份"字段（调用方 / Server / 工具 / 密钥），刻意不搜 8KB 的
-// args / result——用户找的是"哪次调用"，不是返回体里的词。
-//
-// likeOp 由方言给（见 store.Dialect.LikeOp）：PostgreSQL 不区分大小写
-// 必须写 ILIKE，SQLite 的 LIKE 对 ASCII 本就不区分（中文本就是精确匹配）。
-// 它是本包内部拼进去的枚举值，不是用户输入，没有注入面。
+// searchClause 拼出自由文本搜索的 WHERE 子句。只搜"身份"字段
+// （调用方 / Server / 工具 / 密钥），刻意不搜 8KB 的 args / result。
+// likeOp 由方言给，是本包内部拼进去的枚举值，不是用户输入，没有注入面。
 func searchClause(likeOp string) string {
 	cols := []string{"tool_name", "exposed_name", "server_key", "credential_id", "api_key_name"}
 	parts := make([]string, 0, len(cols))

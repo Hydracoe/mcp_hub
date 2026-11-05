@@ -36,8 +36,8 @@ func TestTokenizePunctuationOnly(t *testing.T) {
 	}
 }
 
-// 日文假名与韩文谚文同样没有词边界，必须走 bigram。它们曾经落进
-// "字母数字整段保留"的分支，等于整句不切分，检索召回形同虚设。
+// 日文假名与韩文谚文同样没有词边界，必须走 bigram；
+// 整段保留等于不切分，检索召回会形同虚设。
 func TestTokenizeKanaAndHangulUseBigram(t *testing.T) {
 	got := Tokenize("さがす")
 	want := []string{"さ", "さが", "が", "がす", "す"}

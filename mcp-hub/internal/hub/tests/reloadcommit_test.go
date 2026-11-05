@@ -55,10 +55,8 @@ func hasErrorLog(logs *observer.ObservedLogs, serverKey string) bool {
 }
 
 // 写已落库、刷新失败：写操作必须算成功，缓存必须失效，失败要留痕。
-//
-// 缺陷形状：Upsert 已经提交，之后 Reload 失败就把整个操作报成失败，
-// 而且缓存的失效被跳过——界面看到的还是旧配置，下次读还会命中旧值。
-// 正确语义是"落库成功即成功"：刷新属于运行时状态，失败只记日志。
+// 正确语义是"落库成功即成功"：刷新属于运行时状态，失败只记日志；
+// 若把整个操作报成失败并跳过缓存失效，界面看到的仍是旧配置。
 func TestApplyServerSucceedsWhenReloadFails(t *testing.T) {
 	core, logs := observer.New(zapcore.ErrorLevel)
 	st, svc := openSvcWithReload(t, zap.New(core), failReload())

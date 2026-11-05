@@ -20,8 +20,8 @@ func TestCosine(t *testing.T) {
 	}
 }
 
-// 维度不一致、空向量、零向量都必须报错：这里曾经返回 0，于是一旦维度配错，
-// 调用方拿到一片 0 分却毫无察觉——检索与自动分类静默失效。
+// 维度不一致、空向量、零向量都必须报错，而不是返回 0：
+// 一旦维度配错，一片 0 分会让检索与自动分类静默失效。
 func TestCosineRejectsInvalidInput(t *testing.T) {
 	cases := map[string][2][]float64{
 		"维度不一致": {{1, 2, 3}, {1, 2}},

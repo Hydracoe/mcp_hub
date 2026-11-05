@@ -19,7 +19,7 @@ interface ApiKeyCreateDialogProps {
 }
 
 /** 新建接入密钥（两段式：填名 → 交付明文）。明文不可重放（库里只有 sha256），
- *  故单独一屏交付；该屏不给「取消」，避免误以为创建可撤回。 */
+ *  故单独一屏交付且不给「取消」，避免误以为创建可撤回。 */
 export function ApiKeyCreateDialog({ open, onOpenChange, mutations }: ApiKeyCreateDialogProps) {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
@@ -90,7 +90,7 @@ export function ApiKeyCreateDialog({ open, onOpenChange, mutations }: ApiKeyCrea
   )
 }
 
-/** 第二段：交付明文。这一屏的唯一任务是让它被复制走。 */
+/** 第二段：交付明文，这一屏的唯一任务是让它被复制走。 */
 function PlaintextDelivery({ created }: { created: ApiKeyCreateResponse }) {
   return (
     <div className="space-y-3">

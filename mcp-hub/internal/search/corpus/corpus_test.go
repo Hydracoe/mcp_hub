@@ -96,7 +96,6 @@ func TestSchemaHints(t *testing.T) {
 		t.Fatalf("无说明的参数应只留键名: %q (err=%v)", got, err)
 	}
 	// 畸形 JSON 是数据质量问题，必须报出来——它和"这个工具没有参数"是两回事。
-	// 两者曾经合并成同一个空串，于是一整批 schema 坏掉时语料静默退化。
 	if _, err := SchemaHints(json.RawMessage(`{`)); err == nil {
 		t.Fatal("畸形 schema 应返回错误")
 	}
@@ -154,9 +153,8 @@ func TestSchemaHintsStableOrder(t *testing.T) {
 	}
 }
 
-// 语料口径来自 MCPHUB_CORPUS_FIELDS，是从字符串解析出来的。解析错了
-// 不会报错，只会悄悄换掉整代向量的构建成本 —— 所以要钉住三件事：
-// 空/all 等价于全开，字段顺序与大小写不影响结果，拼错的名字必须报错。
+// 语料口径来自 MCPHUB_CORPUS_FIELDS，是从字符串解析出来的。解析错了不会报错，
+// 只会悄悄改变整代向量的构建成本，所以要钉住：空/all 等于全开、顺序与大小写无关、拼错必须报错。
 func TestParseFields(t *testing.T) {
 	all := DefaultFields()
 	for _, spec := range []string{"", "all", "ALL", " all "} {

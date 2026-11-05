@@ -1,8 +1,6 @@
 import type { DisabledKind } from '@/lib/api/types'
 
-/** 弃用原因（KeyVerdict）的中文文案，与后端 KeyVerdict.Human() 同义。
- *  原始枚举用 title 悬停保留，便于与调用日志 / 后端日志里的
- *  KEY_REVOKED 等值对账。 */
+/** 弃用原因中文文案，与后端 KeyVerdict.Human() 同义；原始枚举保留在 title 里，便于与日志对账。 */
 const DISABLED_KIND_LABEL: Record<DisabledKind, string> = {
   INVALID_KEY: '凭据无效',
   KEY_REVOKED: '已吊销/封禁',

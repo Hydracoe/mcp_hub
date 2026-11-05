@@ -12,11 +12,8 @@ import (
 	"github.com/hydra/mcp-hub/internal/store/credentials"
 )
 
-// credentialView 是一把密钥的对外视图。
-//
-// 明文一律不出现在这里：只给 label、配置了哪些头（键名）与一个短指纹。
-// 指纹的作用是让用户区分"是哪一把"，不是验证密钥对不对——
-// 后者需要把明文交出去，而这份明文没有非出去不可的理由。
+// credentialView 是一把密钥的对外视图，明文一律不出现。
+// 指纹只用于区分“是哪一把”，不用于验证密钥是否正确。
 type credentialView struct {
 	ID          string   `json:"id"`
 	Label       string   `json:"label"`
@@ -48,11 +45,8 @@ type credentialView struct {
 	UpdatedAt int64 `json:"updatedAt"`
 }
 
-// credentialRequest 是新增 / 编辑一把密钥的请求体。
-//
-// 两种填法二选一：直接给一组 headers，或给一个值 + 类型由服务端展开。
-// 后者是给"一行一把"的批量粘贴与手填准备的——让用户为一个 Bearer
-// 令牌手写一段 JSON，是没必要的高门槛。
+// credentialRequest 是新增 / 编辑一把密钥的请求体：可直接给 headers，
+// 也可给 value + authScheme 由服务端展开。
 type credentialRequest struct {
 	Label   string            `json:"label"`
 	Headers map[string]string `json:"headers"`
@@ -75,8 +69,6 @@ type credentialImportRequest struct {
 	RPMLimit int `json:"rpmLimit"`
 }
 
-// --- 端点到编排 ---
-
 func (a *API) handleListCredentials(c *gin.Context) {
 	serverID := c.Param("id")
 
@@ -96,8 +88,7 @@ func (a *API) handleListCredentials(c *gin.Context) {
 		items = append(items, toCredentialView(c, byID[c.ID]))
 	}
 
-	// keyPool 告诉界面"这个 server 是否在用密钥池"。为空时它退回了
-	// 单密钥模式（沿用 servers.headers），界面上要能说清这件事。
+	// keyPool 为空表示该 server 退回单密钥模式（沿用 servers.headers）。
 	c.JSON(http.StatusOK, map[string]any{
 		"total":   len(items),
 		"items":   items,
@@ -146,10 +137,8 @@ func (a *API) handleUpdateCredential(c *gin.Context) {
 		return
 	}
 
-	// 编辑时**总是**读出旧凭据：它要同时服务两种"不改凭据"的输入——
-	// headers 整个省略（只改备注/配额），以及把回显的 *** 原样提交回来。
-	// 只在 headers 缺省时才读，会让后一种情况把凭据落成字面量 "***"，
-	// 而症状要等下游返回 401 才出现。
+	// 编辑时总是读出旧凭据：它同时服务“headers 整体省略”与“回显的 *** 原样提交”；
+	// 只在 headers 缺省时才读，会让后一种把凭据落成字面量 "***"。
 	prev, err := a.svc.CredentialHeaders(c.Request.Context(), serverID, credID)
 	if err != nil {
 		failFor(c, err)
@@ -213,8 +202,7 @@ func (a *API) handleTestCredential(c *gin.Context) {
 		return
 	}
 
-	// verdict 是给界面用的"建议动作"：测试本身只读，不改密钥状态
-	// （与 FR-2.4 的语义一致）。界面据此提示"这把密钥看起来已经无效"。
+	// verdict 是给界面看的“建议动作”；测试本身只读，不改密钥状态。
 	c.JSON(http.StatusOK, map[string]any{
 		"probe":   newProbeResponse(res, sv.Spec.Key),
 		"verdict": verdict,
@@ -259,8 +247,7 @@ func (a *API) handleImportCredentials(c *gin.Context) {
 		return
 	}
 
-	// 回显每一把的 label 与指纹，让用户能核对"我粘进去的那几把都在"。
-	// 不回显值——那是他自己刚粘贴的内容，再发一遍只是多一次暴露。
+	// 回显每一把的 label 与指纹便于核对；不回显值，避免再次暴露刚粘贴的内容。
 	out := make([]map[string]any, 0, len(created))
 	for _, c := range created {
 		out = append(out, map[string]any{
@@ -275,8 +262,8 @@ func (a *API) handleImportCredentials(c *gin.Context) {
 	})
 }
 
-// credentialByID 组装单把密钥的视图，出错时返回一个只带 id 的骨架——
-// 刚写完就查不出来的情况不该让整个请求失败。
+// credentialByID 组装单把密钥的视图，出错时返回只带 id 的骨架，
+// 避免“刚写完就查不出来”导致整个请求失败。
 func (a *API) credentialByID(ctx context.Context, serverID, credID string) credentialView {
 	creds, statuses, err := a.svc.Credentials(ctx, serverID)
 	if err != nil {
@@ -297,8 +284,6 @@ func (a *API) credentialByID(ctx context.Context, serverID, credID string) crede
 	return credentialView{ID: credID}
 }
 
-// --- 转换 ---
-
 func toCredentialView(c credentials.Credential, st downstream.KeyStatus) credentialView {
 	out := credentialView{
 		ID:          c.ID,
@@ -313,9 +298,7 @@ func toCredentialView(c credentials.Credential, st downstream.KeyStatus) credent
 		UpdatedAt:   c.UpdatedAt.UnixMilli(),
 	}
 
-	// 运行时状态来自密钥池。拿不到（比如进程刚启动、池子还没装）
-	// 时落到持久状态：界面宁可显示"已弃用"的旧结论，
-	// 也不要显示一个看起来一切正常的空壳。
+	// 运行时状态来自密钥池；拿不到时落到持久状态，避免显示一切正常的空壳。
 	if st.ID == "" {
 		out.State = string(c.State)
 		out.DisabledKind = string(c.DisabledKind)
@@ -351,16 +334,11 @@ func toCredentialView(c credentials.Credential, st downstream.KeyStatus) credent
 	return out
 }
 
-// --- 凭据展开 ---
-
 // resolveHeaders 把请求折算成一组完整注入头。
-//
-// prev 非空表示"这次不动凭据"，用于编辑时不带 headers 的场景。
+// prev 非空表示“这次不动凭据”，用于编辑时不带 headers 的场景。
 func (req credentialRequest) resolveHeaders(prev map[string]string) (map[string]string, error) {
 	if len(req.Headers) > 0 {
-		// 回显值是 ***，原样提交回来表示"沿用原值"。不这么做的话，
-		// "只改个备注"就会顺手把凭据抹成五个星号，而症状要等到
-		// 下游返回 401 才出现。
+		// 回显值是 ***；原样提交表示沿用原值，否则会把凭据抹成五个星号。
 		return mergeSecrets(req.Headers, prev), nil
 	}
 	value := strings.TrimSpace(req.Value)
@@ -382,8 +360,7 @@ func (req credentialRequest) resolveHeaders(prev map[string]string) (map[string]
 func expandCredential(scheme, headerName, value string) (map[string]string, error) {
 	switch strings.ToLower(strings.TrimSpace(scheme)) {
 	case "", "bearer", "authorization":
-		// 已经带了 scheme 前缀就不重复加——用户从别处复制粘贴过来的
-		// 值经常自带 Bearer，再拼一次会得到 "Bearer Bearer xxx"。
+		// 用户粘贴的值常自带 "Bearer " 前缀，不要重复添加。
 		if !strings.HasPrefix(strings.ToLower(value), "bearer ") {
 			value = "Bearer " + value
 		}
@@ -402,16 +379,9 @@ func expandCredential(scheme, headerName, value string) (map[string]string, erro
 	return nil, badRequest("不支持的凭据类型 %q（可选：bearer / x-api-key / header）", scheme)
 }
 
-// mergeAuthHeaders 把展开出的鉴权头并入旧配置，返回更新后的完整注入头。
-//
-// value 短途径表达的是"给这把密钥换个值"，不是"重写整组注入头"：
-// 供应商凭据常是鉴权头 + 附加头（租户标识、地域、版本）的组合，
-// 按单头 map 整体覆盖会把附加头一并丢掉，表现为认证头没问题、
-// 下游却仍然拒掉请求，症状与凭据无关、极难归因。
-//
-// 头名按 HTTP 惯例不区分大小写：旧配置里写成 x-api-key 时要先摘掉
-// 再落 X-API-Key，否则同一个头在请求里带着两份，下游取到哪份全看
-// 运气。除鉴权头外一个键都不动。
+// mergeAuthHeaders 把展开出的鉴权头并入旧配置：value 短途径只换鉴权头，
+// 不能整体覆盖，否则会丢掉供应商的附加头（租户标识、地域、版本）。
+// 头名大小写不敏感，需先摘掉同名旧键；除鉴权头外一个键都不动。
 func mergeAuthHeaders(expanded, prev map[string]string) map[string]string {
 	out := make(map[string]string, len(prev)+len(expanded))
 	for k, v := range prev {
@@ -428,11 +398,8 @@ func mergeAuthHeaders(expanded, prev map[string]string) map[string]string {
 	return out
 }
 
-// parseCredentialLines 把"一行一把"的粘贴内容展开成密钥列表。
-//
-// 行格式：`名称=值`，或直接用 `值`（名称自动生成）。
-// 也接受制表符与中英文逗号作为分隔，因为用户是从表格或聊天窗口里
-// 复制过来的，格式并不统一。
+// parseCredentialLines 把“一行一把”的粘贴内容展开成密钥列表。
+// 行格式为 `名称=值` 或直接 `值`；也接受制表符与中英文逗号作为分隔。
 func parseCredentialLines(lines []string, scheme, headerName string) ([]hub.CredentialSpec, error) {
 	out := make([]hub.CredentialSpec, 0, len(lines))
 	used := make(map[string]int, len(lines))
@@ -455,8 +422,7 @@ func parseCredentialLines(lines []string, scheme, headerName string) ([]hub.Cred
 		if label == "" {
 			label = "密钥 " + strconv.Itoa(len(out)+1)
 		}
-		// 名字重复会让界面与日志里出现两把无法区分的密钥，
-		// 自动加个序号后缀，而不是让导入整体失败。
+		// 重名会让界面与日志无法区分；自动加序号后缀，而不是让导入失败。
 		if n, dup := used[label]; dup {
 			used[label] = n + 1
 			label = label + " (" + strconv.Itoa(n+1) + ")"
@@ -469,13 +435,9 @@ func parseCredentialLines(lines []string, scheme, headerName string) ([]hub.Cred
 	return out, nil
 }
 
-// splitCredentialLine 把一行拆成名称与值。没有名称时返回空名称。
-//
-// "=" 只有在后面确实跟着非填充内容时才算分隔符：值本身可能以 "="
-// 结尾（base64 的填充，如 dGVzdA==），按首个 "=" 硬切会把它拆成
-// label=dGVzdA、value="="，静默导入一把值错误的凭据。剩下两种情形
-// 维持原样——"名称=" 这种残缺行仍按缺值报错（它是明显的笔误，
-// 不该悄悄把 "名称=" 整串当成凭据值）。
+// splitCredentialLine 把一行拆成名称与值；没有名称时返回空名称。
+// "=" 仅在其后还有非 "=" 内容时才算分隔符，避免把 base64 填充值拆坏；
+// "名称=" 这类残缺行仍按缺值报错。
 func splitCredentialLine(line string) (label, value string) {
 	if idx := strings.Index(line, "="); idx >= 0 {
 		rest := strings.TrimSpace(line[idx+1:])

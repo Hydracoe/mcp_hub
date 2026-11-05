@@ -9,10 +9,8 @@ import (
 	"github.com/hydra/mcp-hub/internal/store/storetest"
 )
 
-// newTestStore 每次起一个全新的 PostgreSQL 临时库。
-//
-// 测试跟着生产跑在同一个引擎上，"测试过了但线上炸"才没有缝。
-// 库由 storetest 建，用例结束即 DROP。
+// newTestStore 每次起一个全新的临时库（后端由 storetest 选择）；库由 storetest 建，
+// 用例结束即清理。测试跟生产跑在同一个引擎上，"测试过了但线上炸"才没有缝。
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
 	s, err := store.Open(storetest.DSN(t))

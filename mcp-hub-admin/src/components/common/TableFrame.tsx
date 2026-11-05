@@ -14,7 +14,6 @@ export interface TableFrameProps {
   head: ReactNode
   /** 表头列数，状态行靠它算 colSpan。 */
   colCount: number
-  /** 有数据时的行。 */
   children: ReactNode
   loading?: boolean
   /** 骨架行数，默认 6。 */
@@ -31,7 +30,8 @@ export interface TableFrameProps {
   wrapClassName?: string
 }
 
-/** 表格模板。页面只声明「表头 + 数据 + 状态」，不写 thead/tbody/外壳——模板只管结构（外壳单层、状态位内建、表头常驻、页脚进帧），列内容仍是调用方写的 JSX。 */
+/** 表格模板。页面只声明「表头 + 数据 + 状态」，不写 thead/tbody/外壳：
+ *  外壳单层、状态位内建、表头常驻、页脚进帧；列内容仍由调用方写 JSX。 */
 export function TableFrame({
   head,
   colCount,

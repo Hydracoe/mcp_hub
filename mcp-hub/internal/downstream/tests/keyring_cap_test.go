@@ -9,8 +9,6 @@ import (
 	"github.com/hydra/mcp-hub/internal/downstream"
 )
 
-// --- R16：连续限流顶格 → 自动弃用并通知人工 ---
-
 func TestKeyRingRateLimitedCapDisables(t *testing.T) {
 	clock := newFakeClock()
 	ring := newTestRing(t, clock, testCreds(1))
@@ -38,7 +36,7 @@ func TestKeyRingRateLimitedCapDisables(t *testing.T) {
 		t.Fatalf("弃用原因应写明疑似账号级限流: %q", last.Detail)
 	}
 
-	// 弃用后立刻借不到，且错误文案指向人工处理（总原则③）。
+	// 弃用后立刻借不到，且错误文案指向人工处理。
 	_, err := ring.Acquire(nil)
 	var noKey *downstream.ErrNoUsableKey
 	if !errors.As(err, &noKey) {
@@ -52,8 +50,6 @@ func TestKeyRingRateLimitedCapDisables(t *testing.T) {
 	}
 }
 
-// --- R16 × R11：整池同时顶格是账号/配置问题，集体保护不全禁 ---
-
 func TestKeyRingCapDisableKeepsCollectiveProtection(t *testing.T) {
 	clock := newFakeClock()
 	creds := testCreds(2)
@@ -62,10 +58,9 @@ func TestKeyRingCapDisableKeepsCollectiveProtection(t *testing.T) {
 		o.LimitedDisableThreshold = 1
 	})
 
-	// 第一把被顶格禁用后（此时第二把还可用，保护不触发），推进时钟让
-	// 第二把也顶格：此刻弃用它会导致可用归零，且第一把在"同因窗口"内
-	// 因同一原因失败——应被集体保护拦下。窗口对限流类放宽到
-	// 2×CoolingCap=10 分钟，这里推进 9 分钟落在窗口内。
+	// 第一把被顶格禁用后（此时第二把还可用，保护不触发），推进时钟让第二把也
+	// 顶格：此刻弃用它会导致可用归零，且第一把在"同因窗口"内因同一原因失败，
+	// 应被集体保护拦下。窗口对限流类放宽到 2×CoolingCap=10 分钟，这里推进 9 分钟。
 	first := acquireOK(t, ring)
 	first.Done(downstream.LeaseResult{Verdict: downstream.VerdictRateLimited})
 	clock.Advance(9 * time.Minute)
@@ -80,8 +75,6 @@ func TestKeyRingCapDisableKeepsCollectiveProtection(t *testing.T) {
 	}
 }
 
-// --- R5：Retry-After 一并封顶，夸张值不能再锁死密钥 ---
-
 func TestKeyRingRetryAfterIsCapped(t *testing.T) {
 	clock := newFakeClock()
 	ring := newTestRing(t, clock, testCreds(1))
@@ -95,8 +88,6 @@ func TestKeyRingRetryAfterIsCapped(t *testing.T) {
 		t.Fatalf("夸张 Retry-After 未被封顶: got %s, want 5m", out.Cooling)
 	}
 }
-
-// --- 混合场景：冷却（自动恢复）与弃用（需人工）同时存在，话术要分开说 ---
 
 func TestNoUsableKeyCopyDistinguishesRecoveryFromHuman(t *testing.T) {
 	clock := newFakeClock()

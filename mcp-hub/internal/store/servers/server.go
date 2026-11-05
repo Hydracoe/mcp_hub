@@ -1,6 +1,6 @@
-// Package servers 是 servers 与 tools 两张表的持久化：下游 server 的配置、
-// 探活快照与工具缓存。工具缓存是 server 的从属数据（探活时整体替换、
-// 随 server 级联删除），因此跟配置放同一个包，事务也不用跨包。
+// Package servers 是 servers 与 tools 两张表的持久化：下游 server 的配置、探活快照
+// 与工具缓存。工具缓存是 server 的从属数据（探活时整体替换、随 server 级联删除），
+// 因此跟配置放同一个包，事务也不用跨包。
 package servers
 
 import (
@@ -36,13 +36,11 @@ type serverRow struct {
 	TimeoutMS       int64  `gorm:"column:timeout_ms"`
 	ProtocolVersion string `gorm:"column:protocol_version"`
 	LegacyOnly      int64  `gorm:"column:legacy_only"`
-	// BootEnabledTools 是创建时的一次性引导名单（JSON array）：首次探活
-	// 落库时，名单内的工具行直接 enabled=1，随后清空。只影响新行，
-	// 不构成任何持续性过滤——工具的启停只由 tools.enabled 决定。
+	// BootEnabledTools 是创建时的一次性引导名单（JSON array）：首次探活落库时
+	// 名单内的工具行直接 enabled=1，随后清空。只影响新行，工具的启停只由 tools.enabled 决定。
 	BootEnabledTools string `gorm:"column:boot_enabled_tools"`
-	// AutoEnable 是"上游新增工具直接放行"的 per-server 策略（O5）。
-	// 默认 0：新工具须人工启用（T1 的安全默认）。开了的 server，探活
-	// 新发现的工具直接 enabled=1 并留一条变更记录。
+	// AutoEnable 是"上游新增工具直接放行"的 per-server 策略（O5）。默认 0：新工具须人工启用
+	// （T1 的安全默认）；开了的 server，探活新发现的工具直接 enabled=1 并留一条变更记录。
 	AutoEnable int64 `gorm:"column:auto_enable"`
 	Enabled    int64 `gorm:"column:enabled"`
 
@@ -150,8 +148,7 @@ type Config struct {
 	AutoEnable bool
 
 	// EnabledTools 是创建时的初始启用名单（创建向导探活后勾选的工具）。
-	// 只在首次落库时生效：首次探活把名单内的工具写成 enabled=1，名单即清空。
-	// 编辑配置时忽略此字段——工具的启停此后只走 tools.enabled 开关。
+	// 只在首次落库时生效，名单随后清空；编辑配置时忽略此字段——工具的启停此后只走 tools.enabled。
 	EnabledTools []string
 
 	// 元数据。Instructions 不在写入范围内——它是探活的产物，配置保存不该抹掉。
@@ -159,12 +156,9 @@ type Config struct {
 	Tags        []string
 	CategoryID  string
 
-	// ClearCategory 明确要求把分类清空（退回"未分类"）。
-	//
-	// 它与"CategoryID 为空"不是一回事：后者只说明这次写入没带分类，
-	// 至于沿用原分类还是清空，由上层（hub 层）判断；本字段为 true 时
-	// 写下去的就是空分类。清空必须是明写的意图，不能是"忘了带"的
-	// 副作用——否则一次普通的配置保存就会把分类悄悄抹掉。
+	// ClearCategory 明确要求把分类清空（退回"未分类"）。它与"CategoryID 为空"不是一回事：
+	// 后者只说明这次写入没带分类，沿用还是清空由上层（hub 层）判断；本字段为 true 时
+	// 写下去的就是空分类。清空必须是明写的意图，不能是"忘了带"的副作用。
 	ClearCategory bool
 }
 
@@ -206,9 +200,8 @@ func (s *Store) Upsert(ctx context.Context, cfg Config) error {
 	}
 	tags := cleanTags(cfg.Tags)
 
-	// 分类：显式清空写空串（未分类），否则照写。
-	// 存储层只认"写什么就存什么"——"没带分类就沿用原值"是 hub 层的
-	// 语义，它在调用本方法之前就已经把最终值算好了。
+	// 分类：显式清空写空串（未分类），否则照写。存储层只认"写什么就存什么"——
+	// "没带分类就沿用原值"是 hub 层的语义，它在调用本方法之前就已经算好了最终值。
 	categoryID := cfg.CategoryID
 	if cfg.ClearCategory {
 		categoryID = ""
@@ -264,8 +257,7 @@ func (s *Store) Upsert(ctx context.Context, cfg Config) error {
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "id"}},
 			// created_at 不更新：它是"这行什么时候进来的"，不是"最后一次改动"。
-			// boot_enabled_tools 也不更新：引导名单只在创建时写入，
-			// 由首次成功的探活消费；编辑配置不能重建或清除它。
+			// boot_enabled_tools 也不更新：引导名单只在创建时写入，由首次成功的探活消费。
 			DoUpdates: clause.AssignmentColumns([]string{
 				"key", "name", "transport", "url", "headers", "auth_mode", "command", "args", "env",
 				"timeout_ms", "protocol_version", "legacy_only",
@@ -329,11 +321,9 @@ func (s *Store) List(ctx context.Context) ([]Server, error) {
 }
 
 // SetEnabledCascade 启停一个 server；停用时级联禁用它的全部工具。
-//
-// 约束是「停用的 server 下不允许有启用的工具」：server 停用后本就从聚合
-// 列表消失，但工具行还各自挂着 enabled 标记，不同步翻掉的话界面会显示
-// 一堆「已启用」却对外不生效的工具。server 开关与工具级联在同一事务里，
-// 不留中间态。返回本次被翻转（1→0）的工具名，供上层补变更记录。
+// 约束是「停用的 server 下不允许有启用的工具」：否则界面会显示一堆「已启用」却对外
+// 不生效的工具。server 开关与工具级联在同一事务里，不留中间态。
+// 返回本次被翻转（1→0）的工具名，供上层补变更记录。
 func (s *Store) SetEnabledCascade(ctx context.Context, id string, enabled bool) ([]string, error) {
 	var flipped []string
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -362,9 +352,8 @@ func (s *Store) SetEnabledCascade(ctx context.Context, id string, enabled bool) 
 	return flipped, nil
 }
 
-// DisableToolsOfServer 把某个 server 的全部工具置为禁用（幂等）。
-// 供「编辑配置把 server 关掉」的路径使用——那条路不走 SetEnabledCascade，
-// server 开关已由 Upsert 写入，这里只补工具的级联。
+// DisableToolsOfServer 把某个 server 的全部工具置为禁用（幂等）。供「编辑配置把 server
+// 关掉」的路径使用：那条路不走 SetEnabledCascade，server 开关已由 Upsert 写入。
 // 返回本次真正从启用翻转为禁用的工具名，供调用方补变更记录。
 func (s *Store) DisableToolsOfServer(ctx context.Context, serverID string) ([]string, error) {
 	var flipped []string

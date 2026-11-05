@@ -1,12 +1,6 @@
-// Package store 是 mcp-hub 的持久层门面：打开数据库、执行迁移，
-// 并把各领域子包聚合成一个 Store。
-//
-// 每张表（组）的读写逻辑在各自的子包里——servers、credentials、apikeys、
-// logs、categories、embeddings，共享的哨兵错误与行映射辅助在 storeutil。
-// 本包只做四件事：选方言、连接管理、schema 迁移、装配。
-//
-// 后端差异全部收在 Dialect 接口里（见 dialect.go）。除 dialect_*.go 之外，
-// 本包与子包都不该出现 postgres / sqlite 这类字面量——那是配置层与装配层的事。
+// Package store 是 mcp-hub 的持久层门面：打开数据库、执行迁移，并把各领域子包聚合成 Store。
+// 每张表（组）的读写逻辑在各自子包（servers、credentials、apikeys、logs、categories、embeddings），
+// 共享的哨兵错误与行映射辅助在 storeutil；后端差异全部收在 Dialect 接口里（见 dialect.go）。
 package store
 
 import (
@@ -39,11 +33,8 @@ type Options struct {
 	// SQLite 下留空则用 DataDir 里的默认文件名。
 	DSN string
 
-	// DataDir 是"调用方认为数据该放哪"的目录。
-	//
-	// 这一项存在的唯一理由是：桌面端的数据属于应用（应落在系统的
-	// Application Support 目录），命令行工具的数据属于当前工作目录。
-	// store 不认识任何一种部署形态，所以由入口把它传进来。
+	// DataDir 是"调用方认为数据该放哪"的目录：桌面端数据属于应用
+	// （系统 Application Support 目录），命令行工具的数据属于当前工作目录。
 	// 非 SQLite 后端忽略本项。
 	DataDir string
 

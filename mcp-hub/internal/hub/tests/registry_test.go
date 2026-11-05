@@ -11,11 +11,9 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// 这一组用例守的是"聚合列表怎么被拼出来"：重名怎么取舍、下游顺序抖动
-// 会不会让 AI 收到一次假的"列表变了"、命名空间会不会被下游占用。
-// 它们只走 registry 的导出 API，是纯内存断言——不该因为数据库在不在而改变
-// 结论，因此放在黑盒 tests 目录；需要未导出的 normalizeSchema 的用例
-// 留在 registry 包内做白盒测试。
+// 这一组用例守的是"聚合列表怎么被拼出来"：重名怎么取舍、下游顺序抖动会不会让
+// AI 收到一次假的"列表变了"、命名空间会不会被下游占用。
+// 它们只走 registry 的导出 API，是纯内存断言，不依赖数据库。
 
 func toolSource(serverID, serverKey string, tools ...downstream.ToolInfo) registry.ToolSource {
 	return registry.ToolSource{
@@ -48,11 +46,8 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-// --- T10：下游工具名里本身带分隔符 -------------------------------------------
-
 // 下游工具名里带 "__" 不该出任何事：对外名照拼、路由靠精确查表。
-// 这里特意构造出"按末个 __ 切分就会串线"的形状——若哪天有人把查表换成
-// strings.Split(exposed, "__") 反推下游，本用例立刻变红。
+// 这里特意构造出"按末个 __ 切分就会串线"的形状，防止有人把查表换成反推。
 func TestToolNameContainingSeparatorRoutesByExactLookup(t *testing.T) {
 	reg := registry.NewRegistry()
 	snap := reg.Build([]registry.ToolSource{
@@ -97,12 +92,9 @@ func TestServerKeyRejectsSeparatorSoExposedNameStaysUnambiguous(t *testing.T) {
 	}
 }
 
-// serverKey 取 "hub"（keyPattern 是放行的）会让它的对外名整体落进网关自带
-// 工具的命名空间：hub__list_tools 之类与 meta 工具同名。
-// 聚合层现在按"显式登记的元工具名单"挑 meta 工具，这台 server 的工具不再冒充
-// 成 meta 工具出现在 meta 模式的 tools/list 里；但它仍会与真元工具抢同一个
-// 对外名（聚合层让真元工具占住这个名字）。本用例把"配置源头必须拦住它"
-// 这件事钉住：这是保留命名空间被占用的唯一入口。
+// serverKey 取 "hub"（keyPattern 放行）会让它的对外名整体落进网关自带工具的
+// 命名空间：hub__list_tools 之类与 meta 工具同名。聚合层让真元工具占住名字，
+// 本用例钉住"配置源头必须拦住它"——这是保留命名空间被占用的唯一入口。
 func TestServerKeyHubLandsInsideReservedMetaNamespace(t *testing.T) {
 	reg := registry.NewRegistry()
 	snap := reg.Build([]registry.ToolSource{
@@ -137,8 +129,6 @@ func TestReservedMetaPrefixMatchesDownstreamCopy(t *testing.T) {
 		t.Errorf("key %q 已落进保留前缀 %q，配置校验却没拦住", reservedKey, aggregate.MetaPrefix)
 	}
 }
-
-// --- T11：同名工具冲突 -------------------------------------------------------
 
 // 不同 server 的同名工具靠前缀天然不撞：这是"两个上游都叫 search"的常态，
 // 跳过了才是 bug。
@@ -188,8 +178,6 @@ func TestBuildSkipsDuplicateExposedName(t *testing.T) {
 	}
 }
 
-// --- T9：下游顺序抖动 -------------------------------------------------------
-
 // 快照不因来源的输入顺序而改变：顺序抖动若导致列表变了，AI 会收到一次
 // 毫无必要的"工具列表已更新"。
 func TestBuildIsIndependentOfSourceOrder(t *testing.T) {
@@ -207,9 +195,8 @@ func TestBuildIsIndependentOfSourceOrder(t *testing.T) {
 	}
 }
 
-// 指纹对顺序敏感——正因如此，排序的责任落在 DB 层（ListTools 按
-// exposed_name 定序）。这条用例把"顺序会进指纹"这件事钉住，免得有人
-// 以为指纹天然与顺序无关而把排序删掉。
+// 指纹对顺序敏感——正因如此，排序的责任落在 DB 层（ListTools 按 exposed_name 定序）。
+// 这条用例把"顺序会进指纹"钉住，免得有人以为指纹天然与顺序无关而把排序删掉。
 func TestFingerprintDependsOnOrder(t *testing.T) {
 	one := []mcp.Tool{{Name: "a", Description: "A"}, {Name: "b", Description: "B"}}
 	two := []mcp.Tool{{Name: "b", Description: "B"}, {Name: "a", Description: "A"}}

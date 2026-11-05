@@ -16,8 +16,6 @@ import (
 	"github.com/hydra/mcp-hub/internal/store/servers"
 )
 
-// --- 输出结构 ---
-
 // serverSummary 是列表页一行所需的全部信息。
 type serverSummary struct {
 	ID        string `json:"id"`
@@ -29,14 +27,11 @@ type serverSummary struct {
 	Enabled bool   `json:"enabled"`
 	Status  string `json:"status"` // healthy | degraded | offline | unknown
 
-	// AutoEnable 是"上游新增工具直接放行"的开关（O5）。界面上它要显眼：
-	// 打开的 server 会让上游新增的工具不经人工确认就暴露给 AI，
-	// 用户得能一眼看出哪些 server 开着这个。
+	// AutoEnable 打开后上游新增工具会不经人工确认直接暴露给 AI，界面需显眼展示。
 	AutoEnable bool `json:"autoEnable"`
 
 	// AuthMode 是生效的鉴权形态（AuthModeOr 推断后的值）：
-	// none=免鉴权，header=需要请求头鉴权。界面据此区分
-	// "这个下游天生不需要密钥"和"要密钥但还没配"。
+	// none=免鉴权，header=需要请求头鉴权。
 	AuthMode string `json:"authMode"`
 
 	ProtocolEra     string   `json:"protocolEra,omitempty"` // modern | legacy
@@ -45,7 +40,7 @@ type serverSummary struct {
 	ServerVersion   string   `json:"serverVersion,omitempty"`
 	Capabilities    []string `json:"capabilities,omitempty"`
 
-	// 元数据（PRD §4.7）：描述供展示、标签自由、分类单值。
+	// 元数据：描述供展示、标签自由、分类单值。
 	Description string   `json:"description,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	CategoryID  string   `json:"categoryId,omitempty"`
@@ -59,21 +54,16 @@ type serverSummary struct {
 	// server 停用或列表未刷新时可以小于 EnabledToolCount。
 	ExposedToolCount int `json:"exposedToolCount"`
 
-	// 密钥池概况。KeyPool 为 false 表示该 server 走单密钥模式
-	// （沿用 config.headers），界面上要把这件事说清楚，
-	// 否则用户会以为"没显示密钥"等于"没配密钥"。
+	// 密钥池概况。KeyPool 为 false 表示该 server 走单密钥模式，
+	// 界面要把这件事说清楚，否则用户会以为“没显示密钥”等于“没配密钥”。
 	KeyPool          bool `json:"keyPool"`
 	KeyCount         int  `json:"keyCount"`
 	UsableKeyCount   int  `json:"usableKeyCount"`
 	CoolingKeyCount  int  `json:"coolingKeyCount,omitempty"`
 	DisabledKeyCount int  `json:"disabledKeyCount,omitempty"`
 
-	// Draining 表示这个 server 已经从聚合列表撤下，但还有调用在收尾。
-	//
-	// 单独给这三个字段而不是塞进 Status，是因为它们是两回事：
-	// Status 说的是"下游健不健康"，Draining 说的是"网关打算怎么处置它"。
-	// 界面据此显示"停用中 · 2 个调用收尾"，而不是直接跳到"已停用"——
-	// 后者会让用户以为当场就断干净了，与事实不符。
+	// Draining 表示已从聚合列表撤下但还有调用在收尾。
+	// 与 Status（下游健康度）是两回事；界面应显示“停用中 · N 个调用收尾”。
 	Draining         bool  `json:"draining"`
 	DrainingInflight int   `json:"drainingInflight,omitempty"`
 	DrainingSince    int64 `json:"drainingSince,omitempty"`
@@ -88,9 +78,8 @@ type serverSummary struct {
 	UpdatedAt     int64  `json:"updatedAt"`
 }
 
-// serverConfigView 是可编辑的连接配置。
-//
-// 密钥字段一律以 *** 回显；提交时原样带回 *** 表示"不改动"。
+// serverConfigView 是可编辑的连接配置；密钥字段一律以 *** 回显，
+// 提交时原样带回 *** 表示不改动。
 type serverConfigView struct {
 	URL             string            `json:"url,omitempty"`
 	Headers         map[string]string `json:"headers,omitempty"`
@@ -112,7 +101,7 @@ type toolItemView struct {
 	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
 	// Enabled 是工具级人工开关；禁用后不进聚合端点、不可被检索。
 	Enabled bool `json:"enabled"`
-	// Exposed 表示此刻是否真正进入聚合池（Enabled 且 server 已启用）。
+	// Exposed 表示此刻是否真正进入聚合池（Enabled 且 server 已启用）；
 	// Available 是下游可达性。
 	Exposed   bool `json:"exposed"`
 	Available bool `json:"available"`
@@ -122,15 +111,13 @@ type toolItemView struct {
 type serverDetail struct {
 	serverSummary
 	Config serverConfigView `json:"config"`
-	Tools  []string         `json:"tools,omitempty"` // 下游原始工具名（兼容旧界面）
+	Tools  []string         `json:"tools,omitempty"` // 下游原始工具名
 	// ToolItems 是带开关状态的完整工具清单，详情页的工具管理用它。
 	ToolItems []toolItemView `json:"toolItems,omitempty"`
 }
 
-// logItem 是调用日志列表一行。
-//
-// 持久层的 logs.LogEntry 用的是 Go 导出字段名，直接序列化出去
-// 会变成 "ID"/"ServerKey" 这种和全 API camelCase 契约不一致的形状。
+// logItem 是调用日志列表一行；用独立结构避免持久层的 Go 字段名直接
+// 序列化成与全 API camelCase 契约不一致的形状。
 type logItem struct {
 	ID           string    `json:"id"`
 	TS           time.Time `json:"ts"`
@@ -144,16 +131,12 @@ type logItem struct {
 	Error        string    `json:"error,omitempty"`
 	CredentialID string    `json:"credentialId,omitempty"`
 
-	// CredentialLabel 是该密钥**当前**的展示名（查询时批量回填）。
-	// 与 APIKeyName 的调用时快照不同：标签可改，历史行跟着显示新名字；
-	// 稳定的归因锚点仍是 credentialId，密钥已删除时 label 为空、界面回退显示 id。
+	// CredentialLabel 是该密钥当前的展示名（查询时批量回填），可随改名变化；
+	// 稳定归因锚点仍是 credentialId，密钥删除时 label 为空、界面回退显示 id。
 	CredentialLabel string `json:"credentialLabel,omitempty"`
 
-	// 调用方与请求现场（均已在落库时截断）。查看参数与结果
-	// 是日志页的核心诉求——"复现这次调用"比统计数字有用得多。
-	//
-	// APIKeyName 是**调用当时**的名字快照：key 后来改了名或被删除，
-	// 历史行照旧显示当时的名字，不会跟着变、也不会变成空。
+	// 调用方与请求现场（落库时已截断）。APIKeyName 是调用当时的名字快照，
+	// key 改名或被删除后历史行仍显示当时的名字。
 	APIKeyID   string `json:"apiKeyId,omitempty"`
 	APIKeyName string `json:"apiKeyName,omitempty"`
 	Args       string `json:"args,omitempty"`
@@ -180,9 +163,8 @@ func toLogItem(e logs.LogEntry) logItem {
 	}
 }
 
-// fillCredentialLabels 把一页日志里引用到的密钥展示名批量补齐。
-//
-// 查询失败不让整页日志跟着挂：标签是展示增强，缺了就回退显示 id。
+// fillCredentialLabels 把一页日志里引用到的密钥展示名批量补齐；
+// 查询失败不让整页日志跟着挂，缺了就回退显示 id。
 func fillCredentialLabels(ctx context.Context, st *credentials.Store, items []logItem) {
 	ids := make([]string, 0, len(items))
 	seen := make(map[string]struct{}, len(items))
@@ -215,16 +197,8 @@ func fillCredentialLabels(ctx context.Context, st *credentials.Store, items []lo
 	}
 }
 
-// --- 输入结构 ---
-
-// serverRequest 是新增 / 编辑 server 的请求体。
-//
-// 语义是整体替换：界面提交的是完整表单，服务端不做"字段级局部更新"。
-// 局部更新的边界（空字符串是"不改"还是"清空"）永远说不清，
-// 而说不清的边界最后都会变成一个数据被悄悄改掉的 bug。
-//
-// 例外是 headers / env 这两组密钥字典：它们必须分得清"没带"与"显式清空"，
-// 否则一次只改了别处的保存就会把凭据悄悄抹掉。详见下面两个字段的注释。
+// serverRequest 是新增 / 编辑 server 的请求体，语义为整体替换。
+// 例外是 headers / env：必须区分“没带”与“显式清空”，否则会悄悄抹掉凭据。
 type serverRequest struct {
 	Key       string `json:"key"`
 	Name      string `json:"name"`
@@ -232,15 +206,9 @@ type serverRequest struct {
 
 	URL string `json:"url"`
 
-	// Headers 是这组密钥字典之一。三态由"字段在不在"与"内容空不空"区分：
-	//
-	//	没带 headers（nil）  这次不动请求头，沿用原值
-	//	显式给了 {}          清空请求头
-	//	给了非空 map         整体替换；值为 *** 的按原值还原（见 mergeSecrets）
-	//
-	// 与 CategoryID *string 同一套语义：清空必须是明写的意图，不能是
-	// "忘了带"的副作用——少了这个区分，一次没带该字段的保存就会把凭据抹掉。
-	// JSON 的 null 与"没带"同义（都是这次不提这组密钥）。
+	// Headers 三态：没带（nil）沿用原值；显式 {} 清空；非空整体替换，
+	// 值为 *** 的按键还原（见 mergeSecrets）。JSON null 与“没带”同义。
+	// CategoryID 使用同一套三态语义。
 	Headers map[string]string `json:"headers"`
 
 	// AuthMode：none=无需鉴权，header=需要请求头鉴权，空=按 headers 推断。
@@ -249,32 +217,28 @@ type serverRequest struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args"`
 
-	// Env 是 stdio 的环境变量（KEY=VALUE）。三态与 Headers 相同：
-	// 没带 = 这次不动（沿用原值），显式空数组 = 清空，非空 = 整体替换
-	//（值为 *** 的按原值还原）。
+	// Env 是 stdio 的环境变量（KEY=VALUE），三态与 Headers 相同：
+	// 没带 = 沿用，显式空数组 = 清空，非空 = 整体替换（*** 按原值还原）。
 	Env []string `json:"env"`
 
 	TimeoutMS       int64  `json:"timeoutMs"`
 	ProtocolVersion string `json:"protocolVersion"`
 	LegacyOnly      bool   `json:"legacyOnly"`
 
-	// AutoEnable 是"上游新增工具直接放行"的 per-server 开关（O5）。
-	// 为空表示"不指定"：新增时默认关闭（新工具须人工启用），编辑时保留原值。
-	// 打开前请确认上游可信——它会让上游新增的工具不经人工确认就暴露给 AI。
+	// AutoEnable 是该 server 的“上游新增工具直接放行”开关；为空表示不指定：
+	// 新增默认关闭，编辑保留原值。打开前请确认上游可信。
 	AutoEnable *bool `json:"autoEnable"`
 
-	// EnabledTools 是创建时的初始启用名单：创建向导探活后勾选的工具。
-	// 只在首次创建时生效——首次探活落库后名单即消费完毕，之后的启停
-	// 全部走 /tools/:name/enable|disable。编辑请求带它会被忽略。
+	// EnabledTools 是创建时的初始启用名单，只在首次创建时生效；
+	// 编辑请求带它会被忽略，之后的启停走 /tools/:name/enable|disable。
 	EnabledTools []string `json:"enabledTools,omitempty"`
 
-	// 元数据（PRD §4.7）。
+	// 元数据。
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
 
-	// CategoryID 是分类 id。用指针区分"请求体没带这个字段"与"显式给了
-	// 空串"：前者表示"这次不改分类"（沿用原值），后者表示"把它退回
-	// 未分类"。少了这个区分，一次没带该字段的保存就会把原分类抹掉。
+	// CategoryID 用指针区分“没带这个字段”与“显式空串”：前者沿用原值，
+	// 后者退回未分类；否则一次没带该字段的保存会抹掉原分类。
 	CategoryID *string `json:"categoryId"`
 
 	// Enabled 为空表示"不指定"：新增时默认启用，编辑时保留原状态。
@@ -282,10 +246,7 @@ type serverRequest struct {
 }
 
 // toConfig 把请求折算成可落库的配置。
-//
-// prev 是编辑前的配置：新增时为零值。它有两个用途——
-// 把回显用的掩码换回真实密钥，以及在请求体没带 headers / env 时
-// 沿用原值（见 mergeSecrets 的三态）。
+// prev 用于把掩码换回真实值，并在请求体没带 headers / env 时沿用原值。
 func (req serverRequest) toConfig(prev *servers.Server) (servers.Config, error) {
 	spec := downstream.Spec{
 		Key:             strings.TrimSpace(req.Key),
@@ -308,8 +269,7 @@ func (req serverRequest) toConfig(prev *servers.Server) (servers.Config, error) 
 	}
 	if prev != nil {
 		spec.ID = prev.Spec.ID
-		// headers / env 的三态在这里落地：没带 = 沿用，显式空 = 清空，
-		// 非空 = 整体替换（掩码按原值还原）。
+		// headers / env 的三态在这里落地（见 mergeSecrets）。
 		spec.Headers = mergeSecrets(req.Headers, prev.Spec.Headers)
 		spec.Env = mergeEnvSecrets(req.Env, prev.Spec.Env)
 	}
@@ -340,8 +300,7 @@ func (req serverRequest) toConfig(prev *servers.Server) (servers.Config, error) 
 		autoEnable = *req.AutoEnable
 	}
 
-	// 分类：没带就是"这次不提分类"（CategoryID 空且不 ClearCategory），
-	// 由服务层在更新时沿用原值；显式给空串才是"清空分类"。
+	// 分类：没带就沿用原值，显式空串才清空分类。
 	categoryID := ""
 	clearCategory := false
 	if req.CategoryID != nil {
@@ -360,8 +319,6 @@ func (req serverRequest) toConfig(prev *servers.Server) (servers.Config, error) 
 		ClearCategory: clearCategory,
 	}, nil
 }
-
-// --- 转换 ---
 
 // keyStats 是一个 server 的密钥池概况。
 type keyStats struct {
@@ -413,8 +370,7 @@ func toSummary(sv servers.Server, cachedTools, enabledTools, exposedTools int, d
 	}
 	applyDraining(&out, drain)
 	if sv.Status == "unknown" && sv.LastErrorKind == downstream.KindNone {
-		// 从未探活过。区分"没测过"与"测了失败"——前者要提示去测，
-		// 后者要提示改配置，两种下一步动作完全不同。
+		// 从未探活过。区分“没测过”与“测了失败”，两者下一步动作不同。
 		out.LastErrorHint = "尚未探活"
 	} else if sv.LastErrorKind != downstream.KindNone {
 		out.LastErrorHint = sv.LastErrorKind.Human()
@@ -473,12 +429,8 @@ func targetOf(spec downstream.Spec) string {
 	return spec.Command + " " + strings.Join(spec.Args, " ")
 }
 
-// --- 密钥处理 ---
-
-// maskMap 把全部请求头替换成掩码，只保留键名。
-//
-// 不区分"哪些头算机密"：判断规则一旦写死就会漏。
-// 用户仍能看到自己配了哪些头（headerKeys），只是看不到值。
+// maskMap 把全部请求头替换成掩码，只保留键名；不区分“哪些头算机密”，
+// 判断规则一旦写死就会漏。
 func maskMap(m map[string]string) map[string]string {
 	if len(m) == 0 {
 		return nil
@@ -504,21 +456,12 @@ func maskEnv(env []string) []string {
 	return out
 }
 
-// mergeSecrets 把回显用的掩码换回真实值，并落实"没带/显式空/有值"三态。
-//
-// 三态（与 serverRequest.categoryId *string 同一套语义）：
-//
-//	next == nil    请求体没带这个字段 → 这次不动，沿用 prev
-//	len(next) == 0 请求体显式给了空 map → 清空这些密钥
-//	否则           整体替换：next 的键为准，值为 *** 的从 prev 还原
-//
-// 界面拿到的头上是 ***，用户不改它就会把 *** 原样提交回来。
-// 直接落库等于"每编辑一次就抹掉一次凭据"——这种坑极难自查，
-// 因为界面上一切正常，直到下游开始返回 401。
+// mergeSecrets 把回显掩码换回真实值，并落实三态：
+// next == nil 沿用 prev；len(next)==0 清空；否则整体替换、*** 从 prev 还原。
+// 界面会把 *** 原样提交，直接落库等于每次编辑都抹掉凭据。
 func mergeSecrets(next, prev map[string]string) map[string]string {
 	if next == nil {
-		// 没带这个字段：沿用原值。返回副本而不是 prev 本身，免得调用方
-		// 拿到的 map 与库里那份共享内存。
+		// 没带这个字段：沿用原值；返回副本，避免与库里那份共享内存。
 		return maps.Clone(prev)
 	}
 	if len(next) == 0 {
@@ -532,8 +475,7 @@ func mergeSecrets(next, prev map[string]string) map[string]string {
 				out[k] = old
 				continue
 			}
-			// 原配置里没有这个键，掩码就是它的真实值——多半是用户
-			// 手填了一个字面量 ***。照原样存下去，比丢弃更符合预期。
+			// 原配置里没有这个键时，掩码就是字面量 ***，照原样存下去。
 		}
 		out[k] = v
 	}

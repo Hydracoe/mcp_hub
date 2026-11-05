@@ -13,11 +13,9 @@ import { cn } from '@/lib/utils'
 import { formatInt, formatPercent } from '@/lib/format'
 import type { ToolEntry } from '@/lib/api/types'
 
-/** 工具卡片。exposedName 是客户端调用的名（带 serverKey__ 前缀），name 是下游认的名；展示用前者。
- *
- *  卡片右下的开关是本页唯一会写回后端的动作：新工具默认禁用（上游随手加的工具
- *  不该直接裸奔到 AI 面前），人工放行才算数。被禁用的工具仍留在列表里——
- *  关掉一个工具不该等于把它弄丢了。 */
+/** 工具卡片。exposedName 是客户端调用的名，name 是下游认的名，展示用前者。
+ *  右下开关是本页唯一会写回后端的动作：新工具默认禁用，人工放行才算数。
+ *  被禁用的工具仍留在列表里——关掉一个工具不等于把它弄丢。 */
 export function ToolGrid({
   items,
   onViewSchema,

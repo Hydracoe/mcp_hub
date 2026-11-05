@@ -17,10 +17,8 @@ import (
 )
 
 // embeddingRow 是 tool_embeddings 表的一行（持久化形态）。
-// vector 列：PostgreSQL 上存 pgvector 的 vector 类型（000007 起；写入时
-// 传 "[1,2,3]" 文本，由 vector 的输入函数解析），SQLite 上存 TEXT（JSON
-// 数组），检索走 Go 侧内存余弦。读取一律显式 `CAST(vector AS TEXT)`，保证 Go 侧
-// 拿到的形态不依赖驱动对 vector 类型的解码行为。
+// vector 列在 PG 上是 pgvector 的 vector 类型（写入 "[1,2,3]" 文本，由输入函数解析），
+// SQLite 上是 TEXT（JSON 数组）；读取一律 CAST(vector AS TEXT)，不依赖驱动解码行为。
 // 主键是完整代身份 (tool_id, model, dims, spec)：不同代向量可并存，支撑热切换。
 type embeddingRow struct {
 	ToolID     string `gorm:"column:tool_id;primaryKey"`
@@ -79,9 +77,8 @@ type Generation struct {
 type Store struct {
 	db *gorm.DB
 
-	// nativeVector 表示 SQL 侧有原生向量距离算子（pgvector）。
-	// false 时检索退回 Go 侧内存计算——两条路径在无索引的表上数学等价，
-	// 差别只是算在哪：数据库进程还是本进程。
+	// nativeVector 表示 SQL 侧有原生向量距离算子（pgvector）。false 时退回 Go 侧内存计算：
+	// 两条路径在无索引的表上数学等价，差别只是算在数据库进程还是本进程。
 	nativeVector bool
 }
 
@@ -97,19 +94,9 @@ func New(db *gorm.DB, opts Options) *Store {
 	return &Store{db: db, nativeVector: opts.NativeVectorSearch}
 }
 
-// Search 对已落库的向量做相似度检索（hybrid 检索的向量一路）。
-// 只查指定代：维度对不上会直接报错，语义空间不同则是悄悄错。
-// 只查启用且可用的 server：此刻调不通的工具排进结果，AI 只会再撞一次错。
-//
-// 两条路径的取舍：
-//   - PostgreSQL（pgvector，vector 类型列）把距离计算交给数据库
-//     （SQL 里的 `<=>` 是余弦距离）；
-//   - SQLite 没有向量类型，把候选读进内存自己算余弦相似度。
-//
-// 之所以 SQLite 侧敢做全表计算：tool_embeddings 上**没有任何向量索引**
-// （ANN 索引锁死单一维度，与多代混合维度并存冲突；B-tree 只收窄代），
-// 所以数据库那条 `ORDER BY distance LIMIT n` 也是精确全表扫描——
-// 换执行位置不改变结果，只改变算力归属。工具量级（几千）下这是毫秒级。
+// Search 对已落库的向量做相似度检索（hybrid 检索的向量一路）。只查指定代：维度对不上
+// 会直接报错，语义空间不同则是悄悄错；只查启用且可用的 server。PG 走 `<=>`，SQLite 读进内存
+// 算余弦：表上没有向量索引，两条路径都是精确全表扫描，结果等价、只差算力归属。
 func (s *Store) Search(ctx context.Context, model string, dims int, spec string, query []float64, topK int) ([]EmbeddingHit, error) {
 	if topK <= 0 {
 		topK = 20
@@ -120,11 +107,8 @@ func (s *Store) Search(ctx context.Context, model string, dims int, spec string,
 	return s.searchInMemory(ctx, model, dims, spec, query, topK)
 }
 
-// searchNative 走 SQL 侧的向量算子。
-//
-// 三表连接的意义只是"提前缩小扫描量"：真正决定"能不能被搜到"的是
-// 检索层内存索引里的 byID 过滤（见 hub/retrieval）。这里保留 JOIN
-// 是为了让数据库少读几行，不是正确性所必需。
+// searchNative 走 SQL 侧的向量算子。三表 JOIN 只为提前缩小扫描量：
+// 真正决定"能不能被搜到"的是检索层内存索引里的 byID 过滤。
 func (s *Store) searchNative(ctx context.Context, model string, dims int, spec string, query []float64, topK int) ([]EmbeddingHit, error) {
 	vec, err := json.Marshal(query)
 	if err != nil {
@@ -157,11 +141,9 @@ func (s *Store) searchNative(ctx context.Context, model string, dims int, spec s
 	return out, nil
 }
 
-// searchInMemory 把指定代的向量读进内存算余弦相似度。
-//
-// 刻意不做"只读可搜工具"的过滤：那需要 JOIN tools / servers，而这层过滤
-// 检索层已经免费拥有（内存索引的 byID 只装过滤后的工具）。在这里再筛一次
-// 是多一次 JOIN、少一次复用——过滤条件重复写两遍还会各自漂移。
+// searchInMemory 把指定代的向量读进内存算余弦相似度。刻意不做"只读可搜工具"的过滤：
+// 检索层的内存索引已经持有过滤后的结果，这里再筛一次是多一次 JOIN，
+// 且过滤条件写两遍会各自漂移。
 func (s *Store) searchInMemory(ctx context.Context, model string, dims int, spec string, query []float64, topK int) ([]EmbeddingHit, error) {
 	var rows []embeddingRow
 	err := s.db.WithContext(ctx).
@@ -208,8 +190,7 @@ func (s *Store) searchInMemory(ctx context.Context, model string, dims int, spec
 }
 
 // Save 批量 upsert 向量，供 RAG 增量重建使用。
-// 冲突键是完整代身份；冲突时覆盖 vector/corpus_hash（语料被重新向量化，
-// 旧向量没有保留价值）。
+// 冲突键是完整代身份；冲突时覆盖 vector/corpus_hash（旧向量没有保留价值）。
 func (s *Store) Save(ctx context.Context, es []Embedding) error {
 	if len(es) == 0 {
 		return nil

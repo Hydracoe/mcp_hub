@@ -3,16 +3,8 @@ package downstream
 import "time"
 
 // quotaWindow 是固定窗口计数器，用于 RPM 限速。
-//
-// 不用滑动窗口或令牌桶：窗口边界对齐到分钟与供应商侧语义一致，还能直接算出
-// "下个窗口何时开始"——这正是快速失败时要回给调用方的 retryAfter。
-//
-// 只服务 RPM：一次请求就是 1，没有"数不出来"的含糊。早先还有一个按 token
-// 计数的 TPM 窗口，因为 MCP 响应里规范未约定用量、绝大多数下游根本不返回，
-// 网关只能靠用户手填的估算常量换算——把确定量换成了估计量。该设计已整体移除，
-// 限额主体回到 RPM。
-//
-// 自身不加锁，由 KeyRing.mu 保护。
+// 窗口边界对齐到分钟，与供应商语义一致，并能算出下个窗口何时开始（即 retryAfter）。
+// 一次请求记 1；自身不加锁，由 KeyRing.mu 保护。
 type quotaWindow struct {
 	limit  int
 	window time.Duration
@@ -30,9 +22,8 @@ func (w *quotaWindow) setLimit(n int) {
 }
 
 // roll 在窗口翻转时重置计数。
-//
-// 超发（并发下短暂的 used > limit）的部分转入下一窗口，**不豁免**：漏算的
-// 额度不滚存——把没用满的额度攒起来，等于在某几个窗口里放行超出配置上限的流量。
+// 超发（并发下短暂的 used > limit）的部分转入下一窗口，不豁免：漏算的额度
+// 不滚存，否则等于在某几个窗口里放行超出配置上限的流量。
 func (w *quotaWindow) roll(now time.Time) {
 	if w.limit <= 0 || w.window <= 0 {
 		return

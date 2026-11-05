@@ -10,18 +10,18 @@ import (
 	"go.uber.org/zap"
 )
 
-// 弃用密钥自动探活救回（O1）的参数。
+// 弃用密钥自动探活救回的参数。
 const (
-	// reviveInterval 是自动探活的周期。低于它没有意义：配额类恢复以
-	// 月/日计，限流类解除也是分钟级；探得太勤只是白打下游。
+	// reviveInterval 是自动探活的周期。配额类恢复以月/日计，限流类解除也是
+	// 分钟级；探得太勤只是白打下游。
 	reviveInterval = 15 * time.Minute
 
-	// reviveProbeTimeout 是单把弃用钥探活的超时。探活是只读的
-	// tools/list，正常几百毫秒；给足余量但不让一把慢下游拖住整轮。
+	// reviveProbeTimeout 是单把弃用钥探活的超时。探活是只读的 tools/list，
+	// 正常几百毫秒；给足余量但不让一把慢下游拖住整轮。
 	reviveProbeTimeout = 30 * time.Second
 )
 
-// startKeyReviver 启动弃用密钥的自动探活循环（O1）。
+// startKeyReviver 启动弃用密钥的自动探活循环。
 // goroutine 计入 closeWG（构造处已统一 Add）。
 func (s *Service) startKeyReviver() {
 	// 错峰启动：随机延迟后进入固定周期，避免进程重启或未来多实例
@@ -46,13 +46,9 @@ func (s *Service) keyReviver(initialDelay time.Duration) {
 	}
 }
 
-// reviveDisabledKeys 对"可自动恢复"的弃用密钥做一轮只读探活（O1）。
-//
-// 只覆盖两类：QUOTA_EXHAUSTED（用户充值后自然恢复，语义最安全）与
-// RATE_LIMITED（R16 顶格禁用，账号级限流可能随时间解除）。401/403 类
-// 不试——凭据值本身错了，探活救不回来，救回判断必须留给人。
-// 探活是只读的（tools/list）：不消耗调用配额、不改工具缓存、探活失败
-// 不动任何状态。任何一路出错都只是"这轮没救成"，等下一轮。
+// reviveDisabledKeys 对"可自动恢复"的弃用密钥做一轮只读探活。
+// 只覆盖 QUOTA_EXHAUSTED 与 RATE_LIMITED 两类；401/403 类凭据值本身错了，救回判断必须留给人。
+// 探活只读（tools/list）、不改任何状态，出错只是"这轮没救成"，等下一轮。
 func (s *Service) reviveDisabledKeys() {
 	ctx, cancel := context.WithTimeout(context.Background(), reviveInterval)
 	defer cancel()
@@ -107,9 +103,8 @@ func (s *Service) tryReviveKey(ctx context.Context, serverID string, st downstre
 		return
 	}
 
-	// 探活通过：自动救回。SetCredentialEnabled 会复位持久状态、清冷却并
-	// 重灌密钥池。连续限流计数一并清零——救回的前提就是探活已通过，
-	// 带着顶格的旧计数回池，下一次 429 会立刻把它再禁掉，形成抖动。
+	// 探活通过：自动救回。SetCredentialEnabled 会复位持久状态、清冷却并重灌密钥池。
+	// 连续限流计数一并清零，否则下一次 429 会立刻把它再禁掉，形成抖动。
 	if err := s.SetCredentialEnabled(ctx, serverID, st.ID, true); err != nil {
 		s.log.Error("弃用密钥自动救回失败",
 			zap.String("server", sv.Spec.Key),

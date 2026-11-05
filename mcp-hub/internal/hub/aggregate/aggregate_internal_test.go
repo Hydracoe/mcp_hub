@@ -13,12 +13,8 @@ import (
 )
 
 // 这一组守的是"网关自带工具的命名空间 hub__ 不被下游占用"。
-//
-// 起因：对外名是 <serverKey>__<toolName>，而 keyPattern 放行 "hub"——
-// 那台 server 的全部工具都会以 hub__ 开头，恰好满足 meta 模式挑元工具的
-// 判断，于是冒充成 hub__list_tools 之类露给 AI。
-//
-// 保留前缀与 downstream 的一致性用例在 ../tests 黑盒目录。
+// 对外名是 <serverKey>__<toolName>，keyPattern 放行 "hub" 时该 server 的工具会以
+// hub__ 开头，恰好满足 meta 模式挑元工具的判断，于是冒充成 hub__list_tools 之类露给 AI。
 
 // metaTool 造一个最小可用的元工具（真元工具由 SetMetaTools 注册进来）。
 func metaTool(name, desc string) mcpserver.ServerTool {
@@ -31,9 +27,7 @@ func metaTool(name, desc string) mcpserver.ServerTool {
 }
 
 // registeredTools 返回端点上实际注册的工具，按名字定序。
-//
-// 这就是 mcp-go 的 tools/list 交给过滤器链的那份输入（过滤发生在分页之前），
-// 比拿快照里的下游工具更贴近真实路径。
+// 这是 mcp-go 的 tools/list 交给过滤器链的那份输入（过滤发生在分页之前）。
 func registeredTools(a *Aggregator) []mcp.Tool {
 	list := a.MCP().ListTools()
 	out := make([]mcp.Tool, 0, len(list))
@@ -53,9 +47,8 @@ func toolNames(tools []mcp.Tool) []string {
 	return out
 }
 
-// meta 模式下，即便真有一台 serverKey=hub 的存量 server（配置校验上线前
-// 建的），它的工具也不该冒充元工具露给 AI：真元工具从不出现在路由表里，
-// 用这一点把它们摘掉。
+// meta 模式下，serverKey=hub 的下游工具不该冒充元工具露给 AI：
+// 真元工具从不出现在路由表里，用这一点把它们摘掉。
 func TestMetaFilterExcludesDownstreamToolsClaimingMetaPrefix(t *testing.T) {
 	reg := registry.NewRegistry()
 	sources := []registry.ToolSource{{
@@ -81,14 +74,8 @@ func TestMetaFilterExcludesDownstreamToolsClaimingMetaPrefix(t *testing.T) {
 	}
 }
 
-// 回归：真元工具不能因为"路由表里恰好有同名条目"被摘掉。
-//
-// 存量 server（key 取 hub，配置校验上线前建的）的工具对外名也是 hub__ 开头，
-// 恰好与真元工具同名时：
-//   - 修复前：注册时下游工具占住了这个名字，真元工具被挤掉；过滤器再按
-//     "路由表里有同名条目"把它当成下游工具摘掉——列表里凭空少一个元工具。
-//   - 修复后：真元工具是显式登记的元工具，且后注册占住了这个名字，所以列表里
-//     元工具齐全，那台 server 的其它工具（hub__alpha）也不会冒充成元工具。
+// 真元工具不能因为"路由表里恰好有同名条目"被摘掉：真元工具显式登记且
+// 后注册占住名字，同名下游工具的其它工具也不得冒充成元工具。
 func TestMetaFilterKeepsRealMetaToolWhenDownstreamSharesName(t *testing.T) {
 	reg := registry.NewRegistry()
 	sources := []registry.ToolSource{{
@@ -192,9 +179,8 @@ func TestMetaFilterKeepsRealMetaTools(t *testing.T) {
 
 // 列表路径与调用路径必须分开：列表只留元工具，调用放行被请求的那个工具。
 //
-// mcp-go 的 list 与 call 共用同一条过滤器链，list 传全部已注册工具、call
-// 只传被请求的那一个。判据是显式的——输入里有没有元工具，而不是"工具
-// 恰好只有一个"这种数量启发式。
+// mcp-go 的 list 与 call 共用同一条过滤器链，判据是输入里有没有元工具，
+// 而不是工具数量。
 func TestMetaFilterSeparatesListFromCall(t *testing.T) {
 	reg := registry.NewRegistry()
 	sources := []registry.ToolSource{{
@@ -238,10 +224,8 @@ func TestMetaFilterSeparatesListFromCall(t *testing.T) {
 	}
 }
 
-// 单工具场景行为不变：端点上只注册了一个工具时，过滤器一律放行。
-//
-// 这是刻意保留的旧行为：端点上只注册了一个工具时，列表与调用交给过滤器
-// 的输入完全一样，没法区分——宁可多列一个工具，也不能让工具调不到。
+// 单工具场景：端点上只注册了一个工具时，列表与调用的输入无法区分，
+// 过滤器一律放行——宁可多列一个工具，也不能让工具调不到。
 func TestMetaFilterSingleToolScenarioUnchanged(t *testing.T) {
 	t.Run("单个元工具", func(t *testing.T) {
 		reg := registry.NewRegistry()
@@ -269,8 +253,7 @@ func TestMetaFilterSingleToolScenarioUnchanged(t *testing.T) {
 		}}
 		reg.Build(sources)
 
-		// 元工具还没注册（启动窗口）：列表与调用给过滤器的输入一样，
-		// 按旧行为放行。
+		// 元工具还没注册（启动窗口）：列表与调用的输入一样，一律放行。
 		a := NewAggregator(Deps{Sources: func() ([]registry.ToolSource, bool) { return sources, true }}, reg, nil, ListModeMeta)
 
 		got := a.metaOnlyFilter(context.Background(), registeredTools(a))

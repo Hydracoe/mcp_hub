@@ -1,11 +1,7 @@
-// Package api 实现网关的管理后端。
+// Package api 实现网关的管理后端：把 HTTP 请求翻译成对 hub.Service 的调用，
+// 把结果与 error 翻译回 HTTP 状态码。
 //
-// 这一层的职责只有翻译：把 HTTP 请求翻译成对 hub.Service 的一次调用，
-// 把结果与 error 翻译回 HTTP 状态码。所有业务判断都留在 hub 层——
-// 一旦这里开始自己算"什么算健康""要不要刷新缓存"，界面能做的事
-// 与 CLI 能做的事就会慢慢长出两套语义，而它们迟早会打架。
-//
-// 路由与请求解析交给 gin，翻译层本身不持有任何跨请求状态。
+// 业务判断全部留在 hub 层；本层不持有任何跨请求状态。
 package api
 
 import (
@@ -28,18 +24,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// secretMask 是密钥回显时的占位符。
-//
-// 提交时收到这个值表示"沿用原值"，见 mergeSecrets。
+// secretMask 是密钥回显时的占位符；提交时收到该值表示沿用原值（见 mergeSecrets）。
 const secretMask = "***"
 
 // Options 是管理 API 的构造参数。
 type Options struct {
 	// APIKey 非空时，全部 /api/* 请求都必须带 X-API-Key 或 Bearer 令牌。
-	//
-	// v1 默认关闭：服务默认只绑 127.0.0.1，本机访问没有中间人。
-	// 但一旦要监听到 0.0.0.0，这个开关必须能用——事后补鉴权
-	// 往往意味着已经暴露过了。
+	// 服务默认只绑 127.0.0.1；监听 0.0.0.0 时必须启用。
 	APIKey string
 
 	Logger *zap.Logger
@@ -70,9 +61,7 @@ func New(svc *hub.Service, opts Options) *API {
 }
 
 // Register 把全部管理端点挂到路由上。
-//
-// 集中注册而不是散在各处：鉴权只有一处实现，也就不可能出现
-// "新加的端点忘了加鉴权"这种最难在代码评审里发现的漏洞。
+// 鉴权只在 /api 分组上实现一次，新增端点挂进该组即自动受保护。
 func (a *API) Register(r gin.IRouter) {
 	// 分组即鉴权边界：组内每一条路由都自动带上 guard，
 	// 新增端点只要挂进这个组，就不可能漏鉴权。
@@ -105,8 +94,8 @@ func (a *API) Register(r gin.IRouter) {
 	g.POST("/servers/:id/tools/:tool/disable", a.handleSetToolEnabled(false))
 	g.GET("/tool-changes", a.handleListToolChanges)
 
-	// 密钥池（M4）。gin 的路由树里字面量段与参数段可以共存，
-	// 且字面量优先——"import" 不会被 ":cid" 吃掉。
+	// 密钥池。gin 路由树里字面量段与参数段可共存且字面量优先，
+	// "import" 不会被 ":cid" 吃掉。
 	g.GET("/servers/:id/credentials", a.handleListCredentials)
 	g.POST("/servers/:id/credentials", a.handleCreateCredential)
 	g.POST("/servers/:id/credentials/import", a.handleImportCredentials)
@@ -117,10 +106,10 @@ func (a *API) Register(r gin.IRouter) {
 	g.POST("/servers/:id/credentials/:cid/test", a.handleTestCredential)
 	g.POST("/servers/:id/credentials/:cid/reset-quota", a.handleResetCredentialQuota)
 
-	// 工具检索（PRD §4.7）。
+	// 工具检索
 	g.GET("/tools/search", a.handleSearchTools)
 
-	// 分类（PRD §4.7.3）。
+	// 分类
 	g.GET("/categories", a.handleListCategories)
 	g.POST("/categories", a.handleCreateCategory)
 	g.PUT("/categories/:id", a.handleUpdateCategory)
@@ -133,10 +122,8 @@ func (a *API) Register(r gin.IRouter) {
 	g.POST("/keys/:id/enable", a.handleEnableAPIKey(true))
 	g.POST("/keys/:id/disable", a.handleEnableAPIKey(false))
 
-	// 嵌入检索（PRD §4.7.5）没有配置接口：model / 维度 / 服务地址都来自
-	// 环境变量，改配置就是改 .env 重启。它也就没有"读配置"的必要——
-	// 管理接口只暴露工具与分类这类运行时数据；向量重建的进度打在进程
-	// 日志里（见 serve 的启动对账）。
+	// 嵌入检索没有配置接口：model / 维度 / 服务地址来自环境变量，改配置需重启；
+	// 向量重建进度只打在进程日志里。
 }
 
 // guard 是管理端点的统一入口检查。
@@ -150,9 +137,7 @@ func (a *API) guard() gin.HandlerFunc {
 }
 
 // authorized 校验请求携带的凭据。
-//
-// 用常量时间比较：普通字符串比较会在第一个不同的字节上返回，
-// 让攻击者能逐字节猜出密钥。
+// 必须用常量时间比较，避免按字节差异泄露密钥。
 func authorized(r *http.Request, want string) bool {
 	got := r.Header.Get("X-API-Key")
 	if got == "" {
@@ -161,12 +146,7 @@ func authorized(r *http.Request, want string) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
-// --- 响应辅助 ---
-
-// errorResponse 是管理 API 的统一错误体。
-//
-// 带上机器可读的 code：界面据此区分"要弹表单校验"还是"要提示稍后重试"，
-// 不必去匹配人话文案。
+// errorResponse 是管理 API 的统一错误体；code 供界面分支处理，不必匹配文案。
 type errorResponse struct {
 	Code  string `json:"code"`
 	Error string `json:"error"`
@@ -207,30 +187,25 @@ func failFor(c *gin.Context, err error) {
 	case errors.Is(err, hub.ErrServerDisabled):
 		abortErr(c, http.StatusBadRequest, "server_disabled", err.Error())
 	case errors.As(err, &catMissing):
-		// 引用了不存在的分类：请求写错了，不是服务端故障。
-		// 写下去就成了悬空引用（界面上是一行空白分类），所以是 400。
+		// 引用不存在的分类属于请求错误（400），否则会写出悬空引用。
 		abortErr(c, http.StatusBadRequest, "invalid_request", err.Error())
 	case errors.As(err, &noKey):
-		// 所有密钥此刻都不可用。这是"暂时不行"，不是"请求错了"：
-		// 503 + retryAfter 让客户端知道可以原样重试，而不是去改配置。
+		// 密钥此刻全部不可用：503 + Retry-After，客户端可原样重试。
 		c.Header("Retry-After", strconv.Itoa(int(noKey.RetryAfter.Seconds())))
 		abortErr(c, http.StatusServiceUnavailable, "no_usable_key", err.Error())
 	case errors.As(err, &reqErr):
 		abortErr(c, http.StatusBadRequest, "invalid_request", reqErr.msg)
 	case errors.As(err, &unavail):
-		// 下游处于退避窗口。这是"暂时不行"，不是"请求错了"，
-		// 503 让客户端知道可以稍后原样重试。
+		// 下游处于退避窗口：503，客户端可稍后原样重试。
 		abortErr(c, http.StatusServiceUnavailable, "unavailable", err.Error())
 	default:
 		abortErr(c, http.StatusInternalServerError, "internal", err.Error())
 	}
 }
 
-// bindJSON 解析请求体，并拒绝明显的畸形输入。
-//
-// 不用 gin 自带的 ShouldBindJSON：它默认允许未知字段，而字段名拼错时
-// 静默忽略，用户会看到"保存成功但配置没生效"，这比直接报错难查得多。
-// 这里保留 DisallowUnknownFields 与 1 MiB 上限的原有语义。
+// bindJSON 解析请求体并拒绝畸形输入。
+// 必须 DisallowUnknownFields：字段名拼错时静默忽略会表现为保存成功但配置未生效。
+// 请求体上限 1 MiB。
 func bindJSON(c *gin.Context, dst any) error {
 	dec := json.NewDecoder(http.MaxBytesReader(nil, c.Request.Body, maxBodyBytes))
 	dec.DisallowUnknownFields()

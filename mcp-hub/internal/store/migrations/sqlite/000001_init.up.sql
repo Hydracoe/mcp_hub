@@ -1,23 +1,6 @@
--- MCP Hub 初始 schema（SQLite 基线）
---
--- 这份文件是 PostgreSQL 那 6 个增量迁移合并后的**当前** schema，
--- 不是历史重放。理由见 migrations/postgres 的说明与 store/migrate.go：
--- SQLite 是后来新增的部署形态，没有历史数据要兼容，所以从一个干净的
--- 基线开始；此后的 schema 变更再按 000002_xxx 往后追加。
---
--- 与 PostgreSQL 版的差异都是语言本身的限制，不是设计取舍：
---   * ALTER COLUMN / DROP COLUMN IF EXISTS 在 SQLite 上要么不支持、
---     要么要整表重建，所以直接写成目标形态；
---   * 布尔一律用 INTEGER 0/1（与 PG 版一致，GORM 侧也一样）；
---   * 时间戳一律 epoch 毫秒的 INTEGER（与 PG 版一致，不碰 timestamp 语义）。
---
--- 外键、级联删除、partial 索引 SQLite 都支持，但外键需要
--- PRAGMA foreign_keys=ON —— 这一条由 dialect_sqlite.go 写在连接串上，
--- 每个新连接自动生效，不依赖任何调用方记得打开。
---
--- 刻意不用 GORM 的 AutoMigrate：它靠文本解析已有表的 DDL 判断差异，
--- 遇到行内注释会读错列清单，进而触发 DROP TABLE 式"修复"——一条
--- 会把数据写丢的路径。DDL 由迁移文件独占，GORM 只负责读写。
+-- MCP Hub 初始 schema（SQLite 基线，是 PG 增量迁移合并后的当前形态，不是历史重放）。SQLite 不支持
+-- ALTER COLUMN / DROP COLUMN IF EXISTS（或需整表重建），故直接写目标形态；布尔 INTEGER 0/1、时间戳 epoch 毫秒 INTEGER。
+-- 外键需 PRAGMA foreign_keys=ON（由 dialect_sqlite.go 写在连接串上）；不用 GORM AutoMigrate（误判 DDL 会 DROP TABLE）。
 
 CREATE TABLE servers (
   id                TEXT PRIMARY KEY,
@@ -40,8 +23,8 @@ CREATE TABLE servers (
   -- 随后清空；此后启停只走 /tools/:name/enable|disable。
   boot_enabled_tools TEXT NOT NULL DEFAULT '[]', -- JSON array
 
-  -- 新工具自动启用（默认关：上游随手加一个工具就裸奔到 AI 面前，
-  -- 风险由用户承担；对信任的上游可以按 server 打开）。
+  -- 新工具自动启用（默认关：上游随手加一个工具就裸奔到 AI 面前，风险由用户承担；
+  -- 对信任的上游可以按 server 打开）。
   auto_enable       INTEGER NOT NULL DEFAULT 0,
 
   enabled           INTEGER NOT NULL DEFAULT 1,
@@ -152,9 +135,7 @@ CREATE TABLE credentials (
   disabled_at   INTEGER,
   disabled_note TEXT NOT NULL DEFAULT '',
 
-  -- 限流冷却只落"冷却到点时刻"，不落退避进度：重启会重置进度是可接受的，
-  -- 而"这把密钥此刻还在被限"是事实，值得记住。
-  -- NULL 或过去的时间戳都表示"没在冷却"。
+  -- 限流冷却只落"冷却到点时刻"，不落退避进度：NULL 或过去的时间戳都表示"没在冷却"。
   cooling_until INTEGER,
 
   rpm_limit     INTEGER NOT NULL DEFAULT 0,   -- 每分钟请求上限，0 = 不限
@@ -170,8 +151,7 @@ CREATE UNIQUE INDEX idx_creds_label
   ON credentials(server_id, label) WHERE label <> '';
 
 -- 分类。单值：一个 server 至多归属一个分类，多标签需求由 servers.tags 承担。
--- name 是中文展示名，slug 是英文名，刻意分开：slug 进对外工具名的第一段
--- （<slug>__<serverKey>__<toolName>），必须是 ASCII；中文名折叠后只剩空串。
+-- name 是中文展示名，slug 是英文名（进对外工具名第一段 <slug>__<serverKey>__<toolName>，必须 ASCII）。
 -- slug 唯一走 partial 索引：空 slug 走 id 回退，不算冲突。
 CREATE TABLE categories (
   id            TEXT PRIMARY KEY,
@@ -183,11 +163,9 @@ CREATE TABLE categories (
 );
 CREATE UNIQUE INDEX idx_categories_slug ON categories(slug) WHERE slug <> '';
 
--- 工具向量（hybrid 检索的向量一路）。
--- vector 存 TEXT（JSON 数组）：表的读写不依赖任何扩展，SQLite 下
--- 检索整条走 Go 侧内存计算（没有 pgvector、也不引入 sqlite-vec）。
--- 主键是完整代身份 (tool_id, model, dims, spec)：换模型/换语料字段即
--- 新代，新代整代建好再原子切换（热切换），期间新旧两代并存。
+-- 工具向量（hybrid 检索的向量一路）。vector 存 TEXT（JSON 数组），SQLite 下检索整条走 Go 侧内存计算。
+-- 主键是完整代身份 (tool_id, model, dims, spec)：换模型/换语料字段即新代，
+-- 新代整代建好再原子切换（热切换），期间新旧两代并存。
 CREATE TABLE tool_embeddings (
   tool_id       TEXT NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
   model         TEXT NOT NULL,             -- embed 模型名

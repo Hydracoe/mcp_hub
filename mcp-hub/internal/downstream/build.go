@@ -15,14 +15,9 @@ const (
 	ClientVersion = "0.1.0"
 )
 
-// buildClient 按传输类型构造下游 client，但不启动——启动交给探活或 Conn，
-// 以便套上超时。
-//
-// 绕开 client.NewStreamableHttpClient 这类便捷构造函数：它们不接受 ClientOption，
-// 无法注入协议版本偏好，自行组合 transport + NewClient 才能把选项握在手里。
-//
-// hdrFn 非空时，远程传输改为"每个请求现场取凭据"而不是构造时写死一份——这是
-// 密钥轮换对调用方无感的前提。探活是新建 client，传 nil 走静态 headers。
+// buildClient 按传输类型构造下游 client，但不启动（启动交给探活或 Conn，以便套上超时）。
+// 自行组合 transport + NewClient 而非便捷构造函数，才能注入 ClientOption（如协议版本偏好）。
+// hdrFn 非空时改为每请求现场取凭据，这是密钥轮换的前提；探活传 nil 走静态 headers。
 func buildClient(spec Spec, rec *Recorder, stderr io.Writer, hdrFn transport.HTTPHeaderFunc) (*mcpclient.Client, error) {
 	clientOpts := make([]mcpclient.ClientOption, 0, 2)
 	if spec.ProtocolVersion != "" {

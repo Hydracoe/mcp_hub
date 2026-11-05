@@ -1,9 +1,7 @@
 // apikeys.go 实现接入 API key 的管理端点。
 //
-// 接入 key 是外部 AI 客户端调用 /mcp 端点的凭据：创建时明文只返回
-// 一次，之后任何接口都只能看到前缀。管理端点自身的鉴权复用 /api
-// 分组上已有的 guard（opts.APIKey），不与接入 key 混用——管理凭据
-// 与接入凭据的泄露后果完全不同，不该互相兜底。
+// 接入 key 的明文只在创建时返回一次，之后任何接口都只能看到前缀；
+// 管理端点自身的鉴权复用 /api 分组的 guard（opts.APIKey），不与接入 key 混用。
 package api
 
 import (
@@ -15,18 +13,15 @@ import (
 	"go.uber.org/zap"
 )
 
-// apiKeyItem 是列表里的一把接入 key。刻意不含 keyHash：
-// 接口消费方不需要它，库里有 hash 就够了。
+// apiKeyItem 是列表里的一把接入 key，刻意不含 keyHash。
 //
-// 时间统一出 Unix 毫秒，与前端其余接口一致 —— 混用 RFC3339 与毫秒
-// 意味着每个消费方都要各写一套解析，而其中一套迟早会写错。
+// 时间统一出 Unix 毫秒，与前端其余接口一致。
 type apikeyItem struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Prefix  string `json:"prefix"`
 	Enabled bool   `json:"enabled"`
-	// LastUsedAt 为 0 表示从未被使用过。界面据此显示「从未使用」，
-	// 而不是把它当 1970 年渲染成「20000d ago」。
+	// LastUsedAt 为 0 表示从未被使用过，界面不应按 1970 年渲染。
 	LastUsedAt int64 `json:"lastUsedAt"`
 	CreatedAt  int64 `json:"createdAt"`
 }
@@ -46,9 +41,7 @@ func toAPIKeyItem(k apikeys.APIKey) apikeyItem {
 }
 
 // apikeyCreateResponse 在创建响应里交付明文。
-//
-// key 字段只在这一次出现：明文没有入库，之后谁也找不回来。
-// 界面必须提示用户立刻保存——这是不可重放的交付。
+// 明文不入库，之后无法找回，界面必须提示用户立即保存。
 type apikeyCreateResponse struct {
 	apikeyItem
 	Key string `json:"key"`
@@ -105,8 +98,8 @@ func (a *API) handleDeleteAPIKey(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// handleEnableAPIKey / handleDisableAPIKey 停用而不删除：
-// 临时收回一个调用方的权限时保留记录，比删了重建可追溯。
+// handleEnableAPIKey / handleDisableAPIKey 停用而不删除，
+// 临时收回权限时保留记录以便追溯。
 func (a *API) handleEnableAPIKey(enabled bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := a.svc.Store().APIKeys.SetEnabled(c.Request.Context(), c.Param("id"), enabled); err != nil {

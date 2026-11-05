@@ -58,8 +58,8 @@ func TestRerankerUpstreamError(t *testing.T) {
 	}
 }
 
-// 服务端返回乱序、重复、越界的 index：客户端必须自己规范化。
-// 这几个校验曾经留给调用方做，等于把"服务端返回不可信"复制给每个调用点。
+// 服务端返回乱序、重复、越界的 index：客户端必须自己规范化，
+// 不能让"服务端返回不可信"扩散到每个调用点。
 func TestRerankerNormalizesResults(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"results":[

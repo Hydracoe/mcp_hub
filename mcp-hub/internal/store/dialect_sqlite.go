@@ -14,9 +14,8 @@ import (
 	migratesqlite "github.com/golang-migrate/migrate/v4/database/sqlite"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 
-	// 纯 Go 的 SQLite 实现（transpiled C）。选它的唯一理由是
-	// CGO_ENABLED=0 就能交叉编译出三平台产物——换成 mattn 系
-	// （CGO）就等于把桌面端的打包麻烦原样请回来。
+	// 纯 Go 的 SQLite 实现（transpiled C）。选它是为了 CGO_ENABLED=0
+	// 也能交叉编译出三平台产物；mattn 系（CGO）会带来桌面端打包麻烦。
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	sq "modernc.org/sqlite"
@@ -31,10 +30,9 @@ type sqliteDialect struct{}
 
 func (*sqliteDialect) Name() string { return DriverSQLite }
 
-// Normalize 把用户给的路径落成"绝对路径 + 已建好父目录"。
-//
-// 相对路径必须在启动时定下来：进程中途 chdir 或换工作目录，
-// 相对路径会指向另一个文件，而这个错误的表现是"数据不见了"。
+// Normalize 把用户给的路径落成绝对路径并建好父目录。
+// 相对路径必须在启动时定死：进程中途换工作目录会指向另一个文件，
+// 表现为"数据不见了"。
 func (*sqliteDialect) Normalize(dsn string) (string, error) {
 	path := strings.TrimSpace(dsn)
 	if path == "" {
@@ -55,10 +53,8 @@ func (*sqliteDialect) Normalize(dsn string) (string, error) {
 }
 
 // Open 返回 gorm dialector。
-//
-// 用官方 gorm sqlite dialector（DriverName 指向 modernc）而不是第三方
-// 纯 Go 封装：官方这个的 DDL/迁移器是完整的，只把驱动名换掉即可；
-// 第三方封装会把 modernc 再包一层，反而多一个需要跟版本的依赖。
+// 用官方 gorm sqlite dialector（DriverName 指向 modernc），只换驱动名，
+// 其 DDL/迁移器完整，也少一个需要跟版本的依赖。
 func (*sqliteDialect) Open(dsn string) gorm.Dialector {
 	return sqliteDialector{gormsqlite.Dialector{
 		DriverName: sqliteDriverName,
@@ -66,26 +62,9 @@ func (*sqliteDialect) Open(dsn string) gorm.Dialector {
 	}}
 }
 
-// sqliteDSN 把路径包成带 PRAGMA 与事务模式的连接串。
-//
-// 五个参数都不是可选项：
-//   - foreign_keys：SQLite 默认**不**强制外键，级联删除会静默失效；
-//   - journal_mode(WAL)：读写不互斥，否则一次写会挡住所有读；
-//   - busy_timeout：抢锁时等待而不是立刻报 SQLITE_BUSY；
-//   - synchronous(NORMAL)：WAL 下的推荐档，兼顾 Durability 与速度；
-//   - _txlock=immediate：见下，这一条是并发写不丢结果的**必要条件**。
-//
-// _txlock=immediate 解决的是一个很隐蔽的问题：SQLite 默认的
-// BEGIN 是 deferred —— 事务先以读身份开始，等到第一条写语句才尝试
-// 升级成写事务。若这期间另一个连接已经写过，升级会直接失败并返回
-// SQLITE_BUSY_SNAPSHOT，而且**不会**走 busy_timeout 的等待逻辑
-// （因为读快照已经过期，等下去也救不回来）。
-//
-// 引擎里"并发探活 → 各自落库"正是这个形状：SaveProbeReported 用
-// GORM 的 Transaction 先 SELECT 再 UPDATE。默认行为下，8 个上游同时
-// 探活就会有若干个落库失败，而这些工具的启用状态与探活结果会静默丢失
-// （错误只进日志）。改成 BEGIN IMMEDIATE 后，写锁在事务开始时就拿到，
-// 抢不到就按 busy_timeout 排队——失败变成等待。
+// sqliteDSN 把路径包成带 PRAGMA 与事务模式的连接串。五个参数都不是可选项：foreign_keys 默认关闭必须显式开；
+// WAL 让读写不互斥，busy_timeout 让抢锁等待而非立即报 SQLITE_BUSY，synchronous(NORMAL) 是 WAL 推荐档；
+// _txlock=immediate 在 BEGIN 时取得写锁，避免 deferred 升级失败（SQLITE_BUSY_SNAPSHOT 且不走 busy_timeout）导致并发落库静默丢失。
 func sqliteDSN(path string) string {
 	if strings.HasPrefix(path, "file:") {
 		return path
@@ -103,8 +82,8 @@ func sqliteDSN(path string) string {
 	return "file:" + filepath.ToSlash(path) + "?" + q.Encode()
 }
 
-// tunePool 配置连接池。SQLite 的写是串行文件锁，池子开大只是把
-// 争抢从进程内挪到锁上；4 个连接足够让读并发、写排队。
+// tunePool 配置连接池。SQLite 写是串行文件锁，池子开大只是把争抢挪到锁上；
+// 4 个连接足够让读并发、写排队。
 func (*sqliteDialect) TunePool(db *sql.DB) {
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(4)
@@ -114,11 +93,8 @@ func (*sqliteDialect) TunePool(db *sql.DB) {
 // AfterOpen 没有额外初始化：PRAGMA 已经在 DSN 上，每个新连接自动生效。
 func (*sqliteDialect) AfterOpen(context.Context, *sql.DB) error { return nil }
 
-// Migrate 复用已经开好的连接池（WithInstance），不走 DSN 解析。
-//
-// 原因是跨平台：golang-migrate 的 sqlite 驱动靠字符串替换
-// "sqlite://" 前缀来取路径，Windows 的 C:\... 会被 net/url 当成
-// host:port 解析而失败。WithInstance 完全绕开这条路径。
+// Migrate 复用已经开好的连接池（WithInstance）。golang-migrate 的 sqlite
+// 驱动靠字符串替换前缀取路径，Windows 的 C:\... 会被 net/url 当成 host:port 而失败。
 func (*sqliteDialect) Migrate(db *sql.DB, _ string) error {
 	src, err := iofs.New(migrations, "migrations/"+DriverSQLite)
 	if err != nil {
@@ -138,21 +114,16 @@ func (*sqliteDialect) Migrate(db *sql.DB, _ string) error {
 	return nil
 }
 
-// LikeOp：SQLite 的 LIKE 对 ASCII 默认就不区分大小写（大小写折叠是
-// 内建行为），中文本就是精确匹配，所以直接用 LIKE。
+// LikeOp：SQLite 的 LIKE 对 ASCII 默认就不区分大小写，中文本就是精确匹配。
 func (*sqliteDialect) LikeOp() string { return "LIKE" }
 
-// NativeVectorSearch：SQLite 没有原生向量算子。
-// 加 sqlite-vec 之类的 C 扩展会把"纯 Go 交叉编译"这个唯一的
-// 选型理由抵消掉，所以向量一路固定走 Go 内存计算。
+// NativeVectorSearch：SQLite 没有原生向量算子。sqlite-vec 之类的 C 扩展
+// 会抵消纯 Go 交叉编译的选型理由，向量固定走 Go 内存计算。
 func (*sqliteDialect) NativeVectorSearch() bool { return false }
 
-// sqliteDialector 在官方 dialector 外面套一层，只改一件事：错误翻译。
-//
-// 官方实现靠 json.Marshal(err) 猜 sqlite 的扩展错误码，而这要求错误
-// 类型把码暴露成导出字段——modernc 的 *sq.Error 两个字段都是私有的，
-// 于是 Translate 永远翻译不出来，唯一冲突会变成 500 而不是 409。
-// 这里直接取 Code()，是同一件事的可靠做法。
+// sqliteDialector 套在官方 dialector 外，只改错误翻译。
+// 官方靠 json.Marshal(err) 猜扩展错误码，modernc 的 *sq.Error 字段是私有的，
+// 冲突会变成 500 而不是 409；这里直接取 Code()。
 type sqliteDialector struct {
 	gormsqlite.Dialector
 }

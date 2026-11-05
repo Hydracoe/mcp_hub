@@ -6,8 +6,8 @@ import { NAV_GROUPS } from './nav-config'
 import { useUiStore } from '@/stores/ui-store'
 import type { BackendConnection } from '@/lib/api/queries'
 
-/** 连接三态 → 底部状态点与文案。说的是"前端连上后端了吗"，
- *  与"网关有没有工具可提供"无关——空库不该显示成故障。 */
+/** 连接三态 → 底部状态点与文案。只表示“前端是否连上后端”，
+ *  与“网关有没有工具可提供”无关——空库不该显示成故障。 */
 const FOOT_VIEW = {
   connected: { dot: 'ok', label: '网关运行中' },
   connecting: { dot: 'idle', label: '连接中…' },
@@ -15,7 +15,7 @@ const FOOT_VIEW = {
 } as const
 
 /** 侧边栏。材质、选中态、导航项高度全部来自 `.app-sidebar` / `.nav-item`，
- *  这里不重复写样式——同一处视觉有两个定义迟早分叉。 */
+ *  这里不重复写样式，避免同一处视觉有两个定义。 */
 export function Sidebar({
   version,
   connection,

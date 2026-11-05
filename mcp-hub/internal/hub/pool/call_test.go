@@ -15,8 +15,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// --- 测试辅助 ---
-
 // testNow 是固定的"此刻"：退避窗口的断言必须是确定性的，
 // 不靠 sleep 抢时间，也不受机器快慢影响。
 func testNow() time.Time {
@@ -59,15 +57,9 @@ func unreachableSpec(t *testing.T, id string) downstream.Spec {
 	}
 }
 
-// --- 回归测试 ---
-
-// 一次拨号失败只记一次账。
-//
-// 拨号失败会被记两处：Get 里按判决记一次（连接级失败该让 server 退避），
-// 外层拿到同一个错误又按"与密钥无关的失败"记一次。同一次失败被算成两次，
-// 退避窗口直接翻倍（2s→4s→8s），可用密钥被过快淘汰。
-//
-// 这里断言的是内部计数：一次失败就是 1，退避窗口停在第一档。
+// 一次拨号失败只记一次账：Get 与外层若各记一次，同一次失败就被算成两次，
+// 退避窗口会翻倍（2s→4s→8s），可用密钥被过快淘汰。
+// 这里断言内部计数为 1，退避窗口停在第一档。
 func TestDialFailureCountedOnce(t *testing.T) {
 	p := newTestPool(t)
 	spec := unreachableSpec(t, "srv-dial-1")
@@ -96,10 +88,8 @@ func TestDialFailureCountedOnce(t *testing.T) {
 	}
 }
 
-// 密钥池模式下同样只记一次。
-//
-// 密钥池路径的判决是按错误算出来的（不是写死的 NEUTRAL），但记账的地方
-// 仍然是 Get 与外层两处——同一个错误流过两处就还是两次。
+// 密钥池模式下同样只记一次：判决按错误算出（不是写死的 NEUTRAL），
+// 但记账仍发生在 Get 与外层两处。
 func TestDialFailureCountedOnceWithKeyRing(t *testing.T) {
 	p := newTestPool(t)
 	spec := unreachableSpec(t, "srv-dial-2")
@@ -132,10 +122,8 @@ func TestDialFailureCountedOnceWithKeyRing(t *testing.T) {
 	}
 }
 
-// 调用阶段的失败仍然要记一次账。
-//
-// 拨号失败归 Get 记，调用失败归外层记——这两条路径不能互相吞掉：
-// 修"拨号被记两次"不该顺手把"调用失败一次都不记"带进来。
+// 调用阶段的失败仍然要记一次账：拨号失败归 Get 记，调用失败归外层记，
+// 两条路径不能互相吞掉。
 func TestCallFailureCountedOnce(t *testing.T) {
 	p := newTestPool(t)
 
@@ -170,11 +158,8 @@ func TestCallFailureCountedOnce(t *testing.T) {
 	}
 }
 
-// 密钥级失败不该让整个 server 退避。
-//
-// 握手就回 429 是"这把密钥被限流"，换一把就过去：server 的失败计数不该动。
-// 拨号路径曾经把这类失败也算进 server 计数（密钥级失败与连接级失败混在一起），
-// 这里守住这条语义：密钥级失败只冷却密钥，不推进 server 的退避窗口。
+// 密钥级失败不该让整个 server 退避：握手就回 429 是"这把密钥被限流"，
+// 换一把就过去，server 的失败计数不该动——只冷却密钥。
 func TestKeyLevelFailureDoesNotBackOffServer(t *testing.T) {
 	p := newTestPool(t)
 

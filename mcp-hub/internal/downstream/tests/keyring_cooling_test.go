@@ -7,11 +7,8 @@ import (
 	"github.com/hydra/mcp-hub/internal/downstream"
 )
 
-// --- O4：重启后从库里恢复冷却 ---
-
-// 新起的进程拿到一把"库里还在冷却中"的密钥，必须当场就按冷却处理：
-// 这正是 O4 要修的场景——重启往往就是为了从限流里恢复，若重启即忘，
-// 新进程会对仍在下游限流窗口内的密钥重打一轮，把 429 招来第二遍。
+// 新起的进程拿到一把"库里还在冷却中"的密钥，必须当场按冷却处理：重启往往
+// 就是为了从限流里恢复，若重启即忘，新进程会对仍在下游限流窗口内的密钥重打一轮。
 func TestKeyRingRestoresCoolingFromStorage(t *testing.T) {
 	clock := newFakeClock()
 	until := clock.Now().Add(30 * time.Second)
@@ -71,7 +68,7 @@ func TestKeyRingIgnoresExpiredCooling(t *testing.T) {
 }
 
 // 恢复只发生在 entry 首次创建时：之后每次 Sync 都带着此刻真实的运行态，
-// 用库里的旧值覆盖它，等于"改一次备注就能把冷却改回去"（M7 明确禁止）。
+// 用库里的旧值覆盖它，等于"改一次备注就能把冷却改回去"。
 func TestKeyRingSyncDoesNotResurrectStoredCooling(t *testing.T) {
 	clock := newFakeClock()
 	creds := []downstream.CredentialInput{{

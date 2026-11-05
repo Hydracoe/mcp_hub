@@ -7,11 +7,8 @@ import (
 	"github.com/hydra/mcp-hub/internal/store/apikeys"
 )
 
-// 接入 key 的时间字段契约：出 Unix 毫秒，未使用过时 lastUsedAt 为 0。
-//
-// 这两条都是给界面用的：毫秒与前端其余接口一致（不必为这一个接口
-// 单独写解析），而 0 让界面能区分"从未使用"与"很久以前用过"——
-// 把零值 time 直出成 RFC3339 的话，那会渲染成 0001-01-01。
+// 接入 key 的时间字段契约：出 Unix 毫秒，未使用过时 lastUsedAt 为 0，
+// 界面据此区分“从未使用”与“很久以前用过”。
 func TestToAPIKeyItem(t *testing.T) {
 	created := time.Date(2026, 9, 16, 10, 30, 0, 0, time.UTC)
 	used := time.Date(2026, 9, 16, 11, 0, 0, 0, time.UTC)

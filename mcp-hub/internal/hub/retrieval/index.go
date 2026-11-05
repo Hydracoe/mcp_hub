@@ -37,16 +37,10 @@ type searchIndex struct {
 	bm25 *lexical.BM25
 }
 
-// collectToolDocs 读出"当前可被搜到"的工具：属于已启用且可用
-// （healthy/degraded）的 server，且通过该 server 的工具过滤名单。
+// collectToolDocs 读出"当前可被搜到"的工具：属于已启用 server 且通过工具过滤名单。
 //
-// 检索索引与 embed 重建必须共用它：口径不一致会让增量重建退化为全量
-// 重嵌，检索也会返回 AI 实际调不到的工具。
-//
-// badSchema 是 inputSchema 解析不出来的工具数。这些工具的语料会缺少参数
-// 线索（参数名往往比描述更精确），所以它是要上报的：解析失败曾经和
-// "这个工具没有参数"一样被吞成空串，一整批 schema 坏掉时毫无线索。
-// 但它不该让整次重建失败——坏的是个别工具的一条线索，不是索引本身。
+// 检索索引与 embed 重建必须共用它：口径不一致会让增量重建退化为全量重嵌，
+// 检索也会返回 AI 实际调不到的工具。badSchema 是 schema 解析失败的工具数，需上报但不让重建失败。
 func collectToolDocs(ctx context.Context, st *store.Store, fields corpus.Fields) (docs []toolDoc, badSchema int, err error) {
 	srvs, err := st.Servers.List(ctx)
 	if err != nil {
@@ -73,9 +67,8 @@ func collectToolDocs(ctx context.Context, st *store.Store, fields corpus.Fields)
 	out := make([]toolDoc, 0, len(tools))
 	for _, sv := range srvs {
 		// 与聚合快照同口径：只要 server 启用且工具通过人工过滤，就在检索面里。
-		// 不按 status 过滤——探活失败不清工具是全局约定，检索若把 offline 的
-		// server 排除掉，meta 模式下这些工具会“搜不到但仍在聚合列表里”，
-		// 一次探活抖动还会让整个 server 从发现面上消失。
+		// 不按 status 过滤——探活失败不清工具是全局约定，排除 offline 会让工具
+		// "搜不到但仍在聚合列表里"，一次探活抖动还会让 server 从发现面消失。
 		if !sv.Enabled {
 			continue
 		}
@@ -116,9 +109,8 @@ func collectToolDocs(ctx context.Context, st *store.Store, fields corpus.Fields)
 				ServerDesc:  sv.Description,
 				Schema:      schema,
 				Hints:       hints,
-				// 语料只吃"工具自身"的字段（工具名 / 描述 / 参数线索 /
-				// 标签 / server 描述）。分类刻意不进这里：它是可变的组织
-				// 元数据，进去就意味着改一次分类要重嵌一整批向量；
+				// 语料只吃"工具自身"的字段（工具名/描述/参数线索/标签/server 描述）。
+				// 分类刻意不进这里：它是可变的组织元数据，进去意味改一次分类要重嵌整批向量；
 				// 分类仍参与 docTokens，词法检索照样命中。
 				Corpus: corpus.Text(t.Name, t.Description, sv.Tags, sv.Description, hints, fields),
 			})
@@ -127,12 +119,9 @@ func collectToolDocs(ctx context.Context, st *store.Store, fields corpus.Fields)
 	return out, badSchema, nil
 }
 
-// docTokens 按 PRD §4.7.4 的字段权重展开词元：
+// docTokens 按字段权重展开词元：
 // 工具名 ×3、tags ×2、分类名 ×1、工具描述 ×1、参数线索 ×1、server 描述 ×1。
-//
-// 词法索引不受语料字段开关影响：它活在内存里、随聚合快照重建，成本是
-// 微秒级；语料开关只决定哪些文本要花一次 API 变成向量。分类只出现在
-// 这里，是"改分类不重嵌向量"代价最小的补偿。
+// 词法索引不受语料字段开关影响；分类只出现在这里，是"改分类不重嵌向量"的补偿。
 func docTokens(d toolDoc) []string {
 	var toks []string
 	toks = append(toks, repeatTokens(lexical.Tokenize(d.Name), 3)...)
@@ -157,7 +146,7 @@ func repeatTokens(toks []string, n int) []string {
 	return out
 }
 
-// rebuildSearchIndex 从库重建检索索引并整体替换。
+// RebuildIndex 从库重建检索索引并整体替换。
 func (e *Engine) RebuildIndex(ctx context.Context) {
 	fields := corpus.DefaultFields()
 	if em := e.em; em != nil {

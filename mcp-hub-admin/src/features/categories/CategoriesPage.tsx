@@ -12,8 +12,8 @@ import type { Category } from '@/lib/api/types'
 import { CategoriesTable } from './components/CategoriesTable'
 import { CategoryFormDialog } from './components/CategoryFormDialog'
 
-/** 分类是组织与检索用的元数据：中文名用于展示，英文名（slug）用于列表与筛选。
- *  对外工具名 = <serverKey>__<工具名>，不包含分类段；分类下还有 Server 时禁止删除。 */
+/** 分类只做组织与检索，不进对外工具名（<serverKey>__<工具名>）；
+ *  分类下还有 Server 时禁止删除。 */
 export function CategoriesPage() {
   const { data: overview } = useOverview()
   const { data, isLoading, error, refetch } = useCategories()
@@ -59,7 +59,6 @@ export function CategoriesPage() {
           </Button>
         }
       >
-        {/* 外壳 / 状态位 / 页脚注释统一收进 TableFrame：空表也保留表头。 */}
         <CategoriesTable
           items={items}
           mutations={mutations}

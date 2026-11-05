@@ -70,7 +70,7 @@ func TestCredentialCoolingUntilRoundTrip(t *testing.T) {
 }
 
 // 人工救回（M8/M10）必须连冷却一起清：留着旧冷却等于"救回来但还在关禁闭"，
-// 重启后更是会把刚救回的密钥重新按进冷却。
+// 重启后更会把刚救回的密钥重新按进冷却。
 func TestReEnableClearsCoolingUntil(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)

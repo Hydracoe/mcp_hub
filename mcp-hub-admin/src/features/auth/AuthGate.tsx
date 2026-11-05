@@ -11,14 +11,13 @@ import { useOverview } from '@/lib/api/queries'
 import { useAuthStore } from '@/stores/auth-store'
 import { cn } from '@/lib/utils'
 
-/** 管理鉴权闸门：后端没开 --api-key 时全部放行、不渲染任何东西；
- *  只在真的收到 401 才介入——比启动就探 /api/overview 更准，避免抖动时误弹。 */
+/** 管理鉴权闸门：后端没开 --api-key 时全部放行；只在真的收到 401 才介入，避免抖动时误弹。 */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const rejected = useAuthStore((s) => s.rejected)
   const markRejected = useAuthStore((s) => s.markRejected)
   const [open, setOpen] = useState(false)
 
-  // client 层收到 401 会广播，这里接住并弹解锁层。
+  // client 层收到 401 会广播，这里接住。
   useEffect(() => {
     const off = onUnauthorized(markRejected)
     return () => {
@@ -38,7 +37,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   )
 }
 
-/** 解锁 / 重试弹窗。 */
 export function UnlockDialog({
   open,
   onOpenChange,
@@ -54,7 +52,7 @@ export function UnlockDialog({
   const [remember, setRemember] = useState(true)
   const [checking, setChecking] = useState(false)
 
-  // 弹窗打开时把草稿重置为已存值，避免上一次的错误输入残留。
+  // 打开时把草稿重置为已存值，避免错误输入残留。
   useEffect(() => {
     if (open) {
       setDraft(apiKey)
@@ -62,7 +60,7 @@ export function UnlockDialog({
     }
   }, [open, apiKey])
 
-  // 校验是真打一次 /api/overview：本地无法验证令牌，长度判断只会把错误推迟。
+  // 校验真打一次 /api/overview：本地无法验证令牌，长度判断只会把错误推迟。
   const { refetch } = useOverview({ enabled: false })
 
   async function submit() {
@@ -78,7 +76,7 @@ export function UnlockDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !checking && onOpenChange(next)}>
       <DialogContent size="sm">
-        {/* 无头无脚的纯表单弹框：正文内边距与 DialogBody 对齐（px-5 py-4）。 */}
+        {/* 无头无脚弹框：内边距与 DialogBody 对齐（px-5 py-4）。 */}
         <div className="space-y-5 px-5 py-4">
           <div className="flex flex-col items-center gap-2 pt-1 text-center">
             <span

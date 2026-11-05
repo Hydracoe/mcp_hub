@@ -12,7 +12,6 @@ export interface NavGroup {
   items: NavItem[]
 }
 
-/** 侧边栏导航。 */
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: '监控',
@@ -34,7 +33,8 @@ export const NAV_GROUPS: NavGroup[] = [
       // 分类决定工具名，是上游配置，所以排在工具管理之前。
       { key: 'categories', label: '分类', path: '/categories', icon: 'folder' },
       { key: 'tools', label: '工具管理', path: '/tools', icon: 'wrench' },
-      // 两个「密钥」必须挨着：同一条链路的两端——「接入密钥」是上游调网关的凭据，「密钥池」是网关调下游的凭据（按 Server 隔离）；图标也要分开，否则两行钥匙没区分。
+      // 两个「密钥」必须挨着：同一条链路的两端——接入密钥由上游调网关，
+      // 密钥池由网关调下游（按 Server 隔离）；图标也要分开，否则两行钥匙没区分。
       { key: 'keys', label: '接入密钥', path: '/keys', icon: 'shield-check' },
       { key: 'credentials', label: '密钥池', path: '/credentials', icon: 'key-round' },
     ],

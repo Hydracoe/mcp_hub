@@ -8,14 +8,9 @@ import (
 	"github.com/hydra/mcp-hub/internal/httpd"
 )
 
-// PUT 把 enabled 改成 false 时，连接必须一起退役。
-//
-// 编辑表单也能停用 server，这条路径与开关那条路径（POST /disable）必须
-// 同语义：否则被编辑关掉的 server，它的常驻连接还留在池子里——既不释放，
-// 也可能继续被用到。
-//
-// 判据是"池子里那条连接还在不在"：退役之后池里没有这条 server 的连接，
-// 再取一次拿到的是新建的那条。
+// PUT 把 enabled 改成 false 时，连接必须一起退役，与 POST /disable 同语义；
+// 否则被编辑关掉的 server 其常驻连接仍留在池子里。
+// 判据：退役后池里没有这条 server 的连接。
 func TestUpdateServerDisableRetiresConnection(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "x")
@@ -32,7 +27,7 @@ func TestUpdateServerDisableRetiresConnection(t *testing.T) {
 		t.Fatalf("读 server 失败: %v", err)
 	}
 
-	// 先让池子里有一条连接（真实建连，不打桩）。
+	// 先让池子里有一条真实连接。
 	before, err := e.svc.Pool().Get(ctx, sv.Spec)
 	if err != nil {
 		t.Fatalf("建连失败: %v", err)

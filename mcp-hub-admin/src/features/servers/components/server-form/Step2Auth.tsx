@@ -22,7 +22,6 @@ const NEEDS_KEY_OPTIONS = [
   { value: 'no', label: '不需要' },
 ] as const
 
-/** Step 2：鉴权方式、分类与展示用的元信息。 */
 export function Step2Auth({ f, set, errs, categories }: Props) {
   const isRemote = f.transport !== 'stdio'
   const showHeaders = isRemote && f.needsKey
@@ -106,7 +105,7 @@ export function Step2Auth({ f, set, errs, categories }: Props) {
           <Label>
             分类 <span className="text-error-strong">*</span>
           </Label>
-          {/* 分类数随 Server 增长，走带搜索的 Combobox */}
+          {/* 分类数随 Server 增长，用带搜索的 Combobox */}
           <Combobox
             value={f.categoryId}
             onChange={(v) => set('categoryId', v)}

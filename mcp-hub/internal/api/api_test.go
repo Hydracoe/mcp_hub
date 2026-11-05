@@ -26,12 +26,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// --- 测试环境 ---
-
 // env 是一套跑起来的网关：真实 PostgreSQL + 真实 MCP 下游 + 真实 HTTP 层。
-//
-// 全部走真家伙，不打桩：管理接口的价值恰恰在于"它改的东西真的生效"，
-// 而 mock 掉中间的任意一层，这个性质就没法验证了。
+// 全部走真家伙而不打桩：管理接口的价值在于“它改的东西真的生效”。
 type env struct {
 	t     *testing.T
 	svc   *hub.Service
@@ -125,10 +121,7 @@ func (e *env) get(path string, out any) {
 }
 
 // enableAllTools 启用当前所有缓存工具并重建聚合快照。
-//
-// 生产语义是"新探活发现的工具默认禁用，由管理员逐个开启"；下面这些用例
-// 验证的是开启之后的聚合/过滤/调用链路，统一显式启用以保持用例意图，
-// 默认禁用与人工启停另有专门用例覆盖。
+// 生产语义是新工具默认禁用；这些用例验证开启后的链路，统一显式启用。
 func (e *env) enableAllTools() {
 	e.t.Helper()
 	ctx := context.Background()
@@ -147,10 +140,7 @@ func (e *env) enableAllTools() {
 }
 
 // mustCategory 建一个分类并返回 id（同环境内重复调用直接复用）。
-//
-// 新建 server 必须指定分类，所以每条创建用例都要带一个。
-// 分类不进对外工具名（对外名是 <serverKey>__<toolName>），
-// 所以这里的分类叫什么都不影响断言里的期望名。
+// 新建 server 必须指定分类；分类不进对外工具名（<serverKey>__<toolName>）。
 func (e *env) mustCategory() string {
 	e.t.Helper()
 	var list struct {
@@ -196,9 +186,6 @@ func (e *env) mcpClient() *client.Client {
 	return c
 }
 
-// --- 下游与响应结构 ---
-
-// startDownstream 起一个真实的下游 MCP server。
 func startDownstream(t *testing.T, tools ...string) string {
 	t.Helper()
 
@@ -354,10 +341,6 @@ type overviewResp struct {
 	Endpoints map[string]string `json:"endpoints"`
 }
 
-// --- 主流程 ---
-
-// 这条用例就是验收标准里的"curl 全流程可用"：
-// 增 → 测 → 查 → 启停 → 聚合 → 日志 → 概览 → 删。
 func TestServerLifecycle(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "alpha", "beta")
@@ -426,9 +409,8 @@ func TestServerLifecycle(t *testing.T) {
 		}
 	}
 
-	// 停用：server 整体从聚合视图摘掉，AI 侧一个工具都看不到。
-	// 管理列表（/api/tools）与 AI 侧（/api/connect 的 toolCount）是两回事：
-	// 前者含未启用的工具（否则禁用就成了没有出口的黑洞），后者只数真正下发的。
+	// 停用：server 从聚合视图摘掉，AI 侧看不到任何工具。
+	// 管理列表含未启用工具，与 AI 侧只数真正下发的不同。
 	var disabled serverResp
 	e.mustJSON(http.MethodPost, "/api/servers/"+created.ID+"/disable", nil, http.StatusOK, &disabled)
 	if disabled.Enabled {
@@ -438,17 +420,15 @@ func TestServerLifecycle(t *testing.T) {
 		t.Errorf("停用后 AI 可见工具数 = %d, 期望 0", n)
 	}
 
-	// 停用项不进健康分桶：status 停在停用前的 healthy（探活在停用后停止，
-	// 冻结值永远不会再刷新），概览把它数进 healthy 会与真探活的混在一起。
+	// 停用项不进健康分桶：其 status 是停用前探活的冻结值。
 	var ovAfterDisable overviewResp
 	e.get("/api/overview", &ovAfterDisable)
 	if ovAfterDisable.Servers.Disabled != 1 || ovAfterDisable.Servers.Healthy != 0 {
 		t.Errorf("停用后概览 = %+v, 期望 disabled=1、healthy=0", ovAfterDisable.Servers)
 	}
 
-	// 启用：server 恢复，但工具保持禁用——停用时的级联禁用不自动回滚，
-	// 哪些工具该回来由人工重新决定。管理列表仍看得见它们（Enabled=false），
-	// 好让人有地方点回来；AI 侧依旧是 0。
+	// 启用：server 恢复，但工具保持禁用——级联禁用不自动回滚，由人工重新决定；
+	// 管理列表仍看得见它们（Enabled=false），好让人有地方点回来；AI 侧依旧是 0。
 	var enabled serverResp
 	e.mustJSON(http.MethodPost, "/api/servers/"+created.ID+"/enable", nil, http.StatusOK, &enabled)
 	if !enabled.Enabled {
@@ -525,7 +505,6 @@ func TestServerLifecycle(t *testing.T) {
 		t.Errorf("概览里的接入端点异常: %v", ov.Endpoints)
 	}
 
-	// 删除。
 	resp, _ := e.call(http.MethodDelete, "/api/servers/"+created.ID, nil)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("删除返回 %d, 期望 204", resp.StatusCode)
@@ -543,9 +522,7 @@ func TestServerLifecycle(t *testing.T) {
 }
 
 // 干跑探活：配置尚未落库也能拿到工具清单，且不留下任何存储痕迹。
-//
-// 新增向导的既定流程是「先探活 → 拿 tools/list → 勾选暴露」，
-// 干跑端点是这条流程的前提。
+// 向导流程是「先探活 → 拿 tools/list → 勾选暴露」。
 func TestProbeDraftBeforeCreate(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "alpha", "beta")
@@ -624,12 +601,6 @@ func TestMCPEndpointReflectsAdminChanges(t *testing.T) {
 	}
 }
 
-// --- 密钥 ---
-
-// 密钥在回显时必须打码，但用户不改它时不能真的被写坏。
-//
-// 这条最容易出事：每编辑一次配置就抹掉一次凭据，而界面上一切正常，
-// 直到下游开始返回 401。
 func TestSecretMaskingAndPreservation(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "one")
@@ -696,8 +667,6 @@ func TestSecretMaskingAndPreservation(t *testing.T) {
 	}
 }
 
-// --- 校验与冲突 ---
-
 func TestValidationErrorsAreBadRequest(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 
@@ -741,11 +710,9 @@ func TestValidationErrorsAreBadRequest(t *testing.T) {
 	}
 }
 
-// key="hub" 与网关自带工具共用一个命名空间：对外名是 <serverKey>__<toolName>，
-// 而元工具统一以 hub__ 开头。key 取 hub 会让这台 server 的全部工具冒充成元
-// 工具出现在 meta 模式的 tools/list 里，真撞上同名的那几个（hub__list_tools
-// 等）连调用指向哪边都说不清。命名空间是保留的，保存时就该拒绝，
-// 而不是等 AI 反馈"工具怪怪的"。
+// key="hub" 与网关自带工具共用命名空间：对外名是 <serverKey>__<toolName>，
+// 元工具以 hub__ 开头。key 取 hub 会让下游工具冒充元工具，调用指向说不清。
+// 命名空间是保留的，保存时就拒绝。
 func TestReservedServerKeyIsRejected(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 
@@ -775,9 +742,8 @@ func TestReservedServerKeyIsRejected(t *testing.T) {
 	}
 }
 
-// 新建 server 必须指定分类：分类是组织单元、检索过滤与 facet 的来源，
-// 但**不进对外工具名**。缺分类时的提示要带回候选，界面就地可选。
-// 分类不存在同样是 400，否则 category_id 会留下悬空引用。
+// 新建 server 必须指定分类：分类是组织单元与检索过滤的来源，但不进对外工具名。
+// 分类不存在同样是 400，否则会留下悬空 category_id。
 func TestCreateServerRequiresCategory(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "x")
@@ -804,8 +770,7 @@ func TestDuplicateKeyIsConflict(t *testing.T) {
 	body := map[string]any{"key": "dup", "transport": "streamable_http", "url": ds, "categoryId": e.mustCategory()}
 	e.mustJSON(http.MethodPost, "/api/servers", body, http.StatusCreated, nil)
 
-	// 同名再建：409 而不是悄悄覆盖。否则用户以为新建了一个，
-	// 实际上改掉了正在服务的那个。
+	// 同名再建：409 而不是悄悄覆盖，否则用户以为新建了一个，实际改掉了正在服务的那个。
 	resp, raw := e.call(http.MethodPost, "/api/servers", body)
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("重复 key = %d, 期望 409\n%s", resp.StatusCode, raw)
@@ -824,10 +789,8 @@ func TestDuplicateKeyIsConflict(t *testing.T) {
 	}
 }
 
-// PUT 改 key 是原地更新，不是新建：改的是同一行的前缀。
-//
-// 新建要校验分类（PRD §4.7.3），更新不要——否则"改个 key"会被
-// "新建 server 必须指定分类"挡住：请求体里没带分类的编辑根本提交不了。
+// PUT 改 key 是原地更新同一行，不是新建。
+// 更新不校验“新建必须指定分类”，否则不带分类的编辑无法提交。
 func TestUpdateServerKeyChangeIsUpdate(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "x")
@@ -870,9 +833,7 @@ func TestUpdateServerKeyChangeIsUpdate(t *testing.T) {
 }
 
 // 更新时给了不存在的分类必须 400，且原记录不能被写坏。
-//
-// 分类的存在性以前只在新建路径校验，更新路径不校验：写进去的是悬空
-// 引用，界面上那一列显示成空白分类。校验要发生在落库之前。
+// 分类存在性校验必须发生在落库之前。
 func TestUpdateServerRejectsUnknownCategory(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "x")
@@ -907,9 +868,7 @@ func TestUpdateServerRejectsUnknownCategory(t *testing.T) {
 }
 
 // 编辑请求不带 categoryId 时，原分类要留着。
-//
-// "没提"不等于"清空"：请求体没带的字段应沿用旧值（密钥掩码就是这么
-// 还原的），分类同理。
+// “没提”不等于“清空”，请求体没带的字段应沿用旧值。
 func TestUpdateServerKeepsCategoryWhenOmitted(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "x")
@@ -985,8 +944,7 @@ func TestUpsertExistingServerKeepsCategory(t *testing.T) {
 }
 
 // 覆盖写已有 key（?upsert=1）时，请求没带的 headers / env / enabled /
-// autoEnable 都该沿用原值；只有显式给了才覆盖。否则一次只改 URL 的
-// 覆盖写会把凭据与启停状态悄悄清掉。
+// autoEnable 都沿用原值；只有显式给了才覆盖。
 func TestUpsertExistingServerKeepsUnsetFields(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "x")
@@ -1022,18 +980,14 @@ func TestUpsertExistingServerKeepsUnsetFields(t *testing.T) {
 	}
 }
 
-// --- 鉴权 ---
-
 func TestAPIKeyProtectsAdminEndpoints(t *testing.T) {
 	e := newEnv(t, httpd.Options{APIKey: "s3cret"})
 
-	// 无凭据。
 	resp, _ := e.call(http.MethodGet, "/api/overview", nil)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("无凭据访问 = %d, 期望 401", resp.StatusCode)
 	}
 
-	// 错误凭据。
 	resp, _ = e.callH(http.MethodGet, "/api/overview", nil,
 		map[string]string{"X-API-Key": "wrong"})
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -1066,8 +1020,6 @@ func TestAPIKeyProtectsAdminEndpoints(t *testing.T) {
 		t.Errorf("/healthz = %d, 期望 200（探针不该被鉴权挡住）", resp.StatusCode)
 	}
 }
-
-// --- 创建引导名单 ---
 
 func TestBootEnabledToolsThroughAPI(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
@@ -1107,10 +1059,8 @@ func TestBootEnabledToolsThroughAPI(t *testing.T) {
 	}
 }
 
-// --- 自动启用开关（O5） ---
-
 // 开了开关的 server：上游新增的工具不经人工确认就放行，但每一条都留痕，
-// 且开关本身在响应里看得见——"哪些上游我信过"必须是可回查的。
+// 且开关本身在响应里看得见——“哪些上游我信过”必须可回查。
 func TestAutoEnableToolsThroughAPI(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "alpha", "beta")
@@ -1168,8 +1118,6 @@ func TestAutoEnableToolsThroughAPI(t *testing.T) {
 		t.Errorf("关掉开关不该撤下已启用的工具，AI 可见 = %d, 期望 2", n)
 	}
 }
-
-// --- 故障下游 ---
 
 // 一个连不上的下游，不该让管理接口或聚合端点整体失效。
 func TestDeadDownstreamIsReportedNotFatal(t *testing.T) {
@@ -1238,8 +1186,6 @@ func TestDeadDownstreamIsReportedNotFatal(t *testing.T) {
 		t.Errorf("工具数 = %d, 期望 1", len(res.Tools))
 	}
 }
-
-// --- 调用日志 ---
 
 func TestCallLogsFlow(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
@@ -1320,9 +1266,8 @@ func TestCallLogsFlow(t *testing.T) {
 		t.Error("非法排序参数应回退到默认序，而不是返回空结果或 400")
 	}
 
-	// 自由文本搜索 q。这里断言两端：搜得到刚调用的那次，也搜不到不存在的词。
-	// 只断言"搜到了"是不够的——前端一直在发这个参数，后端整段忽略它，
-	// 功能照样"看起来能用"，只是结果永远等于全量。
+	// 自由文本搜索 q。两端都要断言：“搜得到”与“搜不到”。
+	// 只断言搜得到了，后端整段忽略 q 也会看起来能用，只是结果永远等于全量。
 	e.get("/api/logs?q="+url.QueryEscape("logged"), &filtered)
 	if filtered.Total == 0 {
 		t.Error("q 没被解析：按工具名搜不到刚调用过的那次")
@@ -1331,14 +1276,12 @@ func TestCallLogsFlow(t *testing.T) {
 	if filtered.Total != 0 {
 		t.Errorf("q 没被解析：不存在的词也搜出 %d 条", filtered.Total)
 	}
-	// LIKE 通配符要当字面量。不转义的话 "%%%" 匹配全表，
-	// 表现成"搜索框接上了但筛不动"。
+	// LIKE 通配符要当字面量，否则 "%%%" 匹配全表，搜索框形同虚设。
 	e.get("/api/logs?q="+url.QueryEscape("%"), &filtered)
 	if filtered.Total != 0 {
 		t.Errorf("q=%% 被当成通配符了，得到 %d 条", filtered.Total)
 	}
 
-	// 清空。
 	var cleared struct {
 		Deleted int64 `json:"deleted"`
 	}
@@ -1351,8 +1294,6 @@ func TestCallLogsFlow(t *testing.T) {
 		t.Errorf("清空后仍有 %d 条日志", logs.Total)
 	}
 }
-
-// --- 接入指引 ---
 
 func TestConnectInfo(t *testing.T) {
 	e := newEnv(t, httpd.Options{EnableSSE: true})
@@ -1398,16 +1339,9 @@ func TestConnectInfo(t *testing.T) {
 	}
 }
 
-/* ────────────────────────────── 分类（PRD §4.7.3） ────────────────────────────── */
-
-// 分类必须同时给中文名与英文名，两次都不合规就报错、不做静默改写。
-//
-// 失败面各自钉住：中文名为空是 400，英文名不合规是 400（用户输入问题，
-// 界面要在表单里就地提示），中文名/英文名撞车是 409（让用户在名字上
-// 做选择）。混成 500 的话，界面只能弹一句「操作失败」。
-//
-// 英文名那条尤其要钉死"不替换"：大写、空格、下划线都不许被折成
-// 别的值——存下来的必须和用户填的一样。
+// 分类必须同时给中文名与英文名，不合规就 400/409，不做静默改写。
+// 中文名/英文名撞车是 409，其余输入问题（空名、非法 slug）是 400。
+// slug 必须原样保留，不替换大小写、空格或下划线。
 func TestCategoryCRUDViaAPI(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 
@@ -1494,11 +1428,8 @@ func TestCategoryCRUDViaAPI(t *testing.T) {
 }
 
 // 分类的任何改动都不该碰对外工具名：名字里只有 serverKey 与下游工具名。
-//
-// 这条是"改分类不打断调用方"的守门测试——分类曾经是工具名的第一段，
 // 改一次 slug 就等于对所有 AI 客户端做一次破坏性重命名。
-// 顺带钉住删除的护栏：分类下还有 server 时是 409 category_in_use，
-// 不是一个"删成功了、server 悄悄变成未分类"的 204。
+// 分类下还有 server 时删除是 409 category_in_use。
 func TestCategoryChangeKeepsExposedToolNameStable(t *testing.T) {
 	ds := startDownstream(t, "ping")
 	e := newEnv(t, httpd.Options{})
@@ -1539,9 +1470,8 @@ func TestCategoryChangeKeepsExposedToolNameStable(t *testing.T) {
 		t.Fatalf("分类展示名未更新: %+v", tools.Items[0])
 	}
 
-	// 分类下还挂着 server → 不能删（409），且 server 的归属不被清空。
-	// 静默把 server 摘成"未分类"是一次用户没点过的批量改动，
-	// 界面上只会表现为分类列空掉，回不到这次点击。
+	// 分类下还挂着 server → 409，且 server 归属不被清空。
+	// 静默摘成“未分类”是用户没点过的批量改动。
 	resp, raw := e.call(http.MethodDelete, "/api/categories/"+cat.ID, nil)
 	if resp.StatusCode != http.StatusConflict || !strings.Contains(string(raw), "category_in_use") {
 		t.Fatalf("非空分类应 409 category_in_use，实际 %d\n响应: %s", resp.StatusCode, raw)
@@ -1556,8 +1486,6 @@ func TestCategoryChangeKeepsExposedToolNameStable(t *testing.T) {
 	e.mustJSON(http.MethodDelete, "/api/categories/"+cat.ID, nil, http.StatusNoContent, nil)
 	e.mustJSON(http.MethodDelete, "/api/categories/"+cat.ID, nil, http.StatusNotFound, nil)
 }
-
-/* ────────────────────────────── 单工具启停与变更记录 ────────────────────────────── */
 
 // 默认禁用 → 详情/计数体现 → 启用后暴露 → 变更记录可查 → 禁用撤下；
 // 未知工具返回 404。
@@ -1594,9 +1522,8 @@ func TestToolEnableDisableAPI(t *testing.T) {
 		t.Errorf("默认计数应为 0/0，实际 %d/%d", detail.EnabledToolCount, detail.ExposedToolCount)
 	}
 
-	// 未启用的工具必须留在管理列表里并且标成"待启用"——
-	// 否则"新工具默认禁用"就变成了"新工具默认消失"，界面上根本没有地方
-	// 把它放出来。同时概览的三个口径要自洽：声明 1、暴露 0、未暴露 1。
+	// 未启用的工具必须留在管理列表并标成“待启用”，否则“默认禁用”变成“默认消失”。
+	// 概览口径要自洽：声明 1、暴露 0、未暴露 1。
 	var tools toolListResp
 	e.get("/api/tools?serverKey=tk", &tools)
 	if tools.Total != 1 || tools.Items[0].Enabled || !tools.Items[0].Pending {
@@ -1664,19 +1591,17 @@ func TestToolEnableDisableAPI(t *testing.T) {
 		t.Fatalf("未知工具 = %d, want 404", resp.StatusCode)
 	}
 
-	// 禁用：从 AI 的列表里撤下，但管理列表里留着——开关要能再拨回来。
+	// 禁用：从 AI 列表撤下，但管理列表留着——开关要能再拨回来。
 	e.mustJSON(http.MethodPost, "/api/servers/"+id+"/tools/ping/disable", nil, http.StatusOK, &detail)
 	if detail.ToolItems[0].Enabled || detail.ExposedToolCount != 0 {
 		t.Fatalf("禁用后详情异常: %+v", detail)
 	}
-	// 唯一的启用工具被禁用后，server 应自动停用（无可用工具的 server
-	// 不该留在启用状态空转：探活照跑、健康统计照算，AI 却看不到任何工具）。
+	// 唯一启用工具被禁用后，server 应自动停用：无可用工具的启用 server 只会空转。
 	if detail.Enabled {
 		t.Errorf("禁用唯一启用工具后 server 仍为启用状态, 期望自动停用")
 	}
 	e.get("/api/tools?serverKey=tk", &tools)
-	// server 已自动停用：工具随 server 从聚合浏览器退场（与手动停用 server
-	// 的既有行为一致），但工具行仍在库里，server 详情页照常可见、可再启用。
+	// server 已自动停用：工具随 server 从聚合浏览器退场，但工具行仍在库里。
 	if tools.Total != 0 {
 		t.Errorf("server 停用后聚合浏览器不应再列出其工具: %+v", tools.Items)
 	}

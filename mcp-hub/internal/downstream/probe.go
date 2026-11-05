@@ -9,9 +9,8 @@ import (
 )
 
 // Prober 对单个下游 server 执行探活。
-//
-// 每次 Probe 都新建连接、用完即弃，不触碰生产连接池——探活失败不应污染在线
-// 状态，探活成功则通过刷新工具缓存生效。
+// 每次 Probe 都新建连接、用完即弃，不触碰生产连接池：探活失败不应污染在线状态，
+// 成功则通过刷新工具缓存生效。
 type Prober struct {
 	Spec Spec
 }
@@ -144,9 +143,8 @@ func (p *Prober) probeNegotiate(ctx context.Context, c *mcpclient.Client, rec *R
 }
 
 // negotiate 完成协议协商，探活与常驻连接共用这一条路径。
-//
-// mcp-go 的 Initialize 内部已实现双栈：先按新版发 server/discover，失败回退旧版
-// 握手。结果必须缓存（见 Conn），否则每次调用试两遍，两次往返吃光延迟预算。
+// mcp-go 的 Initialize 内部已实现双栈：先按新版发 server/discover，失败回退旧版握手。
+// 结果必须缓存（见 Conn），否则每次调用试两遍，两次往返吃光延迟预算。
 func negotiate(ctx context.Context, c *mcpclient.Client, spec Spec) (Negotiated, error) {
 	init, err := c.Initialize(ctx, mcp.InitializeRequest{
 		Params: mcp.InitializeParams{

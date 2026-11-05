@@ -62,7 +62,7 @@ export function LogFilterBar({
     [],
   )
 
-  /* 调用方选项用**当前**密钥清单命名，而不是日志里的名字快照 ——
+  /* 调用方选项用**当前**密钥清单命名，不是日志里的名字快照：
      用户此刻选的是「哪一把密钥」，日志行显示的才是「当时叫什么」。 */
   const callerOptions = useMemo<ComboboxOption[]>(
     () => [
@@ -118,7 +118,6 @@ export function LogFilterBar({
         </button>
       }
     >
-      {/* 时间范围最宽，其余四列等宽。 */}
       <FilterGrid className="xl:grid-cols-[1fr_1fr_1fr_1fr_1.5fr]">
         <FilterField label="Server">
           <Combobox
@@ -147,7 +146,7 @@ export function LogFilterBar({
         </FilterField>
 
         <FilterField label="状态">
-          {/* 三个值且带语义色，chips 比下拉好读；size 顶到 32px 与旁边的下拉对齐。 */}
+          {/* 三个值且带语义色，chips 比下拉好读；size 与旁边下拉对齐。 */}
           <FilterChips
             size="md"
             value={(values.status ?? 'all') as string}

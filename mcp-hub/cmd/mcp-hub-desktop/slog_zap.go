@@ -10,12 +10,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// zapSlogHandler 把 Wails 内部的 slog 日志接到我们自己的 zap 上。
+// zapSlogHandler 把 Wails 内部的 slog 日志接到我们的 zap 上。
 //
-// 为什么不能省：Wails 的 Options.Logger 是 *slog.Logger，不给就默认写
-// stderr。桌面形态双击启动时 stderr 没有任何人看——于是"窗口打不开"
-// 这类问题在现场留下的是一片空白，而 desktop.log 恰恰是唯一能看到它
-// 的地方。资源加载失败、运行时错误都走这条路。
+// Wails 的 Options.Logger 不给就默认写 stderr；桌面双击启动时 stderr 无人可见，
+// desktop.log 是资源加载失败与运行时错误的唯一现场。
 type zapSlogHandler struct {
 	log   *zap.Logger
 	attrs []slog.Attr
@@ -29,8 +27,7 @@ func newZapSlogHandler(log *zap.Logger) *zapSlogHandler {
 
 // Enabled 一律放行，层级判断交给 zap 自己做。
 //
-// 这里再判一次只会让两边的级别定义漂移（slog 是 INFO/WARN/ERROR，
-// zap 还多一个 DPanic），而过滤本来就在 zap core 里发生，不重复。
+// 再判一次只会让两边级别定义漂移（zap 多一个 DPanic），过滤本来就在 zap core 里。
 func (h *zapSlogHandler) Enabled(context.Context, slog.Level) bool { return true }
 
 func (h *zapSlogHandler) Handle(_ context.Context, r slog.Record) error {
@@ -70,8 +67,7 @@ func (h *zapSlogHandler) WithGroup(name string) slog.Handler {
 
 // appendSlogAttr 把一个 slog 属性折成 zap 字段，组名作为键前缀。
 //
-// 扁平化（"group.key"）而不是嵌套：看日志的人需要的是能在 grep 里
-// 直接命中的键名，嵌套结构在文本输出里只会变成一串难读的括号。
+// 扁平化（"group.key"）而不是嵌套：日志键要能在 grep 里直接命中。
 func appendSlogAttr(dst []zap.Field, prefix string, a slog.Attr) []zap.Field {
 	if a.Value.Kind() == slog.KindLogValuer {
 		a.Value = a.Value.Resolve()

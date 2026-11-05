@@ -108,7 +108,6 @@ export function LogsPage() {
         </TabsContent>
 
         <TabsContent value="keys" className="mt-4">
-          {/* 密钥事件与调用日志共用 serverId 筛选，切页签不丢条件。 */}
           <KeyEventsTable serverId={query.serverId} enabled={logs.polling} />
         </TabsContent>
       </Tabs>

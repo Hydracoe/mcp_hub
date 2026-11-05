@@ -1,9 +1,6 @@
-/* ═══════════════════════════════════════════════════════════════
-   icons.css — 本地图标（CSS mask，离线可用，无 CDN 依赖）
-   Source: src/assets/icons/apple/*.svg · 24x24 stroke 风格
-   用法: <Icon name="server" className="size-4" />
-   本文件由 scripts/gen-icons.mjs 生成，请勿手改。
-   ═══════════════════════════════════════════════════════════════ */
+/* icons.css — 本地图标（CSS mask，离线可用，无 CDN 依赖）
+   Source: src/assets/icons/apple/*.svg · 24x24 stroke 风格；本文件由 scripts/gen-icons.mjs 生成，请勿手改。
+   用法: <Icon name="server" className="size-4" /> */
 
 /* 尺寸刻意不在此定义：本文件排在 tailwind 之后，一旦写 width 会静默压掉 size-*，图标变 1em 且无报错。
    尺寸一律由调用处的 size-* 决定，与 lucide 原生行为一致。 */

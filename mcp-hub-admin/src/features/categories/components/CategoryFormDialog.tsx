@@ -19,8 +19,7 @@ interface CategoryFormDialogProps {
   mutations: Mutations
 }
 
-/** 新增/编辑分类：中文名与英文名都必填。分类只做组织与检索，不进对外工具名
- *  （对外工具名 = <serverKey>__<工具名>，与分类无关）。 */
+/** 新增/编辑分类：中文名与英文名都必填；分类不进对外工具名。 */
 export function CategoryFormDialog({ open, onOpenChange, initial, mutations }: CategoryFormDialogProps) {
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
@@ -52,7 +51,7 @@ export function CategoryFormDialog({ open, onOpenChange, initial, mutations }: C
     try {
       if (isEdit && initial) {
         await mutations.update.mutateAsync({ id: initial.id, body })
-        // 分类不进对外工具名，改英文名不影响任何工具名，无需提醒。
+        // 分类不进对外工具名，改英文名不影响任何工具名。
         toastSuccess('已保存分类')
       } else {
         await mutations.create.mutateAsync(body)

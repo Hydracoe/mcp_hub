@@ -16,7 +16,8 @@ export interface SortHeadProps<K extends string> {
   align?: 'left' | 'right'
 }
 
-/** 可排序表头。控件长在表头上（不在筛选栏另放排序下拉，避免两份状态同步）；激活态只改箭头、不改文字色，未激活列常驻淡箭头提示可点。 */
+/** 可排序表头。控件长在表头上，不在筛选栏另放排序下拉，避免两份状态同步；
+ *  激活态只改箭头、不改文字色，未激活列常驻淡箭头提示可点。 */
 export function SortHead<K extends string>({
   label,
   col,

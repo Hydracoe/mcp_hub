@@ -1,11 +1,6 @@
-// Package hub 是聚合网关的门面：把连接、路由、对外端点与检索四块能力
-// 装配成一个 Service，并承载管理面（配置装载、密钥池、分类、调用日志、
-// meta-tool 与接入鉴权）。
-//
-// 四块能力在各自的子包里：registry 决定"发给谁"、pool 决定"怎么发"、
-// aggregate 是"对外长什么样"、retrieval 回答"怎么被搜到"，callctx 是它们
-// 共享的一次调用的上下文。子包都不认识 Service——依赖靠 Deps 注入与
-// OnKeyEvent 回调反向传递，因此没有环。
+// Package hub 是聚合网关的门面：把 registry（发给谁）、pool（怎么发）、
+// aggregate（对外长什么样）、retrieval（怎么被搜到）装配成 Service，
+// 并承载管理面。子包经 Deps 注入与回调反向依赖，不认识 Service，故无环。
 package hub
 
 import (
@@ -29,36 +24,33 @@ import (
 	"go.uber.org/zap"
 )
 
-// probeConcurrency 是并发探活的上限：不设限会让 50 个 server 同时建连，
-// 对下游是突发流量，对本机是瞬间拉满的socket。
+// probeConcurrency 是并发探活的上限，避免对下游造成突发流量。
 const probeConcurrency = 8
 
-// aggRefreshGap 是错峰探活路径上聚合快照重建的最小间隔。错峰模式下每秒
-// 至多一两个 server 出结果，不节流会让几千工具的快照与索引被高频重建；
+// aggRefreshGap 是错峰探活路径上聚合快照重建的最小间隔。
 // 被节流掉的重建由下一个到期的探活补上，变更可见延迟最多一个节拍。
 const aggRefreshGap = time.Second
 
 // logQueueSize 是调用日志的异步队列长度。
 const logQueueSize = 512
 
-// keyEventQueueSize 是密钥事件的异步队列长度。密钥状态变化是调用路径上的
-// 回调，写库必须挪出去（M9）；队列容量按"几十把密钥同时异常"留足余量。
+// keyEventQueueSize 是密钥事件的异步队列长度：状态变化发生在调用路径上，
+// 写库必须挪出去，容量按"几十把密钥同时异常"留足余量。
 const keyEventQueueSize = 256
 
 // serversTTL 是 server 列表的缓存时长。写路径会同步删缓存，
 // 这个 TTL 只用来兜住没有明确写请求的状态变化（周期探活改的是 status）。
 const serversTTL = 2 * time.Second
 
-// statsTTL 是调用统计的缓存时长，比列表长一些：它扫整张日志表，随日志
-// 增长变慢，而日志本身异步批量落库，这份数字本来就带滞后。
+// statsTTL 是调用统计的缓存时长，比列表长：它扫整张日志表，
+// 而日志本身异步批量落库，这份数字本来就带滞后。
 const statsTTL = 5 * time.Second
 
 // serversKey 是 server 列表缓存里唯一那个 key。
 const serversKey = "all"
 
-// Service 把配置、连接、聚合三块编排成一个整体，是网关的中枢：
-// 所有会影响"工具长什么样"的操作都从这里过，保证 Registry 与 Pool
-// 不会各自为政。
+// Service 把配置、连接、聚合编排成整体：所有影响"工具长什么样"的操作
+// 都从这里过，保证 Registry 与 Pool 不会各自为政。
 type Service struct {
 	store *store.Store
 	pool  *pool.Pool
@@ -83,19 +75,18 @@ type Service struct {
 	// 密钥事件队列：入队在调用路径（非阻塞），落库在 keyEventWorker。
 	keyEventCh chan pool.KeyEvent
 
-	// 错峰探活的并发上限（与 RefreshAll 的局部信号量相互独立：
-	// 手动全量刷新是显式动作，允许和周期探活短暂并存）。
+	// probeSem 是错峰探活的并发上限，与 RefreshAll 的局部信号量相互独立：
+	// 手动全量刷新允许和周期探活短暂并存。
 	probeSem chan struct{}
 
-	// credTestSem 是凭据自动试测的名额信号量：所有凭据试测（单条新增与
-	// 批量导入）共用它，保证对下游的试测流量整体有界。
+	// credTestSem 是凭据自动试测的名额信号量，单条新增与批量导入共用，
+	// 保证对下游的试测流量整体有界。
 	credTestSem chan struct{}
 
 	// credTestTimeout 是单把密钥试测的超时。零值取 credentialTestTimeout。
 	credTestTimeout time.Duration
 
-	// probeFn 是凭据试测的探活接缝。留空用真实的 Prober，只有测试会替换它：
-	// "并发有没有上限"要断言就得数得清同时在途几个探活，真实探活数不出来。
+	// probeFn 是凭据试测的探活接缝，留空用真实的 Prober，只有测试会替换它。
 	probeFn func(ctx context.Context, spec downstream.Spec) *downstream.ProbeResult
 
 	// 连败拦截闸：连续探活失败达到阈值后拒绝该上游的调用，
@@ -116,24 +107,13 @@ type Service struct {
 	touchMu   sync.Mutex
 	touchLast map[string]time.Time
 
-	// credWriteMu 是凭据写路径（新增/编辑/导入/删除）的互斥锁。
-	//
-	// 同值检测与落库必须在同一个临界区里完成：否则两个并发的同值
-	// 新增都能通过检测，库里最终留下两份同值凭据——而同值凭据本该
-	// 被拒（白占轮换名额、把限流压力集中到同一个上游身份）。
-	//
-	// 一把全局锁而不是按 server 分锁：同值检测跨 server（同一份凭据
-	// 不许配到两个 server 上），按 server 分锁挡不住跨 server 的那一种。
-	//
-	// 临界区只覆盖"检测 + 落库 + 同步密钥池"：探活/试测要走网络，
-	// 不能被一把锁挡住（见 AddCredential / ImportCredentials）。
+	// credWriteMu 是凭据写路径（新增/编辑/导入/删除）的全局互斥锁：
+	// 同值检测与落库必须在同一临界区完成，否则并发新增会留下两份同值凭据；
+	// 检测跨 server，故不能按 server 分锁；探活/试测走网络，不在此锁内。
 	credWriteMu sync.Mutex
 
-	// credCheckedHook 是测试接缝：在写临界区内、同值检测通过之后、
-	// 真正落库之前被调用。生产恒为 nil。
-	//
-	// 存在的理由："两个并发写入都通过了检测"是竞态，靠 sleep 复现
-	// 不了——测试需要一个办法把两个调用同时卡在"检测"与"写入"之间。
+	// credCheckedHook 是测试接缝：在写临界区内、同值检测通过后、落库前被调用，
+	// 生产恒为 nil。
 	credCheckedHook func()
 }
 
@@ -148,23 +128,17 @@ type Options struct {
 	// 后，拒绝它的工具调用（探活照常）。0 或负数关闭拦截。
 	BlockAfterFails int
 	// ReloadFn 替换配置重载（Reload）的实现，留空用 Reload 本体。
-	//
-	// 它是"写已落库、刷新失败"这条路径唯一的接缝：写路径必须把重载
-	// 失败当成运行时状态问题（记 error 日志、缓存照常失效），而不是
-	// 把一次已经提交的写判成失败——库里已经有新配置了。只有测试会设置它。
+	// 写已落库后刷新失败只应记为运行时状态问题，不能把已提交的写判成失败；
+	// 只有测试会设置它。
 	ReloadFn func(context.Context) error
 	// ReloadKeyRingFn 替换单个 server 的密钥池同步（reloadKeyRing）的实现，
-	// 留空用 reloadKeyRing 本体。
-	//
-	// 它与 ReloadFn 是同一条思路的另一半：凭据的增删改只同步自己那个
-	// server 的密钥池，失败同样只是运行时状态没跟上（记 error 日志），
-	// 不该把一次已经提交的删除或启停报成失败。只有测试会设置它。
+	// 留空用本体。凭据增删改只同步自己那个 server 的密钥池，失败同样只是
+	// 运行时状态没跟上，不该把已提交的删除或启停报成失败；只有测试会设置它。
 	ReloadKeyRingFn func(context.Context, string) error
 }
 
 // NewServiceWithCache 用指定的缓存后端构造服务并完成首次聚合装载。
-// 首次装载只读已落库的缓存、不触发探活——服务能立刻提供上一次已知的
-// 工具列表，哪怕此刻所有下游都还没探过。
+// 首次装载只读已落库的缓存、不触发探活，服务可立刻提供上一次已知的工具列表。
 func NewServiceWithCache(st *store.Store, logger *zap.Logger, c cache.Store) *Service {
 	return NewServiceWithOptions(st, logger, Options{Cache: c})
 }
@@ -209,8 +183,8 @@ func NewServiceWithOptions(st *store.Store, logger *zap.Logger, opts Options) *S
 		OnCallSuccess: s.gate.reset,
 	}, s.reg, s.pool, opts.ListMode)
 
-	// 密钥状态变化由连接池回调到这里落库与记日志。用回调而不是让
-	// 连接池直接写库：连接池不该知道存储的存在。
+	// 密钥状态变化由连接池回调到这里落库与记日志：
+	// 连接池不该知道存储的存在。
 	s.pool.OnKeyEvent = s.handleKeyEvent
 
 	if err := s.Reload(context.Background()); err != nil {
@@ -238,25 +212,20 @@ func (s *Service) Pool() *pool.Pool { return s.pool }
 func (s *Service) Store() *store.Store { return s.store }
 
 // refreshAgg 重建聚合快照，同时重建检索索引。
-// 两者必须同步：漏掉任何一边都会让"搜出来的工具在列表里不存在"，
-// 或反过来。
+// 两者必须同步，否则会出现搜得到却在列表里不存在的工具，或反过来。
 func (s *Service) refreshAgg() {
 	s.lastAggRefresh.Store(time.Now().UnixNano())
 	s.agg.Refresh()
 	s.retr.RebuildIndex(context.Background())
-	// 增量 embed 重建：语料未变时零 API 成本（hash 比对），
-	// 让新增 server/工具、描述变更在下一个刷新周期内自动获得向量。
-	// Rebuild 自带重入保护：已有重建在跑时直接返回 skipped 状态，
-	// 不排队也不等待——这里是后台重建，等它没有意义。
+	// 增量 embed 重建：语料未变时零 API 成本（hash 比对）。
+	// Rebuild 自带重入保护，已有重建在跑时直接返回 skipped，不排队也不等待。
 	if em := s.retr.Embedder(); em != nil {
 		go em.Rebuild(context.Background())
 	}
 }
 
 // refreshAggThrottled 是错峰探活专用的节流版 refreshAgg。
-// 相邻两次重建不足 aggRefreshGap 时直接跳过——跳过的这轮变更由下一个
-// 到期的探活补上，变更可见延迟最多一个节拍，换来的是几千工具规模下
-// 快照与索引不被高频重建。
+// 相邻两次重建不足 aggRefreshGap 时跳过，跳过的变更由下一个到期的探活补上。
 func (s *Service) refreshAggThrottled() {
 	now := time.Now().UnixNano()
 	last := s.lastAggRefresh.Load()
@@ -297,8 +266,7 @@ func (s *Service) SearchTools(ctx context.Context, q retrieval.SearchQuery) ([]r
 func (s *Service) Embed() *retrieval.EmbedManager { return s.retr.Embedder() }
 
 // Ready 报告网关是否已有可用的聚合结果。
-// 判据是"有工具可提供"而不是"所有下游都健康"——后者会让任何一个下游
-// 抖动都导致网关未就绪，恰恰违反故障隔离的初衷。
+// 判据是"有工具可提供"而非"所有下游都健康"，否则单个下游抖动就会让网关未就绪。
 func (s *Service) Ready() (bool, []string) {
 	snap := s.reg.Current()
 	var unhealthy []string
@@ -323,12 +291,9 @@ func (s *Service) Close() error {
 	return err
 }
 
-// sources 从存储读出聚合输入。
-// 每次读库而不维护内存副本：Refresh 是低频操作，本地读是微秒级，
-// 多一份缓存就多一处可能与库不一致的状态。
-//
-// 任一读取失败都返回 ok=false：调用方保留上一份快照，不让瞬时数据库
-// 错误演变成"工具全部消失"。
+// sources 从存储读出聚合输入。每次读库而不维护内存副本：
+// Refresh 低频、本地读微秒级，多一份缓存就多一处可能与库不一致的状态。
+// 任一读取失败返回 ok=false，调用方保留上一份快照，避免瞬时错误演变成"工具全部消失"。
 func (s *Service) sources() ([]registry.ToolSource, bool) {
 	ctx := context.Background()
 
@@ -347,15 +312,15 @@ func (s *Service) sources() ([]registry.ToolSource, bool) {
 		s.log.Error("聚合时读取分类失败", zap.Error(err))
 		return nil, false
 	}
-	// 分类只取中文展示名：它不进工具名（对外名 = serverKey__工具名），
-	// 只用于展示、过滤与词法检索，所以这里不需要 slug。
+	// 分类只取中文展示名：它不进对外工具名（serverKey__工具名），
+	// 只用于展示、过滤与词法检索，不需要 slug。
 	catByID := make(map[string]categories.Category, len(cats))
 	for _, c := range cats {
 		catByID[c.ID] = c
 	}
 
-	// 缓存里的工具分两堆：开关开着的进聚合，人工关掉的只留给管理界面
-	// ——否则关掉就再也找不回来，等于没有这个开关。
+	// 缓存里的工具分两堆：启用着的进聚合，人工关掉的只留给管理界面，
+	// 否则关掉就再也找不回来。
 	enabledByServer := make(map[string][]downstream.ToolInfo, len(srvs))
 	disabledByServer := make(map[string][]registry.HiddenTool, len(srvs))
 	for _, t := range tools {

@@ -1,8 +1,6 @@
 // Package pool 是唯一持有下游连接的地方：常驻连接、懒建连、失败退避、
-// 密钥池调度与优雅退场。
-//
-// 它不知道 MCP 端点长什么样，也不写库：密钥状态变化通过 OnKeyEvent
-// 回调交给上层落库与记日志。
+// 密钥池调度与优雅退场。它不知道 MCP 端点长什么样，也不写库：
+// 密钥状态变化通过 OnKeyEvent 回调交给上层落库与记日志。
 package pool
 
 import (
@@ -23,9 +21,8 @@ const (
 
 // DefaultDrainTimeout 是停用时等待在飞调用收尾的上限。
 //
-// 必须设上限：调用可能永远不返回（下游卡死、网络黑洞），那样连接就永远
-// 关不掉，server 会一直停在"停用中"而用户毫无办法。1 分钟足够覆盖正常
-// 调用，真卡住的那些多等也无意义。
+// 必须设上限：调用可能永远不返回（下游卡死、网络黑洞），连接就永远关不掉，
+// server 会一直停在"停用中"。1 分钟足够覆盖正常调用。
 const DefaultDrainTimeout = time.Minute
 
 // UnavailableError 表示目标下游处于退避窗口内，本次调用未真正发起。
@@ -49,20 +46,15 @@ type Pool struct {
 	conns map[string]*pooled
 	fail  map[string]*failure
 
-	// retiring 是已经摘出池子、正在等收尾的连接。
-	// 单独记一份是为了让管理接口能回答"停用完成了吗，还有几个调用在跑"。
-	//
-	// 键是每次退役的唯一编号，不是 serverId：同一个 server 可能同时有多条
-	// 连接在收尾（重复停用、连接指纹变化后的旧连接淘汰），按 serverId 记
-	// 会互相覆盖——后一条顶掉前一条，前一条的完成信号永远等不到，
-	// 收尾的销账也会误关别人的信号。
+	// retiring 是已经摘出池子、正在等收尾的连接，供管理接口展示停用进度。
+	// 键是每次退役的唯一编号而不是 serverId：同一 server 可有多条连接同时收尾，
+	// 按 serverId 记会互相覆盖并误关别人的完成信号。
 	retiring map[uint64]*retirement
 
 	// nextRetireID 为每次退役分配唯一编号，保证登记与销账一一对应。
 	nextRetireID uint64
 
-	// rings 是每 server 的密钥池。为空表示该 server 走单密钥模式
-	// （沿用 spec.Headers），行为与引入密钥池之前完全一致。
+	// rings 是每 server 的密钥池。为空表示该 server 走单密钥模式（沿用 spec.Headers）。
 	ringMu sync.RWMutex
 	rings  map[string]*downstream.KeyRing
 
@@ -71,8 +63,7 @@ type Pool struct {
 	MaxAttempts int
 
 	// OnKeyEvent 在密钥状态发生变化时被调用。
-	// 用回调而不是让 Pool 直接写库：连接池不该知道存储的存在，
-	// 否则"连接怎么管"与"状态怎么存"会互相纠缠，也没法分别测试。
+	// 用回调而不让 Pool 直接写库：连接池不该知道存储的存在，也便于分别测试。
 	OnKeyEvent func(KeyEvent)
 
 	// DrainTimeout 是等一次收尾的上限。零值取 DefaultDrainTimeout。
@@ -97,8 +88,7 @@ type KeyEvent struct {
 	Recovered bool
 	Detail    string
 
-	// CoolingUntil 是这次冷却的到点时刻（O4）：上层据此把冷却落库，
-	// 下次启动才能恢复。只有时长不够——得知道"到哪一刻"。
+	// CoolingUntil 是这次冷却的到点时刻：上层据此把冷却落库，下次启动才能恢复。
 	CoolingUntil time.Time
 
 	// CollectiveProtection 表示"本会被弃用，但因集体失败保护而未弃用"。
@@ -123,11 +113,9 @@ type pooled struct {
 	dialMu sync.Mutex
 }
 
-// retirement 是一次连接收尾的过程：把连接与收尾开始时刻绑在一起，
-// 供管理接口估算还剩多久（Deadline）、是否已超等待上限。
-//
-// id 是这次收尾的唯一身份：登记进池子与销账出池子都只认它，
-// 收尾的 goroutine 只可能关掉自己那条记录的完成信号。
+// retirement 是一次连接收尾的过程：把连接与收尾开始时刻绑在一起，供管理接口
+// 估算还剩多久（Deadline）、是否已超等待上限。
+// id 是这次收尾的唯一身份：登记与销账都只认它，goroutine 只关自己那条记录。
 type retirement struct {
 	id        uint64
 	serverID  string
@@ -170,8 +158,6 @@ func NewPool(logger *zap.Logger) *Pool {
 	}
 }
 
-// --- 密钥池 ---
-
 // drainTimeout 返回收尾等待上限。
 func (p *Pool) drainTimeout() time.Duration {
 	if p.DrainTimeout > 0 {
@@ -180,9 +166,8 @@ func (p *Pool) drainTimeout() time.Duration {
 	return DefaultDrainTimeout
 }
 
-// Drop 立即关闭并移除某条连接，只在确实要立刻停止服务时用
-// （进程退出、连接已确证损坏）。配置变更、停用、删除都该走 Retire——
-// 用户点一下后台开关，不该把别人正在跑的任务一起干掉。
+// Drop 立即关闭并移除某条连接，只在确实要立刻停止服务时用（进程退出、连接已确证损坏）。
+// 配置变更、停用、删除都该走 Retire：点一下后台开关不该把正在跑的任务一起干掉。
 func (p *Pool) Drop(serverID string) {
 	p.mu.Lock()
 	entry := p.conns[serverID]
@@ -197,9 +182,8 @@ func (p *Pool) Drop(serverID string) {
 
 // UpdateCredentials 把新凭据交给现有连接，从下一个请求起生效。
 //
-// 找不到连接不算问题：下次建连会直接用最新配置，凭据本来是按请求注入的。
-// 这是"轮换密钥调用方无感"的落点——连接不重建、在飞调用不受影响，
-// 后续请求自动带新凭据出去。
+// 找不到连接不算问题：下次建连会直接用最新配置，凭据按请求注入，
+// 连接不重建、在飞调用不受影响。
 func (p *Pool) UpdateCredentials(serverID string, headers map[string]string) bool {
 	p.mu.RLock()
 	entry := p.conns[serverID]
@@ -242,24 +226,16 @@ func (p *Pool) Close() error {
 
 // Target 是池子认识的一个下游：连接配置 + 当前是否启用。
 //
-// 启用与否不属于连接配置（Spec 里没有这一位），但密钥池需要它：
-// 停用的 server 不该继续持有可用密钥。密钥本身还在库里（重新启用时
-// 会装回来），但留在池里就意味着它们随时可能被选中发出去——停用的
-// 语义是"别再用它"，不只是"从工具列表里消失"。
+// 启用与否不属于连接配置，但密钥池需要它：停用的 server 不该继续持有可用密钥。
 type Target struct {
 	Spec    downstream.Spec
 	Enabled bool
 }
 
 // Sync 让连接池与一组最新的目标对齐：消失的连接退场、目标变更的重建。
-//
-// 只处理连接生命周期，不改动 Registry，避免两者互相阻塞。判据是连接
-// 指纹而不是"配置变了没有"：改过滤名单、显示名、密钥都不动连接，
+// 只处理连接生命周期，不改动 Registry；判据是连接指纹而不是"配置变了没有"，
 // 只有真换了目标（url/command/env/超时/协议版本）才重建。
-//
-// 连接的退场只看"消失了没有"：停用的 server 的连接由停用路径自己退役
-// （SetEnabled / ApplyServer），不在这里重复处理——重复退役会打断
-// 正在跑的调用。密钥池则相反：已停用的 server 的密钥条目必须清掉。
+// 停用 server 的连接由停用路径自己退役（这里重复会打断在飞调用），但密钥池必须在这里清掉。
 func (p *Pool) Sync(targets []Target) {
 	want := make(map[string]Target, len(targets))
 	for _, t := range targets {
@@ -301,12 +277,8 @@ func (p *Pool) Sync(targets []Target) {
 		p.Retire(id)
 	}
 
-	// 清掉已消失或已停用的 server 的密钥池：池子里存着密钥明文，
-	// 让它们随 server 一起消失，而不是留在内存里。
-	//
-	// 停用的 server 同样要清：它的密钥还在库里，重新启用时会装回来；
-	// 但留在池里就意味着随时可能被选中发出去。停用必须真的停用，
-	// 而不是只把工具从列表里摘掉。
+	// 清掉已消失或已停用的 server 的密钥池：池子里存着密钥明文。
+	// 停用的密钥还在库里、重新启用时会装回来，但留在池里就可能被选中发出去。
 	p.ringMu.Lock()
 	for id := range p.rings {
 		t, ok := want[id]

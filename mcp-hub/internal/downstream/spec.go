@@ -20,9 +20,8 @@ const (
 )
 
 // AuthMode 标识下游天生要不要鉴权。
-//
-// 纯展示位，不改变请求行为：发不发鉴权头始终由 headers / 密钥池决定。
-// 它的用途是让界面区分"免鉴权"和"要鉴权但还没配密钥"。
+// 纯展示位，不改变请求行为：发不发鉴权头始终由 headers / 密钥池决定，
+// 用途是让界面区分"免鉴权"和"要鉴权但还没配密钥"。
 const (
 	AuthModeNone   = "none"   // 裸请求即可用
 	AuthModeHeader = "header" // 需要请求头鉴权：静态 headers 或密钥池
@@ -35,16 +34,13 @@ const DefaultTimeout = 30 * time.Second
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*$`)
 
 // ReservedMetaPrefix 是网关自带工具的对外名前缀。
-//
 // 与 aggregate.MetaPrefix 同值。依赖方向不允许 downstream 反向引用 aggregate，
-// 故在此复述；aggregate 侧有一条用例断言两者恒等，改动其一另一处会立刻变红。
+// 故在此复述；aggregate 侧有用例断言两者恒等。
 const ReservedMetaPrefix = "hub__"
 
 // reservedKeys 是不得用作 serverKey 的保留名。
-//
-// 判据只有一条：对外名 = <serverKey>__<toolName>，会不会落进保留前缀。
-// 因此需要避开的恰好是 "hub" 一个（keyPattern 已禁下划线，"hub__" 本身
-// 根本填不进来）。
+// 判据只有一条：对外名 = <serverKey>__<toolName> 会不会落进保留前缀。
+// 因此恰好避开 "hub" 一个（keyPattern 已禁下划线）。
 var reservedKeys = map[string]bool{"hub": true}
 
 // Spec 描述一个下游 MCP server 的连接配置。
@@ -104,11 +100,9 @@ func (s Spec) AuthModeOr() string {
 	return s.AuthMode
 }
 
-// ConnFingerprint 概括所有"必须重建连接才生效"的字段。判错的代价不对称：该重建而
-// 没重建，请求会打到已经不对的目标上，最难查；不该重建而重建，会打断在飞调用。
-//
-// headers 刻意不在其中：远程凭据按请求注入（见 Conn.headerFunc），换密钥不该付重建
-// 连接的代价；stdio 的 env 是凭据载体，必须重启进程，因此留下。
+// ConnFingerprint 概括所有"必须重建连接才生效"的字段。判错代价不对称：该重建而没
+// 重建，请求会打到已经不对的目标上；不该重建而重建，会打断在飞调用。
+// headers 刻意不在其中（远程凭据按请求注入）；stdio 的 env 是凭据载体，必须重启进程。
 func (s Spec) ConnFingerprint() string {
 	var b strings.Builder
 	write := func(parts ...string) {
@@ -140,10 +134,8 @@ func (s Spec) Validate() error {
 		return fmt.Errorf("key %q must match %s", s.Key, keyPattern)
 	}
 	// "hub" 是保留命名空间：对外工具名是 <serverKey>__<toolName>，而网关自带
-	// 工具的对外名统一以 hub__ 开头。key 取 hub 会让这台 server 的全部工具
-	// 落进同一个前缀里——meta 列表模式下它们会被当成元工具露出去，真撞上
-	// 同名的那几个（hub__list_tools 等）连调用指向哪边都说不清。
-	// 聚合层拿不到"哪些才是真元工具"的名单，所以从配置源头拒绝。
+	// 工具的对外名统一以 hub__ 开头。key 取 hub 会让这台 server 的全部工具落进
+	// 同一前缀，真撞上 hub__list_tools 等名字时连调用指向哪边都说不清。
 	if reservedKeys[strings.ToLower(s.Key)] {
 		return fmt.Errorf("key %q 是保留命名空间（网关自带工具用 %s 前缀），请换一个",
 			s.Key, ReservedMetaPrefix)

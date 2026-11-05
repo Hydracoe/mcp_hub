@@ -11,14 +11,8 @@ import (
 
 /*
 这一组钉住"给 AI 的浏览入口只列能调的工具"。
-
-背景：registry 的快照里有两份列表——tools/routes 是给 AI 的（只含人工启用的），
-entries 是给管理界面的（额外含"缓存里有但开关关着"的）。meta 侧若直接遍历
-entries，就会把未启用的工具推给 AI：AI 拿到 exposedName（甚至完整 schema）
-去调用，只会得到 "tool not found"，而且归因不到"未启用"上。
-
-实测里就是这样撞见的：上游新增工具后 hub__list_tools 把它列了出来，
-而 all 模式的 tools/list 里根本没有它。
+registry 的快照里有两份列表：tools/routes 给 AI（只含人工启用的），entries 给管理界面
+（额外含"缓存里有但开关关着"的）；meta 侧若遍历 entries，就会把 AI 调不到的工具推给它。
 */
 
 // 未启用的工具对 AI 不可见——两个 meta 入口都要一致。
@@ -177,8 +171,7 @@ func TestDisabledToolStillVisibleToAdmin(t *testing.T) {
 
 // 没有任何可调用工具的 server 对 AI 不存在：hub__list_servers 不列它，
 // hub__list_categories 的计数也只数"AI 可用"口径（而不是库里的原始计数）。
-// 管理接口不受影响——那边必须看得到"启用中但零可用工具"的 server，
-// 否则就没有地方把工具放回来。
+// 管理接口不受影响，必须看得到"启用中但零可用工具"的 server。
 func TestMetaToolsHideServerWithoutAvailableTools(t *testing.T) {
 	down := startDownstream(t,
 		toolSpec{name: "ping", desc: "Ping the upstream"},

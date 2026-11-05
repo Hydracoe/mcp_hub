@@ -15,15 +15,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// CredState 是密钥的**持久**状态。cooling（限流冷却）刻意不进数据库：
-// 重启往往就是为了从限流中恢复，落库只会让新进程背旧账；
-// 而 disabled 是稳定事实，重启后不该再拿无效密钥去打一次。
-//
-// 用枚举类型而不是裸 string：这列只有两个合法值，写成 string 时
-// 任何字面量都能落库（"Active"、"disable"、拼错一个字母），
-// 症状是密钥既不算启用也不算禁用——判定散在各处的 `== "active"`，
-// 谁也不会在编译期提醒你写错了。类型化了之后，能赋给它的只有
-// 下面这两个常量（或显式转换），比较处也不必再写字符串字面量。
+// CredState 是密钥的持久状态。cooling（限流冷却）刻意不进数据库：重启往往
+// 就是为了从限流中恢复，落库只会让新进程背旧账；disabled 是稳定事实，重启后
+// 不该再拿无效密钥去打一次。用枚举类型而非裸 string，防止任意字面量落库。
 type CredState string
 
 const (
@@ -33,11 +27,9 @@ const (
 	CredStateDisabled CredState = "disabled"
 )
 
-// OrActive 把零值归位成 active。
-//
-// 归位只发生在两处：库里带默认值的存量行，以及调用方用零值构造的
-// Credential（新增密钥没被判决过）。**不认识的取值不归位**——
-// 那属于脏数据，宁可让它在界面上显形，也不要被悄悄改写成 active。
+// OrActive 把零值归位成 active：库里带默认值的存量行，以及调用方用零值
+// 构造的 Credential（新增密钥没被判决过）。不认识的取值不归位——
+// 那是脏数据，宁可让它在界面上显形，也不要被悄悄改写成 active。
 func (s CredState) OrActive() CredState {
 	if s == "" {
 		return CredStateActive
@@ -46,11 +38,8 @@ func (s CredState) OrActive() CredState {
 }
 
 // KeyState 把持久状态映射成运行态枚举（downstream.KeyState）。
-//
-// 白名单而不是黑名单：只有 CredStateActive 算"可用"，其余一律 KeyDisabled。
-// 持久层只知道"是否被弃用"，cooling 由密钥池在内存里叠加——这一侧
-// 认不出的取值，宁可不发出去（少一把密钥，界面上看得见），也不要
-// 拿一把来路不明的凭据去打下游（401 会以别处的形式爆出来）。
+// 白名单：只有 CredStateActive 算可用，其余一律 KeyDisabled。持久层只知道
+// "是否被弃用"，cooling 由密钥池在内存里叠加；认不出的取值宁可不发出去。
 func (s CredState) KeyState() downstream.KeyState {
 	if s.OrActive() == CredStateActive {
 		return downstream.KeyActive
@@ -70,10 +59,8 @@ type credentialRow struct {
 	Headers  string `gorm:"column:headers"` // JSON object
 	Enabled  int64  `gorm:"column:enabled"`
 
-	// 持久状态只有 active / disabled：cooling 是运行态，由密钥池在内存里
-	// 叠加。但冷却的**到点时刻**会落库（O4）——重启往往就是为了从限流里
-	// 恢复，若重启即忘，新进程会对仍在下游限流窗口内的密钥重打一轮。
-	// 它只是"恢复内存态用的事实"，不是第二种状态：过期值一律按不存在处理。
+	// 持久状态只有 active / disabled：cooling 是运行态，但冷却的到点时刻会落库（O4），
+	// 用于重启后恢复内存态。它只是"恢复内存态用的事实"，不是第二种状态：过期值按不存在处理。
 	State        CredState `gorm:"column:state"`
 	DisabledKind string    `gorm:"column:disabled_kind"`
 	DisabledAt   *int64    `gorm:"column:disabled_at"`
@@ -129,8 +116,7 @@ type Credential struct {
 	DisabledNote string
 
 	// CoolingUntil 是冷却到点时刻（O4），零值表示未在冷却。
-	// 它只用于启动时恢复内存态；调用路径上的冷却判断一律以内存为准
-	// （库里的值可能已过期，读它反而会误判）。
+	// 只用于启动时恢复内存态；调用路径上的冷却判断一律以内存为准（库里的值可能已过期）。
 	CoolingUntil time.Time
 
 	// 0 表示不限。
@@ -141,9 +127,7 @@ type Credential struct {
 	UpdatedAt time.Time
 }
 
-// Usable 报告这把密钥是否参与轮换。
-//
-// 只看持久层能知道的部分；冷却与配额余量是进程内状态，
+// Usable 报告这把密钥是否参与轮换。只看持久层能知道的部分；冷却与配额余量
 // 由密钥池叠加判断。判据与 CredState.KeyState 同口径（白名单）：
 // 只有"人工打开 + 状态是 active"才放行，认不出的状态不当可用。
 func (c Credential) Usable() bool {
@@ -320,11 +304,8 @@ func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool) error {
 	return storeutil.RequireAffected(res.RowsAffected, res.Error, "更新密钥启停")
 }
 
-// SetCoolingUntil 记录冷却到点时刻（O4）。
-//
-// 只在启动恢复时读一次，之后冷却的推进仍在内存里——写它是为了让下一次
-// 启动知道"这把钥匙此刻还在被限"，不是为了让别处拿它做判断。传零值
-// 表示清掉（冷却结束 / 已恢复）。
+// SetCoolingUntil 记录冷却到点时刻（O4），只在启动恢复时读一次，之后冷却推进在内存里。
+// 写它是为了让下一次启动知道"这把钥匙此刻还在被限"，传零值表示清掉。
 func (s *Store) SetCoolingUntil(ctx context.Context, id string, until time.Time) error {
 	var v any
 	if !until.IsZero() {
@@ -362,10 +343,9 @@ func (s *Store) Disable(ctx context.Context, id string, kind downstream.KeyVerdi
 	return storeutil.RequireAffected(res.RowsAffected, res.Error, "弃用密钥")
 }
 
-// usableStateCond 是"持久层认为可用"的 SQL 判据，必须与
-// Credential.Usable / CredState.KeyState 同口径（白名单 + 空值归位）：
-// 界面上报的"可用密钥数"与密钥池真正会用的那几把是同一个集合，
-// 否则用户会看到"3 把可用"而池子只在 2 把之间轮换。
+// usableStateCond 是"持久层认为可用"的 SQL 判据，必须与 Credential.Usable /
+// CredState.KeyState 同口径（白名单 + 空值归位）：否则界面上的"可用密钥数"
+// 会比密钥池真正轮换的多。
 const usableStateCond = `enabled = 1 AND (state = ? OR state = '')`
 
 // Count 返回某个 server 的密钥数与可用密钥数
@@ -403,9 +383,8 @@ func (s *Store) CountAllUsable(ctx context.Context) (map[string]int, error) {
 	return out, nil
 }
 
-// InsertBatch 批量新增密钥（追加语义，事务内完成）。
-// 追加而不是整体替换：用户粘贴 10 行密钥，期望的是"再加 10 把"；
-// 导入到一半失败不能留下不新不旧的密钥池。
+// InsertBatch 批量新增密钥（追加语义，事务内完成）：用户粘贴 10 行密钥，
+// 期望的是"再加 10 把"；导入到一半失败不能留下不新不旧的密钥池。
 func (s *Store) InsertBatch(ctx context.Context, serverID string, creds []Credential) ([]Credential, error) {
 	if len(creds) == 0 {
 		return nil, nil

@@ -12,8 +12,7 @@ export function useCategoryMutations() {
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: queryKeys.categories })
     void qc.invalidateQueries({ queryKey: queryKeys.servers })
-    // 分类信息影响工具列表的分类字段与检索 facet，工具市场与概览
-    // 里的计数都会跟着变，不失效就会显示旧数据。对外工具名不受影响。
+    // 分类影响工具列表的分类字段与检索 facet、概览计数；对外工具名不受影响。
     void qc.invalidateQueries({ queryKey: ['tools'] })
     void qc.invalidateQueries({ queryKey: queryKeys.overview })
   }

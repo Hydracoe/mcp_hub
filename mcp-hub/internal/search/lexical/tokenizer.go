@@ -22,8 +22,7 @@ func isCJKIdeograph(r rune) bool {
 }
 
 // needsBigram 判断 rune 是否属于"没有词边界"的脚本：整段保留会退化成
-// "一整句一个词元"，只能切 unigram + bigram。中文、日文假名、韩文谚文
-// 同属此类——假名与谚文原先落进了"字母数字整段保留"的分支，等于不切分。
+// "一整句一个词元"，只能切 unigram + bigram。中文、日文假名、韩文谚文同属此类。
 func needsBigram(r rune) bool {
 	if isCJKIdeograph(r) {
 		return true
@@ -31,14 +30,9 @@ func needsBigram(r rune) bool {
 	return unicode.In(r, unicode.Hiragana, unicode.Katakana, unicode.Hangul)
 }
 
-// Tokenize 把文本切成检索词元：
-//   - 无词边界脚本（中日韩）连续段：unigram + bigram
-//     （"搜索引擎" → 搜,索,引,擎,搜索,索引,引擎）
-//   - 其余字母数字连续段：整体小写保留（"GitHub" → "github"）。
-//     注意这不是"ASCII 段"——全角数字、西里尔字母、希腊字母同样落在这里，
-//     它们有词边界或无法用 bigram 表达，整段保留是唯一不丢信息的选择。
-//
-// 重复词元保留（BM25 需要真实词频）。纯标点/空白不产出词元。
+// Tokenize 把文本切成检索词元：中日韩等无词边界脚本的连续段切 unigram + bigram，
+// 其余字母数字连续段整体小写保留（含全角数字、西里尔、希腊字母）；纯标点/空白不产出。
+// 重复词元保留（BM25 需要真实词频）。
 func Tokenize(text string) []string {
 	var (
 		out    []string

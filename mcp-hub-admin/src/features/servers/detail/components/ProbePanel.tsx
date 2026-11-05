@@ -91,7 +91,7 @@ export function ProbePanel({ probe, testing, onTest }: ProbePanelProps) {
               />
             </div>
             <div className="divide-y divide-separator">
-              {/* 老响应可能没有 levels：缺省当「无分段明细」渲染，不能崩。 */}
+              {/* 响应可能没有 levels：缺省当「无分段明细」渲染，不能崩。 */}
               {(probe.levels ?? []).map((lvl) => (
                 <LevelRow key={lvl.level} level={lvl} />
               ))}

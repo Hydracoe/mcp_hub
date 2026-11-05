@@ -40,12 +40,8 @@ export default defineConfig([
       'no-void': 'off',
 
       /*
-       * React Compiler 时代的新规则（react-hooks v7 默认 error）。
-       * 存量代码有 10 处命中，集中在「把 props 同步进本地 state」这一模式上
-       * （对话框初始化表单、受控输入同步外部值、渲染期读时钟）。
-       * 修它们需要逐个改动组件的状态来源，属于独立的重构任务，
-       * 这里先降为 warning：lint 能作为门禁跑通，问题也不会被藏起来。
-       * 清完这批请改回 'error'。
+       * react-hooks v7 新规则在存量代码有命中（props 同步进本地 state 等），逐个改造属独立重构；
+       * 先降为 warning 让 lint 门禁跑通。清完这批请改回 'error'。
        */
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/refs': 'warn',
@@ -54,8 +50,7 @@ export default defineConfig([
   },
 
   /*
-   * shadcn/ui 原语：`cva` 的 variants 必须和组件同文件导出，
-   * 这是上游约定的写法（组件 + 样式配方一起给），不是我们的结构问题。
+   * shadcn/ui 原语：`cva` 的 variants 与组件同文件导出是上游约定，不是结构问题。
    */
   {
     files: ['src/components/ui/**/*.tsx'],

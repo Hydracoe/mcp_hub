@@ -12,8 +12,8 @@ import { formatInt } from '@/lib/format'
 import { KeysTable } from './components/KeysTable'
 import { ApiKeyCreateDialog } from './components/ApiKeyCreateDialog'
 
-/** 接入密钥：上游客户端调 /mcp 时出示、由网关签发的凭据（全局一份清单）。
- *  与侧栏「密钥池」不同——那按 Server 隔离，是网关调下游用的。 */
+/** 接入密钥：上游客户端调 /mcp 时出示、由网关签发的凭据（全局一份清单）；
+ *  区别于按 Server 隔离、网关调下游用的「密钥池」。 */
 export function KeysPage() {
   const { data: overview } = useOverview()
   const { data, isLoading, error, refetch } = useApiKeys()
@@ -86,8 +86,8 @@ export function KeysPage() {
   )
 }
 
-/** 鉴权态势卡片：/mcp 的鉴权开关不是勾选框，而是「库里有没有 key」这个事实
- *  （见 httpd.mcpAuth）——建第一把 / 删最后一把会突然改变客户端表现。 */
+/** 鉴权态势卡片：/mcp 的鉴权开关不是勾选框，而是「库里有没有 key」这个事实 ——
+ *  建第一把 / 删最后一把会突然改变客户端表现。 */
 function AuthPosture({ total, enabled }: { total: number; enabled: number }) {
   if (total === 0) {
     return (

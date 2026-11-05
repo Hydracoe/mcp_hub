@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 阈值 3 时的状态机：逐次失败跨线、成功清零、手动解封。
+// 阈值 3 时的状态机：逐次失败跨线、成功清零。
 func TestBlockGateTransitions(t *testing.T) {
 	g := newBlockGate(3)
 

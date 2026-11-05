@@ -10,10 +10,8 @@ import (
 )
 
 // O5：开了自动启用的 server，探活新发现的工具直接放行。
-//
-// 与安全默认（T1）是同一枚硬币的两面：默认关是"上游加的工具不许裸奔"，
-// 打开是"这个上游我信，别让我一个个点"。两条路径都必须有记录可查——
-// 否则事后回答不了"这个工具是谁批准上线的"。
+// 与安全默认（T1）互为两面：默认关是"上游加的工具不许裸奔"，打开是"这个上游我信"。
+// 两条路径都必须有记录可查，否则事后回答不了"这个工具是谁批准上线的"。
 func TestAutoEnableNewTools(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
@@ -46,7 +44,7 @@ func TestAutoEnableNewTools(t *testing.T) {
 		}
 	}
 
-	// 变更记录必须写明"按自动启用策略放行"，而不是复用引导名单那句——
+	// 变更记录必须写明"按自动启用策略放行"，不能复用引导名单那句——
 	// 两句混在一起，事后就分不清是创建向导勾的还是策略放行的。
 	items, _, err := st.ToolChanges.List(ctx, toolchanges.Query{ServerID: srv.Spec.ID})
 	if err != nil {
@@ -62,8 +60,8 @@ func TestAutoEnableNewTools(t *testing.T) {
 	}
 }
 
-// 自动启用只管**新发现**的工具：人工禁用过的工具，不能因为下一次探活
-// 又活过来——"禁用"是决定，探活只是同步上游的事实。
+// 自动启用只管**新发现**的工具：人工禁用过的工具不能因为下一次探活又活过来。
+// "禁用"是决定，探活只是同步上游的事实。
 func TestAutoEnableDoesNotResurrectDisabledTool(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)
@@ -97,8 +95,7 @@ func TestAutoEnableDoesNotResurrectDisabledTool(t *testing.T) {
 	}
 }
 
-// 默认值必须是关：存量 server 与不带这个字段的创建请求都不该被悄悄改成
-// "上游加的工具自动放行"。
+// 默认值必须是关：存量 server 与不带这个字段的创建请求都不该被悄悄改成"上游加的工具自动放行"。
 func TestAutoEnableDefaultsOff(t *testing.T) {
 	ctx := context.Background()
 	st := newTestStore(t)

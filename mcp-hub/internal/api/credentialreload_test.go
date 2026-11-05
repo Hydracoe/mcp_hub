@@ -15,19 +15,11 @@ import (
 	"go.uber.org/zap"
 )
 
-// 凭据删除与启停在"密钥池同步失败"时的 HTTP 行为。
-//
-// 缺陷形状：删除 / 启停的库写入已经提交，之后密钥池同步失败就把整个
-// 请求报成 500。用户看到的是"没删掉"、"没停用"，可库里其实已经改了——
-// 重试还会撞上唯一约束（409），把一次成功的操作显示成失败两次。
-// 正确语义是"落库成功即成功"：密钥池属于运行时状态，同步失败只记日志，
-// 等下一次 Reload 补装。
+// 凭据删除与启停在密钥池同步失败时的 HTTP 行为。
+// 落库成功即算成功：密钥池属于运行时状态，同步失败只记日志，等下一次 Reload 补装。
 
-// newEnvWithKeyRingReload 起一套网关，并把"单个 server 的密钥池同步"
-// 这一步换成 reloadKeyRingFn。
-//
-// 留空用 reloadKeyRing 本体；非 nil 时它就是同步本身，用来复现
-// "凭据写已落库、密钥池同步失败"这条路径（见 hub.Options.ReloadKeyRingFn）。
+// newEnvWithKeyRingReload 起一套网关，并把单个 server 的密钥池同步替换为 fn。
+// fn 为 nil 时使用 reloadKeyRing 本体。
 func newEnvWithKeyRingReload(t *testing.T, fn func(context.Context, string) error) *env {
 	t.Helper()
 
@@ -70,7 +62,6 @@ func TestCredentialWritesSucceedWhenKeyRingReloadFails(t *testing.T) {
 		"value": "tok",
 	}, http.StatusCreated, &created)
 
-	// 停用：不该报 500。
 	resp, raw := e.call(http.MethodPost, "/api/servers/"+sid+"/credentials/"+created.ID+"/disable", nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("停用 = %d, 期望 200\n响应: %s", resp.StatusCode, raw)
@@ -83,7 +74,6 @@ func TestCredentialWritesSucceedWhenKeyRingReloadFails(t *testing.T) {
 		t.Error("库里应已停用")
 	}
 
-	// 启用：同样不该报 500。
 	resp, raw = e.call(http.MethodPost, "/api/servers/"+sid+"/credentials/"+created.ID+"/enable", nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("启用 = %d, 期望 200\n响应: %s", resp.StatusCode, raw)
@@ -96,7 +86,6 @@ func TestCredentialWritesSucceedWhenKeyRingReloadFails(t *testing.T) {
 		t.Error("库里应已启用")
 	}
 
-	// 删除：不该报 500，期望 204。
 	resp, raw = e.call(http.MethodDelete, "/api/servers/"+sid+"/credentials/"+created.ID, nil)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("删除 = %d, 期望 204\n响应: %s", resp.StatusCode, raw)

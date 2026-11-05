@@ -7,8 +7,7 @@ import (
 // SyncKeyRing 让某个 server 的密钥池与一份最新的持久快照对齐。
 //
 // 已存在的池子走增量 Sync 并保留冷却与计数——顺手清掉冷却等于开了一个
-// "点一下即可绕过限流"的后门。creds 为空表示退回单密钥模式（用
-// servers.headers）：密钥池是可选增强，只填一把密钥的用户不该有感知。
+// "点一下即可绕过限流"的后门。creds 为空表示退回单密钥模式（用 servers.headers）。
 func (p *Pool) SyncKeyRing(serverID string, opts downstream.KeyRingOptions, creds []downstream.CredentialInput) {
 	p.ringMu.Lock()
 	defer p.ringMu.Unlock()
@@ -66,10 +65,8 @@ func (p *Pool) KeyStatusesOf(serverID string) []downstream.KeyStatus {
 
 // attemptsFor 计算本次调用的密钥尝试预算，等于可用密钥数。
 //
-// 只要池里还有可用密钥，密钥级失败（429/401/402/403）就换一把透明重试，
-// 调用方无感；池子被彻底打空（全冷却 / 全弃用 / 配额用尽）才返回带
-// retryAfter 的 ErrNoUsableKey。可重试的判决都是"立刻被拒"的响应，
-// 不等待超时，全试一遍不会拖垮时延。
+// 密钥级失败（429/401/402/403）换一把透明重试，池子打空才返回带 retryAfter 的
+// ErrNoUsableKey；可重试的判决都是"立刻被拒"的响应，全试一遍不会拖垮时延。
 func (p *Pool) attemptsFor(ring *downstream.KeyRing) int {
 	if p.MaxAttempts > 0 {
 		return p.MaxAttempts

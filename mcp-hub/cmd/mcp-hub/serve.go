@@ -17,10 +17,7 @@ import (
 )
 
 // serve 的配置全在 .env / 进程环境变量，不收任何参数。
-//
-// 本命令现在只剩三件事：读配置、起引擎、等信号。装配的全部细节在
-// internal/engine —— 桌面入口（cmd/mcp-hub-desktop）用的是同一个引擎，
-// 两条路线的业务行为因此不会有第二份实现。
+// 装配细节都在 internal/engine，桌面入口用的是同一个引擎。
 func newServeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -108,9 +105,7 @@ func runServe() int {
 
 // dataDir 是命令行形态下的数据目录：进程的当前工作目录。
 //
-// 桌面形态用的是系统的应用数据目录（见 cmd/mcp-hub-desktop），
-// 这个差别是两种形态唯一"数据放哪"的分歧点，所以由入口回答，
-// 不写死在 store 里。
+// 桌面形态用系统应用数据目录；这个差别由入口回答，不写死在 store 里。
 func dataDir() string {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -123,9 +118,8 @@ func printBanner(info engine.Info, svc *hub.Service) {
 	snap := svc.Registry().Current()
 
 	fmt.Printf("\n  MCP Hub 已就绪\n\n")
-	// 界面放在第一行：这是绝大多数人真正要点的东西，其余是给客户端和
-	// 运维用的。没内嵌界面时这一行整行不出现——打一个点开就是 404 的
-	// 地址比不打更糟，它会把"没构建前端"误报成"服务坏了"。
+	// 界面放在第一行：绝大多数人真正要点的东西。没内嵌界面时整行不出现，
+	// 一个点开就是 404 的地址会把"没构建前端"误报成"服务坏了"。
 	if info.UIEmbedded {
 		fmt.Printf("  管理界面   %s\n", info.UIURL)
 	}
@@ -147,8 +141,7 @@ func printBanner(info engine.Info, svc *hub.Service) {
 	}
 
 	if !info.UIEmbedded {
-		// 说清楚"这不是故障，是构建方式"：纯 API 部署本来就该是这样，
-		// 而想用界面的人需要一个能照抄的命令。
+		// 说清楚"这不是故障，是构建方式"，并给出能照抄的命令。
 		fmt.Printf("  这个二进制没有内嵌管理界面（构建时未执行 make ui）。\n")
 		fmt.Printf("  接口不受影响：/api 与 /mcp 均正常工作。带上界面请执行:\n")
 		fmt.Printf("      make ui && make build\n\n")

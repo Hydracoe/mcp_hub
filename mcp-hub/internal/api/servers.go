@@ -18,9 +18,7 @@ import (
 )
 
 // probeResponse 是一次探活的诊断结果。
-//
-// 直接内嵌 ProbeResult：探活结果本就是给用户看的诊断信息，
-// 在中间再抄一层字段，只会让它和 CLI 的输出慢慢漂移。
+// 直接内嵌 ProbeResult，避免中间再抄一层字段导致与 CLI 输出漂移。
 type probeResponse struct {
 	*downstream.ProbeResult
 
@@ -49,11 +47,9 @@ type serverWriteResponse struct {
 	serverDetail
 	// Probe 仅在请求要求探活时出现。
 	Probe *probeResponse `json:"probe,omitempty"`
-	// Suggested 是新建时返回的分类候选（自动归类，PRD §4.7.3）。
+	// Suggested 是新建时返回的分类候选（自动归类）。
 	Suggested []retrieval.SuggestedCategory `json:"suggestedCategories,omitempty"`
 }
-
-// --- 列表与详情 ---
 
 func (a *API) handleListServers(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -122,10 +118,8 @@ func (a *API) detail(ctx context.Context, id string) (serverDetail, error) {
 		}
 	}
 
-	// 快照里查得到对外名的，才是此刻真正暴露的工具；可用性同样取自快照，
-	// 与 AI 客户端看到的那一份保持同源。
-	// 快照的 entries 现在也含未启用的工具，
-	// 所以必须看 Enabled，而不是"在 entries 里出现过"。
+	// 对外名与可用性都取自快照，与 AI 客户端同源；
+	// 快照含未启用工具，必须看 Enabled 而不是“出现过”。
 	snap := a.svc.Registry().Current()
 	exposed := make(map[string]bool)
 	available := make(map[string]bool)
@@ -170,10 +164,8 @@ func (a *API) drainingMap() map[string]*pool.DrainingInfo {
 	return out
 }
 
-// keyStatsMap 从密钥池取各 server 的密钥概况，键为 serverId。
-//
-// 只读密钥池的运行态而不再查一次库：列表页对每个 server 各查一次密钥
-// 是典型的 N+1，而密钥池里本来就有这份数据的实时版本。
+// keyStatsMap 从密钥池取各 server 的密钥概况。
+// 只读运行态而不再查库，避免列表页按 server 逐个查询造成 N+1。
 func (a *API) keyStatsMap() map[string]keyStats {
 	all := a.svc.AllKeyStatuses()
 	out := make(map[string]keyStats, len(all))
@@ -209,9 +201,7 @@ func summarizeKeys(list []downstream.KeyStatus) keyStats {
 }
 
 // exposedCounts 从聚合快照取各 server 实际暴露的工具数。
-//
-// 快照里只有已启用的 server，因此被禁用的会缺省为 0——
-// 这正是"它此刻没有对外提供任何工具"的正确表达。
+// 快照里只有已启用的 server，被禁用的缺省为 0。
 func (a *API) exposedCounts() map[string]int {
 	snap := a.svc.Registry().Current()
 	out := make(map[string]int)
@@ -220,8 +210,6 @@ func (a *API) exposedCounts() map[string]int {
 	}
 	return out
 }
-
-// --- 增删改 ---
 
 func (a *API) handleCreateServer(c *gin.Context) {
 	var req serverRequest
@@ -232,9 +220,7 @@ func (a *API) handleCreateServer(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// 默认拒绝重复的 key：POST 的语义是"创建"，键已存在时报 409
-	// 比悄悄覆盖更清楚——否则用户会以为自己新建了一个 server，
-	// 而实际上某个正在服务的下游被改了配置。
+	// 默认拒绝重复的 key：POST 的语义是创建，键已存在时报 409 比悄悄覆盖更清楚。
 	existing, err := a.svc.Store().Servers.GetByKey(ctx, strings.TrimSpace(req.Key))
 	keyTaken := err == nil
 	switch {
@@ -245,17 +231,15 @@ func (a *API) handleCreateServer(c *gin.Context) {
 					" 更新它，或在 URL 上加 ?upsert=1 表示接受覆盖")
 			return
 		}
-		// 覆盖写已有 key 是更新：请求没带分类就沿用原分类（服务层按
-		// "这条记录已有分类"处理），既不会被抹掉，也不会凭空造一个。
+		// 覆盖写已有 key 是更新：请求没带分类就沿用原分类。
 	case !errors.Is(err, storeutil.ErrNotFound):
 		failFor(c, err)
 		return
 	}
 
-	// 覆盖写命中已有行时，把它交给 toConfig 作为 prev：headers / env
-	// 的"没带就沿用"、enabled / autoEnable 的"没带就保留原值"以及
-	// 原 ID 都依赖它。少了这一步，一次只改 URL 的 upsert 会把凭据、
-	// 环境变量和启停状态一起清掉。
+	// 覆盖写命中已有行时，把它作为 toConfig 的 prev：headers / env 的
+	// “没带就沿用”、enabled / autoEnable 的“没带就保留原值”以及原 ID 都依赖它。
+	// 少了这一步，一次只改 URL 的 upsert 会清掉凭据、环境变量和启停状态。
 	var prev *servers.Server
 	if keyTaken {
 		prev = &existing
@@ -266,13 +250,10 @@ func (a *API) handleCreateServer(c *gin.Context) {
 		return
 	}
 
-	// 新建必须确定分类（PRD §4.7.3）：分类是工具名前缀段与检索组织
-	// 与语义检索语料的来源，"未分类"的工具在语义组织上是缺席的。
-	// 嵌入启用时允许不带分类创建——服务层会用自动归类补上（过阈值才应用），
-	// 补不上会带候选列表报错，让界面引导用户选；嵌入禁用则无处可补，直接 400。
-	// 显式给了分类还必须真实存在，否则 category_id 会留下悬空引用
-	// ——界面上显示成一行空白分类。
-	// 覆盖写已有 key 是更新，不受"新建必须给分类"这条约束。
+	// 新建必须确定分类：它是工具名前缀段与检索组织/语料的来源。
+	// 嵌入启用时可自动归类补上（过阈值才应用），补不上会带候选报错；
+	// 嵌入禁用则无处可补，直接 400。显式分类必须真实存在，否则留下悬空引用。
+	// 覆盖写已有 key 是更新，不受此约束。
 	if !keyTaken && cfg.CategoryID == "" && a.svc.Embed() == nil {
 		failFor(c, badRequest("新建 server 必须指定分类"))
 		return
@@ -370,8 +351,7 @@ func (a *API) handleEnableServer(enabled bool) gin.HandlerFunc {
 			return
 		}
 
-		// 回读一次并把新状态带回去：界面点完开关要立刻更新这一行，
-		// 不必为了拿状态再发一个请求。
+		// 回读一次并把新状态带回去，界面点完开关无需再发 GET。
 		detail, err := a.detail(ctx, id)
 		if err != nil {
 			failFor(c, err)
@@ -380,8 +360,6 @@ func (a *API) handleEnableServer(enabled bool) gin.HandlerFunc {
 		c.JSON(http.StatusOK, serverWriteResponse{serverDetail: detail})
 	}
 }
-
-// --- 连通性测试 ---
 
 func (a *API) handleTestServer(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -442,11 +420,7 @@ func (a *API) handleRefreshTools(c *gin.Context) {
 }
 
 // handleProbeServer 对「尚未创建」的配置做一次干跑探活（L1–L3 + tools/list）。
-//
-// 新增向导要先拿到下游的工具清单，让用户勾选哪些对外暴露；此时配置
-// 还没有落库，不能走「先创建再探活」——失败还得回滚。Prober 每次
-// 新建连接、用完即弃，正好适合对请求体里的 Spec 直接试：不写库、
-// 不动聚合快照，探活失败只是这次试的结果，不留下任何痕迹。
+// Prober 每次新建连接、用完即弃：不写库、不动聚合快照，失败不留痕迹。
 func (a *API) handleProbeServer(c *gin.Context) {
 	var req serverRequest
 	if err := bindJSON(c, &req); err != nil {

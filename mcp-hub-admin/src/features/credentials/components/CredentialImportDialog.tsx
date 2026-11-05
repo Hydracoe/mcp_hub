@@ -28,7 +28,7 @@ interface Props {
 }
 
 /** 批量粘贴密钥。不显示 serverKey（归属由页面 ServerPicker 表明）；
- *  补上「一行一把」的格式示例与 header 展开预览，密钥一次性贴错只能重来。 */
+ *  密钥贴错只能重来，所以要给出「一行一把」示例与 header 展开预览。 */
 export function CredentialImportDialog({ open, onOpenChange, mutations }: Props) {
   const [raw, setRaw] = useState('')
   const [scheme, setScheme] = useState<Scheme>('bearer')
@@ -82,7 +82,7 @@ export function CredentialImportDialog({ open, onOpenChange, mutations }: Props)
       title="批量导入密钥"
       description="每行一把：label=value 或直接 value；下方预览它的 header 展开方式"
       pending={mutations.importLines.isPending}
-      /* 提交按钮要额外受「已识别的行是否合法」约束，所以整块替换。 */
+      /* 提交按钮还要受「已识别的行是否合法」约束，所以整块替换。 */
       footerEnd={
         <Button
           variant="primary"

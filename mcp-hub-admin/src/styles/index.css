@@ -10,8 +10,7 @@
 @import './apple-ui.css';
 @import './icons.css';
 
-/* 主题映射：把语义令牌暴露成 Tailwind 颜色 / 圆角 / 字体工具类。
-   inline 表示原样输出 var()，令牌改值时工具类自动跟随。 */
+/* 主题映射：把语义令牌暴露成 Tailwind 工具类；inline 表示原样输出 var()，令牌改值时自动跟随。 */
 @theme inline {
   --color-background: var(--apple-background);
   --color-foreground: var(--apple-foreground);

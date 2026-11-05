@@ -82,12 +82,10 @@ export function ServerDetailPage() {
       }
     >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* 左：编辑表单 */}
         <div className="lg:col-span-2 min-w-0">
           <ServerForm form={form} setForm={setForm} categories={categories} />
         </div>
 
-        {/* 右：sticky 面板 */}
         <div className="lg:col-span-1 min-w-0">
           <div className="sticky-panel space-y-4">
             <ProbePanel probe={probe} testing={pending.test} onTest={handleTest} />
@@ -103,7 +101,6 @@ export function ServerDetailPage() {
         </div>
       </div>
 
-      {/* 全宽区块：工具清单 + 变更记录 + 密钥池摘要 */}
       <div className="mt-6 space-y-6">
         <ToolsInventory server={server} />
         <ToolChangesCard serverId={server.id} />

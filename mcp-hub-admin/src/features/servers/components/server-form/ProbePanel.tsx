@@ -14,8 +14,7 @@ interface Props {
   sigStale: boolean
 }
 
-/** 探活状态机的外观：未探活 / 探活中 / 成功（含勾选）/ 失败（含兜底开关），
- *  四态各自提前 return。 */
+/** 探活状态机的外观：未探活 / 探活中 / 成功（含勾选）/ 失败（含兜底开关），四态各自提前 return。 */
 export function ProbePanel({ f, set, onProbe, sigStale }: Props) {
   const selectedCount = countSelectedTools(f)
 

@@ -2,10 +2,8 @@ package httpd
 
 import "net"
 
-// IsUnbound 判断地址是否"还没 bind"。
-//
-// 这两种都算：以冒号开头（如 :9090，配置值原样返回）和端口为 0（系统分配）。
-// Start 之前 Server.Addr() 就处于这两种状态，调用方据此判断能否对外展示地址。
+// IsUnbound 判断地址是否"还没 bind"：以冒号开头（如 :9090）或端口为 0（系统分配）。
+// Start 之前 Server.Addr() 处于这两种状态，调用方据此判断能否对外展示地址。
 func IsUnbound(addr string) bool {
 	if addr == "" {
 		return true

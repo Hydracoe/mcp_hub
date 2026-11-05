@@ -1,16 +1,8 @@
-// Package cache 是缓存抽象层。
+// Package cache 是缓存抽象层：接口停在“字节 + TTL + 前缀删除”，换后端不改调用方。
 //
-// 生产的唯一实现是 Redis（redis.go）；测试用的进程内假实现见 cachetest。
-// 接口刻意停在"字节 + TTL + 前缀删除"这一层，不暴露任何单一
-// 后端的假设，换实现不改调用方。
-//
-// 接 Redis 时需要满足的语义（写在这里是为了换实现时不用回头翻代码）：
-//   - Set 的 ttl > 0 必须真的过期；ttl <= 0 表示不设过期。
-//   - DeletePrefix 要删掉所有以该前缀开头的 key。Redis 侧用
-//     SCAN MATCH <prefix>* + 分批 DEL，别用 KEYS。
-//   - 所有方法并发安全，且允许多进程同时读写同一份 key——
-//     也就是说 DeletePrefix 之后，另一个进程可能立刻写回旧值。
-//     调用方不能把"删了就一定读到新值"当成跨进程的保证。
+// Store 契约：ttl > 0 必须真的过期（<= 0 不过期）；DeletePrefix 删掉所有前缀匹配的 key
+// （Redis 用 SCAN MATCH + 分批 DEL，禁用 KEYS）；所有方法并发安全，且多进程读写同一 key 时
+// Invalidate 后另一进程可能立刻写回旧值，调用方不能把“删了就一定读到新值”当跨进程保证。
 package cache
 
 import (
@@ -40,18 +32,15 @@ type Store interface {
 	Close() error
 }
 
-// Typed 给一个 Store 加上"key 前缀 + 值类型"两件事。
-//
-// 前缀不是可选的好习惯：缓存 key 会跨模块重名，而重名导致的
-// 类型不匹配（把 server 列表解码成调用统计）会以一种很难回溯的
-// 方式失败——解码报错被当成"未命中"，于是缓存看起来只是"总也不命中"。
+// Typed 给一个 Store 加上“key 前缀 + 值类型”。
+// 前缀不是可选的好习惯：跨模块重名会让 server 列表被解码成调用统计，
+// 解码失败被当成“未命中”，表现为缓存总也不命中。
 type Typed[T any] struct {
 	store  Store
 	prefix string
 
 	// 分片锁：同一 key 的并发回源只放一个进去。
-	// 用固定条数的锁而不是 map[key]*Mutex——后者要为无界的 key
-	// 集合维护一张同样无界的锁表。
+	// 用固定条数的锁而不是 map[key]*Mutex，避免维护无界的锁表。
 	locks [lockStripes]sync.Mutex
 }
 
@@ -91,9 +80,7 @@ func (t *Typed[T]) Set(ctx context.Context, key string, value T, ttl time.Durati
 }
 
 // GetOrLoad 先查缓存，未命中则调用 load 回源并写入。
-//
-// 同一个 key 上的并发回源会被串行化：否则一个冷 key 在高并发下
-// 会让 N 个请求同时打向数据库，缓存反而放大了压力。
+// 同一 key 上的并发回源会被串行化，避免冷 key 让 N 个请求同时打向数据库。
 func (t *Typed[T]) GetOrLoad(
 	ctx context.Context,
 	key string,
@@ -114,8 +101,7 @@ func (t *Typed[T]) GetOrLoad(
 
 	v, err := load(ctx)
 	if err != nil {
-		// 回源失败不写缓存。把一次瞬时故障固化成一个 TTL 那么长的
-		// 持续故障，是缓存最常见的自我伤害方式。
+		// 回源失败不写缓存，否则一次瞬时故障会被固化成一个 TTL 那么长的持续故障。
 		return v, err
 	}
 	// 写失败只是让下次继续回源，不该把已经拿到的数据丢掉。

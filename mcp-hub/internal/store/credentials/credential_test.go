@@ -8,7 +8,7 @@ import (
 )
 
 // 本文件只留需要未导出符号的白盒用例（credentialRow → Credential）；
-// 枚举归位与持久态→运行态映射等只走导出 API 的用例在 ../tests 黑盒目录。
+// 只走导出 API 的用例在 ../tests 黑盒目录。
 
 // TestCredentialRowStateConversion 行 → 领域：state 为空的老行读出来是 active，
 // 判决信息（kind / 时间 / 说明）与状态一起还原。

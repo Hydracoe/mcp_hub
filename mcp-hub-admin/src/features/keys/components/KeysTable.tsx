@@ -18,7 +18,6 @@ type Mutations = ReturnType<typeof useApiKeyMutations>
 interface KeysTableProps {
   items: ApiKeyView[]
   mutations: Mutations
-  /** 外壳、状态位与页脚统一交给 TableFrame。 */
   frame?: Omit<TableFrameProps, 'head' | 'colCount' | 'children'>
 }
 

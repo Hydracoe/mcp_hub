@@ -12,7 +12,7 @@ export interface FilterChipsProps<T extends string> {
   value: T
   options: readonly FilterChipOption<T>[]
   onChange: (value: T) => void
-  /** `sm`（默认）用于列表页工具条；`md` 高度顶到 32px，用于和 Select/输入同排的表单条件行。 */
+  /** `sm`（默认）用于列表页工具条；`md` 高 32px，与 Select/输入同排。 */
   size?: 'sm' | 'md'
   className?: string
 }

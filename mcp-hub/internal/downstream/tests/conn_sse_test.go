@@ -14,11 +14,8 @@ import (
 )
 
 // TestConnSSEDialUsesCredentialFromContext 复现密钥池模式下的 SSE 握手。
-//
-// 密钥池按调用把凭据放在 ctx 上（WithCredentialHeaders），Conn 自身的 headers
-// 为空。SSE 的 Start 就是握手：它用 Start 传入的 ctx 去取凭据。若 Start 只拿到
-// 不带凭据的 lifeCtx，握手会裸奔并收到 401——而在池子看来，这 401 是"这把密钥
-// 无效"，会把刚选中、本来有效的那把弃用。
+// 密钥池按调用把凭据放在 ctx 上（WithCredentialHeaders），Conn 自身 headers 为空，
+// SSE 的 Start 即握手。若 Start 只拿到不带凭据的 lifeCtx，会 401，池子会把有效密钥弃用。
 func TestConnSSEDialUsesCredentialFromContext(t *testing.T) {
 	mcpSrv := mcpserver.NewMCPServer("sse-fake", "1.0.0", mcpserver.WithToolCapabilities(false))
 	mcpSrv.AddTool(mcp.NewTool("ping", mcp.WithDescription("ping")),

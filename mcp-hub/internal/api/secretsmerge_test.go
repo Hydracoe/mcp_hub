@@ -9,16 +9,9 @@ import (
 	"github.com/hydra/mcp-hub/internal/httpd"
 )
 
-// 这组用例钉住请求体里 headers / env 这两组密钥字典的三态语义：
-//
-//	没带这个字段 → 这次不动，沿用原值
-//	显式给了空   → 清空
-//	给了非空     → 整体替换，值为 *** 的按原值还原
-//
-// 背景：过去"空 map"被当成"把这些密钥全清掉"，于是任何没带 headers 的
-// 保存都会把已有凭据悄悄抹掉——界面上看不出异常，直到下游开始返回 401。
-// 三态与 categoryId 同一套语义：清空必须是明写的意图，不能是"忘了带"的
-// 副作用。
+// 这组用例钉住 headers / env 的三态语义：
+// 没带 = 沿用原值；显式给空 = 清空；非空 = 整体替换，值为 *** 的按原值还原。
+// 清空必须是明写的意图，不能是“忘了带”的副作用。
 
 // 建一个带凭据的 server，返回它的 id。
 func mustServerWithSecrets(t *testing.T, e *env, key string) string {
@@ -38,9 +31,7 @@ func mustServerWithSecrets(t *testing.T, e *env, key string) string {
 }
 
 // 编辑请求不带 headers / env：已有密钥必须原样留下。
-//
-// "没提"不等于"清空"：请求体没带的字段应沿用旧值（分类与凭据掩码都是
-// 这个规矩）。少了这个区分，一次只改了别处的保存就会把凭据抹掉。
+// “没提”不等于“清空”，请求体没带的字段应沿用旧值。
 func TestUpdateServerKeepsHeadersAndEnvWhenOmitted(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	id := mustServerWithSecrets(t, e, "keep")

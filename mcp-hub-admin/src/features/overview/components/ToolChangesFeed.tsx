@@ -43,11 +43,8 @@ function ChangeRow({ item }: { item: ToolChangeItem }) {
 }
 
 /**
- * 上游工具变更流水。
- *
- * 探活每轮都会按名对账，变更本身是自动生效的（描述/schema 就地刷新、
- * 删除即摘除），这张表的作用是让「上游悄悄改了什么」可见——出问题时
- * 第一眼就能看到是不是上游动过。
+ * 上游工具变更流水。探活每轮按名对账，变更自动生效（描述/schema 就地刷新、删除即摘除）；
+ * 这张表让「上游悄悄改了什么」可见。
  */
 export function ToolChangesFeed({ limit = 8 }: { limit?: number }) {
   const { data, isLoading, isError, error } = useToolChanges({ limit })

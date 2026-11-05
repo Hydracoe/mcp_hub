@@ -1,7 +1,5 @@
--- 工具级管控：
--- 1) 新探活发现的工具默认禁用，必须经人工启用才进入聚合端点。
---    已有行保持 enabled=1：它们是此前已经对外提供过的工具，
---    升级不该把线上能力悄悄关掉。
+-- 工具级管控：新探活发现的工具默认禁用，必须经人工启用才进入聚合端点。
+-- ALTER COLUMN SET DEFAULT 不影响存量行：已有行保持 enabled=1，升级不该把线上能力悄悄关掉。
 ALTER TABLE tools ALTER COLUMN enabled SET DEFAULT 0;
 
 -- 2) 工具变更记录：探活对账（added/removed/updated）与人工启停

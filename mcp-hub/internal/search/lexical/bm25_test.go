@@ -99,4 +99,3 @@ func TestBM25StableOnTie(t *testing.T) {
 		}
 	}
 }
-

@@ -4,11 +4,9 @@ import { useSearchParams } from 'react-router-dom'
 /** 列表查询状态（搜索/筛选/排序/分页）挂在 URL 上：状态要能被复制、后退、刷新不丢；
  *  放全局 store 会让用户跳回时带着自己不记得的筛选。纯函数部分在同级的 `../list-utils`。 */
 export interface ListQueryState {
-  /** 全文搜索词。 */
   q: string
   /** 状态 / 分类这类单值筛选。 */
   filter: string
-  /** 排序字段。 */
   sort: string
   /** 排序方向。1 升序，-1 降序。 */
   dir: 1 | -1

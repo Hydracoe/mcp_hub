@@ -17,7 +17,6 @@ export interface FormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: ReactNode
-  /** 标题左侧图标，给了就渲染。 */
   icon?: IconName
   description?: ReactNode
   size?: 'sm' | 'default' | 'lg' | 'xl'
@@ -25,8 +24,8 @@ export interface FormDialogProps {
   pending?: boolean
   submitText?: string
   cancelText?: string
-  /** 不渲染「取消」。用于一次性的交付 / 结果页——那时关掉弹框
-   *  不是"放弃操作"，留个取消按钮只会让人以为还能反悔。 */
+  /** 不渲染「取消」。用于一次性的交付 / 结果页：此时关掉弹框不是“放弃操作”，
+   *  留取消按钮只会让人以为还能反悔。 */
   hideCancel?: boolean
   /** 不传就没有页脚（只读查看类弹框）。 */
   onSubmit?: () => void
@@ -40,7 +39,7 @@ export interface FormDialogProps {
   children: ReactNode
 }
 
-/** 表单弹框模板。页面只给「标题 + 正文 + 提交动作」，
+/** 表单弹框模板：标题 + 正文 + 提交动作，
  *  结构固定为 Header → Body → Footer（次要靠左、主操作靠右）。 */
 export function FormDialog({
   open,

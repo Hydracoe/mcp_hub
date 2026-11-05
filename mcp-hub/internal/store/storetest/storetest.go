@@ -1,17 +1,6 @@
-// Package storetest 为测试提供一次性的数据库。
-//
-// 两种后端都支持，由 MCP_HUB_TEST_DRIVER 选择（默认 postgres）：
-//
-//	postgres 在测试服务端新建一个唯一命名的库，用完 DROP。
-//	         服务端取自 MCP_HUB_TEST_DSN，缺省用 docker-compose 的默认值。
-//	         DSN 必须指向一个有权 CREATE DATABASE 的管理库。
-//	sqlite   在 t.TempDir() 下建一个文件库，随用例结束被删。
-//	         不需要任何外部依赖——开发机上没起 Docker 也能跑全量测试。
-//
-// 两者都天然支持 t.Parallel 与跨包并发：互不共享文件/库名。
-//
-// 调用方照旧 `store.Open(storetest.DSN(t))` 即可：SQLite 的文件路径
-// 会被 store 当成路径解析（见 store.ResolveDialect），不需要额外参数。
+// Package storetest 为测试提供一次性的数据库，后端由 MCP_HUB_TEST_DRIVER 选择（默认 postgres）。
+// postgres 新建唯一命名的库、用完 DROP（MCP_HUB_TEST_DSN 需有 CREATE DATABASE 权限）；sqlite 在 t.TempDir() 下建文件库。
+// 两者都天然支持 t.Parallel 与跨包并发；调用方用 store.Open(storetest.DSN(t))。
 package storetest
 
 import (
@@ -27,14 +16,12 @@ import (
 	"testing"
 	"time"
 
-	// gorm.io/driver/postgres 内部 import 了 pgx stdlib，其 init 会向
-	// database/sql 注册 "pgx" 驱动。借道 gorm 注册即可，无需让 pgx
-	// 成为本模块的直接依赖（go.mod 中保持 indirect）。
+	// gorm.io/driver/postgres 内部 import 了 pgx stdlib，其 init 会向 database/sql
+	// 注册 "pgx" 驱动。借道 gorm 注册即可，pgx 在 go.mod 中保持 indirect。
 	_ "gorm.io/driver/postgres"
 )
 
-// 后端名。与 store 包的取值一致——刻意的重复：这是测试基建，
-// 不该让被测包成为它的编译期依赖方向。
+// 后端名。与 store 包的取值一致；测试基建不该让被测包成为编译期依赖方向。
 const (
 	DriverPostgres = "postgres"
 	DriverSQLite   = "sqlite"
@@ -47,8 +34,7 @@ const EnvDriver = "MCP_HUB_TEST_DRIVER"
 // It matches the postgres service in the top-level docker-compose.yml.
 const fallbackDSN = "postgres://mcphub:mcphub@127.0.0.1:5432/postgres?sslmode=disable"
 
-// Driver 返回本次测试使用的后端名。未设置时用 postgres，
-// 与既有行为一致——CI 上"默认跑最严格的那个"。
+// Driver 返回本次测试使用的后端名。未设置时用 postgres——CI 上默认跑最严格的那个。
 func Driver() string {
 	switch d := strings.ToLower(strings.TrimSpace(os.Getenv(EnvDriver))); d {
 	case DriverSQLite:
@@ -56,8 +42,8 @@ func Driver() string {
 	case DriverPostgres, "":
 		return DriverPostgres
 	default:
-		// 认不出来的值不猜：当 postgres 处理，让连接错误暴露在
-		// 第一个用例里，而不是静默换后端把方言差异藏起来。
+		// 认不出来的值不猜：当 postgres 处理，让连接错误暴露在第一个用例里，
+		// 而不是静默换后端把方言差异藏起来。
 		return DriverPostgres
 	}
 }

@@ -7,11 +7,7 @@ import (
 )
 
 // 这一组用例守的是聚合装载里最靠近实现的一层：schema 的兜底与降级。
-// 它们直接调包内纯函数（normalizeSchema / maxSchemaBytes），因此留在本包
-// 做白盒测试；走导出 API 的用例（路由、重名取舍、顺序抖动）在 ../tests
-// 黑盒目录。
-
-// --- T12：schema 兜底与降级 -------------------------------------------------
+// 直接调包内纯函数（normalizeSchema / maxSchemaBytes），因此放在本包做白盒测试。
 
 // 超大 schema 降级为提示性描述：宁可少信息也不撑爆 AI 的上下文。
 func TestNormalizeSchemaDowngradesOversized(t *testing.T) {

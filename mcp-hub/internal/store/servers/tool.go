@@ -76,15 +76,10 @@ func (s *Store) listTools(ctx context.Context, serverID, orderBy string) ([]Tool
 	return out, nil
 }
 
-// pendingEnableCond 是"探活新发现、默认禁用、从未被人工碰过"的判据。
-//
-// 判断依据是 tool_changes 里没有该工具的人工记录：人工启用或人工禁用过
-// 一次，就视为已有决定，不再计入告警。
-// （边界：上游删了同名工具再重新加回来，旧的人工记录仍会让新工具免于
-// 告警——发生概率低，误报的代价远小于漏报。）
-//
-// 抽成常量而不是各写一遍：计数与明细两条查询必须同一个判据，
-// 否则"卡片说有 3 个、点进去只有 2 个"这种对不上会一直有人报。
+// pendingEnableCond 是"探活新发现、默认禁用、从未被人工碰过"的判据：
+// tool_changes 里没有该工具的人工记录，有记录即视为已有决定，不再计入告警。
+// 边界：上游删了同名工具再重新加回来，旧的人工记录仍会让新工具免于告警。
+// 计数与明细两条查询必须共用此判据，否则"卡片说有 3 个、点进去只有 2 个"会对不上。
 const pendingEnableCond = `t.enabled = 0
 	AND NOT EXISTS (
 		SELECT 1 FROM tool_changes c
@@ -109,9 +104,7 @@ func (s *Store) CountPendingEnable(ctx context.Context) (int64, error) {
 func PendingKey(serverID, toolName string) string { return serverID + "\x00" + toolName }
 
 // PendingEnableKeys 返回待人工决定的工具集合，供 /api/tools 逐条打标。
-//
-// 与 CountPendingEnable 同一判据，保证"概览里的数字"与"工具页筛出来的
-// 条数"永远一致。
+// 与 CountPendingEnable 同一判据，保证"概览里的数字"与"工具页筛出来的条数"一致。
 func (s *Store) PendingEnableKeys(ctx context.Context) (map[string]bool, error) {
 	var rows []struct {
 		ServerID string `gorm:"column:server_id"`

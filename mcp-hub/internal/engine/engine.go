@@ -1,16 +1,6 @@
-// Package engine 是网关的装配根：把配置、存储、缓存、业务服务与 HTTP
-// 端点组装成一个可启动 / 可停止的实例。
-//
-// 它存在的理由是把"怎么跑"和"跑在什么形态里"分开：
-//
-//	cmd/mcp-hub           命令行 / 服务端形态 —— 起引擎，等信号，退出
-//	cmd/mcp-hub-desktop   桌面形态         —— 起引擎，让窗口指过去，关窗时停
-//
-// 两个入口的差别只在"谁来驱动生命周期"和"前端资源从哪来"，
-// 装配顺序、探活、优雅退出这些一律在这里，不重复第二遍。
-//
-// 本包是**装配层**：它可以 import 任何内部包，反过来任何内部包都不该
-// import 它。业务代码（hub / httpd / api）不认识 engine，也不该认识。
+// Package engine 是网关的装配根：把配置、存储、缓存、业务服务与 HTTP 端点组装成
+// 可启动 / 可停止的实例；生命周期由入口（命令行 / 桌面）驱动，装配只在这里做一遍。
+// 本包是装配层：它可以 import 任何内部包，反过来任何内部包都不该 import 它。
 package engine
 
 import (
@@ -36,9 +26,7 @@ import (
 )
 
 // shutdownTimeout 是优雅关闭的等待上限。
-//
-// 关窗 / Ctrl-C 之后必须走完这条路径，否则引擎拉起的 stdio 子进程
-// 会变成孤儿进程一直挂在系统里。
+// 关窗 / Ctrl-C 后必须走完这条路径，否则引擎拉起的 stdio 子进程会变成孤儿进程。
 const shutdownTimeout = 10 * time.Second
 
 // Options 是装配参数。
@@ -60,9 +48,7 @@ type Options struct {
 }
 
 // Info 是启动完成后可以对外展示的运行事实。
-//
-// 它刻意是值类型：命令行用它打启动横幅，桌面端用它把地址告诉窗口，
-// 两边都只是"读"，不该再去戳引擎内部。
+// 刻意是值类型：入口只“读”，不该再去戳引擎内部。
 type Info struct {
 	// Addr 是实际监听地址（端口为 0 时这里是系统分配后的真实端口）。
 	Addr string
@@ -77,10 +63,8 @@ type Info struct {
 	// UIURL 是管理界面的入口地址。UIEmbedded 为 false 时它没有意义。
 	UIURL string
 	// UIEmbedded 表示这个二进制里带没带管理界面。
-	//
-	// 为 false 有两种情形，且都不算错误：产物没被 `make ui` 拷进来，
-	// 或这次部署本来就不需要界面（纯 API / 库形态）。入口据此决定
-	// 要不要在横幅里打这一行——而不是打一个点开就是 404 的地址。
+	// false 有两种情形且都不算错误：产物没被 `make ui` 拷进来，或这次部署不需要界面；
+	// 入口据此决定要不要在横幅里打这一行，而不是打一个点开就 404 的地址。
 	UIEmbedded bool
 
 	// DBDialect 是实际使用的数据库后端（postgres / sqlite）。
@@ -160,12 +144,9 @@ func New(opts Options) (*Engine, error) {
 	e.info.APIKeySet = settings.APIKey != ""
 	e.info.Warnings = settings.Warnings
 
-	// 界面这块资源值不值得挂，判断放在装配层而不是 httpd：
-	// httpd 只该知道"有没有一块静态资源要兜底"，至于"它从哪来、
-	// 是真产物还是占位页"属于部署形态的事。
-	//
-	// 没产物时宁可什么都不挂：挂上去只会得到一张占位页，而 404 至少
-	// 诚实地说"这里没有界面"。真正的诊断信息由入口的横幅给。
+	// 界面挂不挂由装配层判断：httpd 只知道“有没有静态资源要兜底”，
+	// “它从哪来、是真产物还是占位页”属于部署形态。
+	// 没产物时什么都不挂：占位页不如 404 诚实，真正诊断由入口横幅给。
 	e.uiStatic = nil
 	if webassets.Available() {
 		e.uiStatic = webassets.Handler()
@@ -200,9 +181,7 @@ func New(opts Options) (*Engine, error) {
 }
 
 // attachEmbedding 接上向量检索，并在后台补齐向量。
-//
-// 没配 EMBED_API_KEY 时 Embedder() 为 nil，整条向量路径关闭，
-// 检索降级为 bm25——网关照常运行，这是刻意的降级阶梯。
+// 没配 EMBED_API_KEY 时 Embedder() 为 nil，整条向量路径关闭，检索降级为 bm25。
 func (e *Engine) attachEmbedding() {
 	em := retrieval.NewEmbedManager(e.st, e.log, retrieval.EmbedOptions{
 		BaseURL:       e.settings.EmbedBaseURL,
@@ -262,11 +241,8 @@ func (e *Engine) logServerCount() {
 }
 
 // Start 开始对外服务并返回运行信息。
-//
-// 顺序上先开监听、再探活：业务服务在构造时已经从库里装好了上一次的工具
-// 快照，所以端口一开就能给出（可能略旧的）工具列表；而"还在探活"这件事
-// 由 /readyz 表达。反过来先探活再监听，会让 /readyz 在最需要它的那段时间里
-// 根本连不上——桌面端尤其明显：窗口起来却拿不到任何响应。
+// 先开监听、再探活：端口一开就能给出上次的工具快照，而“还在探活”由 /readyz 表达；
+// 反过来先探活再监听，会让 /readyz 在最需要它的时候连不上（桌面端尤其明显）。
 func (e *Engine) Start() (Info, error) {
 	e.mu.Lock()
 	if e.stopped {
@@ -377,9 +353,7 @@ func (e *Engine) Info() Info {
 func (e *Engine) Service() *hub.Service { return e.svc }
 
 // Handler 返回 HTTP 根 handler。
-//
-// 桌面端用它把 /api、/mcp 反代到自己前面那层资产服务器上，
-// 从而在 webview 里保持同源——前端不必改成绝对地址，也不必开 CORS。
+// 桌面端用它把 /api、/mcp 反代到资产服务器上以保持同源，前端不必改用绝对地址、也不必开 CORS。
 func (e *Engine) Handler() http.Handler {
 	e.mu.Lock()
 	srv := e.srv
@@ -391,10 +365,8 @@ func (e *Engine) Handler() http.Handler {
 }
 
 // Stop 优雅停止：停 HTTP、取消后台协程、断开缓存与数据库。可重复调用。
-//
-// 顺序是有讲究的：先停 HTTP（不再接新请求），再取消后台协程
-// （不再发起新的下游调用），最后关业务服务与连接。
-// 业务服务关闭时会等 stdio 子进程退出——这一步不能省。
+// 顺序：先停 HTTP（不再接新请求），再取消后台协程（不再发起新的下游调用），
+// 最后关业务服务与连接；业务服务关闭时会等 stdio 子进程退出，不能省。
 func (e *Engine) Stop(ctx context.Context) error {
 	e.mu.Lock()
 	if e.stopped {

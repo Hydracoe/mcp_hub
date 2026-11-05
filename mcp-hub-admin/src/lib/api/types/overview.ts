@@ -1,19 +1,15 @@
 import type { CredentialState, DisabledKind } from './common'
 
-/* ────────────────────────────── 概览 ────────────────────────────── */
-
 export interface ServerStats {
   total: number
   enabled: number
-  /** 人工停用的 server 数。不参与健康分桶：停用后不再探活，
-   *  status 是停用前的冻结值，数进 healthy/offline 都会失真。 */
+  /** 人工停用的 server 数。停用后不再探活，status 是冻结值，数进 healthy/offline 都会失真。 */
   disabled: number
   healthy: number
   degraded: number
   offline: number
   unknown: number
-  /** 启用中但没有任何启用工具的 server 数（停用期间工具被级联禁用，
-   *  重新启用不自动恢复）——需要人工逐个放行工具或停用 server。 */
+  /** 启用中但没有任何启用工具的 server 数：停用期间工具被级联禁用，重新启用不自动恢复，需人工放行。 */
   enabledNoTools: number
 }
 
@@ -22,11 +18,9 @@ export interface ToolStats {
   total: number
   /** 下游声明的工具总数（工具缓存）。与 total 不等即"有工具没暴露"。 */
   cached?: number
-  /** 缓存里有、但没进聚合列表的：人工禁用或 server 停用。
-   *  后端直接给（cached - total），前端不用自己减。 */
+  /** 缓存里有、但没进聚合列表的（人工禁用或 server 停用），由后端直接给出。 */
   hidden?: number
-  /** 探活新发现、默认禁用、且从未被人工处理过的工具数。
-   *  每一个都在等一个决定（启用或拒绝）——「待人工处理」告警的数据源。 */
+  /** 探活新发现、默认禁用且从未被人工处理过的工具数，是「待人工处理」告警的数据源。 */
   pendingEnable?: number
 }
 

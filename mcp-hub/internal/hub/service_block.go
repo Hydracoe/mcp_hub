@@ -11,7 +11,7 @@ type blockEvent struct {
 	Blocked bool
 	// JustBlocked 表示这次失败刚好跨过阈值（从可调用变为拦截）。
 	JustBlocked bool
-	// Recovered 表示之前被拦截，这次探活成功解除了拦截。
+	// Recovered 表示拦截状态因本次探活成功而解除。
 	Recovered bool
 	// Streak 是当前连续失败次数（成功后为 0）。
 	Streak int
@@ -19,11 +19,9 @@ type blockEvent struct {
 	Reason string
 }
 
-// blockGate 跟踪每个 server 的连续探活失败次数，达到阈值后拦截它的
-// 工具调用。探活本身永不停止——这里只影响"能不能调"，不影响"探不探"。
-//
-// 只存内存：重启即清零（库里的 status=offline 还在，第一次失败就会
-// 重新累计），不值得为它加一列、加一条迁移。
+// blockGate 跟踪每个 server 的连续探活失败次数，达到阈值后拦截其工具调用。
+// 探活本身永不停止，这里只影响"能不能调"，不影响"探不探"。
+// 只存内存：重启即清零，由后续失败重新累计。
 type blockGate struct {
 	// threshold 是拦截阈值：连续失败达到该次数后拦截。
 	// <=0 表示功能关闭，一切探活结果都不影响调用。
@@ -42,7 +40,7 @@ func newBlockGate(threshold int) *blockGate {
 	}
 }
 
-// note 记录一次探活结果（所有落库探活结果都该过这里，包括手动触发）。
+// note 记录一次探活结果；所有落库的探活结果（含手动触发）都应经过这里。
 func (g *blockGate) note(serverID string, ok bool, detail string) blockEvent {
 	if g.threshold <= 0 {
 		return blockEvent{}
@@ -75,8 +73,8 @@ func (g *blockGate) note(serverID string, ok bool, detail string) blockEvent {
 	return ev
 }
 
-// reset 忘掉某个 server 的连败记录。目标换掉时调用：旧地址的失败
-// 不能拿来拦新地址的调用，否则用户改完 URL 仍然要等一次成功探活才解封。
+// reset 清除某个 server 的连败记录。目标地址变更后必须调用：
+// 旧地址的失败不得用于拦截新地址的调用。
 func (g *blockGate) reset(serverID string) {
 	g.mu.Lock()
 	delete(g.streaks, serverID)

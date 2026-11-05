@@ -20,9 +20,8 @@ import (
 )
 
 // fakeClock 让退避与冷却在测试里可被推进。
-//
-// 不注入时钟的话，验证"1s→2s→4s 递增"就得真的睡 7 秒，而一旦真的睡下去，
-// 这些用例会因为慢而被跳过——跳过的恰好是最容易写错的退避逻辑。
+// 不注入时钟的话，验证"1s→2s→4s 递增"得真睡 7 秒，而慢用例会被跳过——
+// 跳过的恰好是最容易写错的退避逻辑。
 type fakeClock struct {
 	mu sync.Mutex
 	t  time.Time
@@ -87,8 +86,7 @@ func acquireOK(t *testing.T, r *downstream.KeyRing) *downstream.KeyLease {
 	return lease
 }
 
-// fakeMCPServer 起一个真实的 MCP server（不是 mock 协议），
-// 这样测试覆盖的是完整协议路径。
+// fakeMCPServer 起一个真实的 MCP server（不是 mock 协议），覆盖完整协议路径。
 func fakeMCPServer(t *testing.T, tools int) *httptest.Server {
 	t.Helper()
 
@@ -116,8 +114,7 @@ func statusServer(t *testing.T, code int) *httptest.Server {
 	return ts
 }
 
-// gatedServer 起一个回 429 的端点，body 里带指定文案——
-// 限流与额度耗尽只能靠它区分。
+// gatedServer 起一个回 429 的端点，body 里带指定文案——限流与额度耗尽只能靠它区分。
 func gatedServer(t *testing.T, body string) *httptest.Server {
 	t.Helper()
 
@@ -130,15 +127,13 @@ func gatedServer(t *testing.T, body string) *httptest.Server {
 	return ts
 }
 
-// --- stdio fixture：现场编译，不把二进制提交进仓库 ---
-
 var (
 	echoOnce sync.Once
 	echoPath string
 	echoErr  error
 )
 
-// echoServerBinary 构建测试用的 stdio MCP server，只构建一次。
+// echoServerBinary 现场编译测试用的 stdio MCP server（不提交二进制），只构建一次。
 func echoServerBinary(t *testing.T) string {
 	t.Helper()
 

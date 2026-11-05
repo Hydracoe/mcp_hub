@@ -44,8 +44,7 @@ func TestHandlerServesRealFiles(t *testing.T) {
 
 // TestHandlerSPAFallback 是这个包存在的理由：前端路由要能刷新。
 //
-// /overview 这类路径在后端没有任何处理器（前端用 HashRouter，
-// 但 history 回退仍要兜住直接访问与旧链接），必须回退到入口页。
+// /overview 这类路径后端没有任何处理器，必须回退到入口页。
 func TestHandlerSPAFallback(t *testing.T) {
 	h := handlerFor(fakeDist())
 
@@ -64,8 +63,7 @@ func TestHandlerSPAFallback(t *testing.T) {
 
 // TestHandlerDirectoryFallsBackToIndex 目录不能泄漏成列表页。
 //
-// fs.Stat 命中了 assets/，但它是目录——若交给 FileServer，得到的是
-// 一份文件清单。这类响应没有任何用处，还会泄漏产物结构。
+// fs.Stat 命中了 assets/ 但它是目录，交给 FileServer 会得到一份文件清单。
 func TestHandlerDirectoryFallsBackToIndex(t *testing.T) {
 	h := handlerFor(fakeDist())
 
@@ -81,8 +79,7 @@ func TestHandlerDirectoryFallsBackToIndex(t *testing.T) {
 
 // TestHandlerIndexNotCached 入口页是资源清单，不能被缓存。
 //
-// 缓存住会让"部署了新版本、浏览器还加载旧 chunk"变成常态——
-// 而带哈希的资源本来就该长缓存，两者是配套的一对。
+// 否则部署新版本后浏览器仍加载旧 chunk；带哈希资源反过来应长缓存。
 func TestHandlerIndexNotCached(t *testing.T) {
 	h := handlerFor(fakeDist())
 
@@ -98,12 +95,8 @@ func TestHandlerIndexNotCached(t *testing.T) {
 
 // TestHandlerHashedAssetsImmutable 带哈希的资源必须长缓存。
 //
-// http.FileServer 自己**不**设 Cache-Control（它只给 Last-Modified 与
-// ETag），光靠回退规则是不够的：少了这一条，每次刷新都会重新验证
-// 十几个 chunk，而这个资源包恰恰是内容寻址、可以一年不校验的。
-//
-// 反过来 dist 根下的 favicon.ico 之类不带哈希，绝不能长缓存——
-// 换了图标却因为缓存不更新，是最容易归错因的那类问题。
+// http.FileServer 自己不设 Cache-Control；少了这一条每次刷新都要重新验证。
+// dist 根下的 favicon.ico 之类不带哈希，绝不能长缓存。
 func TestHandlerHashedAssetsImmutable(t *testing.T) {
 	h := handlerFor(fakeDist())
 
@@ -122,8 +115,8 @@ func TestHandlerHashedAssetsImmutable(t *testing.T) {
 
 // TestHandlerRejectsNonReadMethods 只服务读请求。
 //
-// 挂到 NoRoute 之后，任何未匹配的方法都会走到这里。一个静态服务器
-// 对 POST /whatever 回 200 + HTML，会让客户端以为写成功了。
+// 挂到 NoRoute 后任何未匹配的方法都会走到这里；对 POST 回 200 + HTML
+// 会让客户端误以为写成功。
 func TestHandlerRejectsNonReadMethods(t *testing.T) {
 	h := handlerFor(fakeDist())
 
@@ -145,9 +138,7 @@ func TestHandlerRejectsNonReadMethods(t *testing.T) {
 
 // TestHandlerWithoutIndex 没有入口页时全部 404，而不是空 200。
 //
-// 这是"产物没拷进来"的形态：静默回一个空页面会让排查方向跑偏，
-// 404 至少是诚实的。真实链路上 engine 根本不会挂这个 handler，
-// 但 handler 本身也不该依赖调用方替它把关。
+// 静默回空页面会让排查跑偏；handler 不该依赖调用方替它把关。
 func TestHandlerWithoutIndex(t *testing.T) {
 	h := handlerFor(fstest.MapFS{
 		"assets/index-a1b2c3.js": &fstest.MapFile{Data: []byte("x")},
@@ -162,17 +153,11 @@ func TestHandlerWithoutIndex(t *testing.T) {
 
 // TestEmbeddedDistShape 检查内嵌的 dist/ "要么空，要么是一份完整构建"。
 //
-// 这条用例刻意不去断言"仓库里没有产物"——那是工作树状态，跑过 make ui
-// 就变了，钉它会得到一条"取决于上次谁干了什么"的假测试。真正稳定、
-// 且值得守的不变量是另外两条：
+// 不去断言"仓库里没有产物"——那是会变的工作树状态。守两条不变量：
+// Available() 与 index.html 是否存在一致；有 index.html 就必须有 assets/ 内容。
 //
-//  1. Available() 与 index.html 是否存在必须一致（它是引擎的挂载依据）；
-//  2. 有 index.html 就必须有 assets/ 内容。一份 vite 产物不可能只有
-//     入口页；出现这种形态只可能是有人手工往里塞了个 index.html。
-//
-// 另外顺带守住前端那个 `base: './'`：入口页必须用相对路径引用资源。
-// 这条是跨仓库的契约——改成绝对路径后，子路径反代与 wails:// 资源
-// 服务器都会拿不到 chunk，而现象只是"白屏"，在 Go 侧完全看不出来。
+// 另守住前端 base: './'：入口页必须用相对路径引用资源，否则子路径反代与
+// wails:// 资源服务器都会白屏。
 func TestEmbeddedDistShape(t *testing.T) {
 	_, err := fs.Stat(FS(), "index.html")
 	hasIndex := err == nil

@@ -17,13 +17,11 @@ import { formatPercent, formatRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { ServerSummary } from '@/lib/api/types'
 
-/** 8 列宽表。table-fixed + 每列定宽，避免列宽随排序/翻页换批行而跳动。 */
+/** 8 列宽表：table-fixed + 每列定宽，避免列宽随排序/翻页换批行而跳动。 */
 const COLS = 8
 
-/** 列宽一律用百分比，总和恒为 100%——定宽 px 会让表格在任意窗口都多出一条
- *  永远关不掉的横向滚动条。代价是窄窗口表头被截断（有 overflow 兜底）。
- *  传输列要装下最长的 streamable_http，压缩名称列给它让位；
- *  可见性列只放一个图标，3% 足够。 */
+/** 列宽用百分比、总和 100%：定宽 px 会让表格永远多出一条横向滚动条。
+ *  传输列要装下 streamable_http，压缩名称列给它让位；可见性列只需 3%。 */
 const COL_W = [
   'w-[18%]', // 名称 / Key
   'w-[3%]', // AI 可见性（仅图标）
@@ -37,7 +35,6 @@ const COL_W = [
 
 interface Props {
   rows: ServerSummary[]
-  /** 外壳、状态位与页脚统一交给 TableFrame，页面不再自己包壳。 */
   frame?: Omit<TableFrameProps, 'head' | 'colCount' | 'children'>
   sort: string
   dir: 1 | -1
@@ -107,7 +104,7 @@ function ServerRow({ s, onToggleEnabled, togglingId, onTest, testingId, onOpenTo
         </div>
       </TableCell>
 
-      {/* AI 可见性：启用中但 0 个生效工具时亮 eye-off，hover 说明原因。 */}
+      {/* AI 可见性：启用中但 0 个生效工具时亮 eye-off。 */}
       <TableCell>
         {s.enabled && s.enabledToolCount === 0 ? (
           <Tooltip>
@@ -128,7 +125,7 @@ function ServerRow({ s, onToggleEnabled, togglingId, onTest, testingId, onOpenTo
       </TableCell>
 
       <TableCell>
-        {/* items-start：flex-col 默认 stretch 会把徽标拉满整列宽，看起来像一条长矩形。 */}
+        {/* items-start：flex-col 默认 stretch 会把徽标拉满整列宽。 */}
         <div className="flex flex-col items-start gap-1">
           {disabled ? <StoppedBadge /> : <ServerStatusBadge status={s.status} />}
           {s.draining ? <DrainingBadge inflight={s.drainingInflight} /> : null}

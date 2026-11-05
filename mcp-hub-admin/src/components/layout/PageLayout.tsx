@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 export interface PageLayoutProps {
   title: string
   backTo?: string
-  /** 页面级功能按钮，渲染在内容区顶部而不进导航栏（导航栏只放跨页面稳定元素，否则会变成第二排工具栏）。 */
+  /** 页面级功能按钮，渲染在内容区顶部而不进导航栏（导航栏只放跨页面稳定元素）。 */
   actions?: ReactNode
   version?: string
   /** 内容区容器：默认限宽 1320px；`wide` 用于自带分栏的详情页（1240px）。 */
@@ -17,7 +17,7 @@ export interface PageLayoutProps {
   children: ReactNode
 }
 
-/** 页面骨架：工具栏 + 内容区。标题、版本 chip、连接徽标等跨页面稳定元素收在这里，页面只写内容。 */
+/** 页面骨架：工具栏 + 内容区。标题、版本 chip、连接徽标等跨页面稳定元素收在这里。 */
 export function PageLayout({
   title,
   backTo,

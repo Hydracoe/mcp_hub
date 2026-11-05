@@ -2,7 +2,6 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/common/States'
 
 interface Props {
-  /** 还没选 Server。 */
   noServer: boolean
   /** 该下游走单密钥模式（`keyPool === false`）。 */
   singleKey: boolean

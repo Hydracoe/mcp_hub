@@ -21,8 +21,7 @@ export function useKeyEvents(serverId?: string, enabled = true) {
     queryFn: () => api.listKeyEvents({ serverId, limit: 100 }),
     enabled,
     refetchInterval: POLL.logs,
-    // 后端可能还没有这个端点（404）。
-    // 让它安静失败，由界面降级成「该视图暂未开放」，不要反复重试。
+    // 后端可能还没有此端点（404）：安静失败，由界面降级，不要反复重试。
     retry: false,
   })
 }

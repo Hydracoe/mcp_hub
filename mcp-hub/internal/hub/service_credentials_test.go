@@ -18,17 +18,8 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
-// 凭据试测的回归测试。
-//
-// 批量导入一次可能带来几十把密钥，每把都要试测一次，而试测是真的会连一次
-// 下游。早期实现是"每把密钥起一个 goroutine 去试测"：导入 20 把就是 20 个
-// 探活同时打向下游，既是突发流量（可能触发限流甚至封禁），也让"到底哪一把
-// 出问题"难以分辨。这里的用例盯住三件事：
-//
-//  1. 同时在途的探活数有上限（TestImportCredentialsProbeConcurrencyIsBounded）；
-//  2. 试测失败不牵连整批导入，成功的那几把照样写进库与密钥池
-//     （TestImportCredentialsProbeFailureKeepsBatchIntact）；
-//  3. 单条新增路径的语义没被改坏（TestAddCredentialProbesExactlyOnce）。
+// 凭据试测的回归测试：批量导入每把密钥都要试测一次，且真的会连下游。
+// 重点覆盖：并发探活数有上限、单把试测失败不牵连整批、单条新增只试测一次。
 
 // newCredentialTestSvc 起一套跑得起来的网关（真实库 + 内存缓存），
 // 并返回一个可断言日志的 observer。
@@ -79,15 +70,9 @@ func importSpecs(n int) []CredentialSpec {
 	return out
 }
 
-// 批量导入的试测必须有并发上限。
-//
-// 假探活把每个探活都挂住，直到"这一批全部到位"才放行：
-//   - 不设上限时，8 个探活会同时在途（峰值 8 > 上限），用例失败；
-//   - 设了上限时，最多 credentialTestConcurrency 个能同时进门，其余的
-//     根本进不来，"全部到位"永远凑不齐——只能等试测超时收场。
-//
-// 峰值由假探活自己数（进入时加一、退出时减一，取历史最大值），不靠 sleep
-// 猜并发。
+// 批量导入的试测必须有并发上限。假探活把每个探活挂住，直到整批到位才放行：
+// 设了上限时"全部到位"永远凑不齐，只能等试测超时收场。
+// 峰值由假探活自己计数（进入加一、退出减一，取最大值），不靠 sleep 猜并发。
 func TestImportCredentialsProbeConcurrencyIsBounded(t *testing.T) {
 	const total = 8
 
@@ -260,7 +245,7 @@ func TestImportCredentialsProbeFailureKeepsBatchIntact(t *testing.T) {
 	}
 }
 
-// 单条新增的语义没被改坏：只试测一次，只有一把进池。
+// 单条新增只试测一次，只有一把进池。
 func TestAddCredentialProbesExactlyOnce(t *testing.T) {
 	svc, st, _ := newCredentialTestSvc(t)
 	ctx := context.Background()
@@ -308,17 +293,9 @@ func TestAddCredentialProbesExactlyOnce(t *testing.T) {
 	}
 }
 
-// --- 同值检测与写入之间的竞态 ---
-
-// dupBarrier 是一个"两边都到齐才放行"的同步点。
-//
-// 它存在的理由：同值检测是"先读库判断、再写库"两步，中间没有互斥，
-// 两个并发的同值写入会双双通过检测。用 sleep 制造交错是靠不住的，
-// 必须有一个能同时卡住两个调用的同步点——credCheckedHook 正是写
-// 路径上"检测已过、尚未落库"的那个位置。
-//
-// 到达人数不足时按超时放行：修好之后第二个调用被写锁挡在临界区外，
-// 根本到不了这里，等它等到天亮不如到点就走（用例照样能断言结果）。
+// dupBarrier 是一个"两边都到齐才放行"的同步点，用来卡住两个调用在"检测已过、尚未落库"的位置。
+// 同值检测是"先读库判断、再写库"两步，用 sleep 制造交错靠不住，credCheckedHook 正是那个位置。
+// 到达人数不足时按超时放行，避免第二个调用被写锁挡住后让用例干等。
 type dupBarrier struct {
 	mu      sync.Mutex
 	arrived int
@@ -354,11 +331,7 @@ func (b *dupBarrier) arrive() {
 }
 
 // 并发新增同一份凭据：只能有一个成功，另一个必须被判为重复。
-//
-// 修好之前：两个调用都在"检测已过、尚未落库"的位置被同步点卡住，
-// 一起落库 → 库里两份同值凭据 → 用例失败。
-// 修好之后：写路径进了临界区，第二个调用根本进不来，它会看到第一个
-// 刚写进去的那份并被拒（ErrDuplicateCredential）。
+// 写路径在临界区内完成检测与落库，后到的调用能看到刚写入的那份并被拒。
 func TestAddCredentialConcurrentSameHeadersRejected(t *testing.T) {
 	svc, st, _ := newCredentialTestSvc(t)
 	ctx := context.Background()
@@ -417,9 +390,7 @@ func TestAddCredentialConcurrentSameHeadersRejected(t *testing.T) {
 }
 
 // 并发批量导入同一份凭据：同样只能有一个成功。
-//
-// 批量导入是"同一个 Key 粘两遍"的高发场景，这条路径的同值检测是
-// 内联实现（见 importCredentials），同样必须在临界区内。
+// 批量导入是"同一个 Key 粘两遍"的高发场景，其同值检测同样必须在临界区内。
 func TestImportCredentialsConcurrentSameHeadersRejected(t *testing.T) {
 	svc, st, _ := newCredentialTestSvc(t)
 	ctx := context.Background()

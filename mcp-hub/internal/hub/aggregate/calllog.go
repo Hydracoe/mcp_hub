@@ -39,9 +39,8 @@ func (a *Aggregator) logCall(rec LogRecord) {
 	}
 }
 
-// adviceFor 给出下一步该做什么。
-// 这段文字是 AI 唯一能读到的"该怎么办"，给错比不给更糟：让被限流的调用
-// 去"换个工具"，它会放弃整条路径，而实际等几秒就恢复了。
+// adviceFor 给出下一步该做什么，是 AI 唯一能读到的"该怎么办"：
+// 说错（例如让被限流的调用换工具）会让它放弃整条路径，而实际等几秒就恢复了。
 func adviceFor(kind downstream.ErrorKind) string {
 	switch kind {
 	case downstream.KindNoUsableKey, downstream.KindRateLimited:

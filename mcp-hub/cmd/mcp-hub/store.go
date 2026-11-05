@@ -7,10 +7,8 @@ import (
 
 // openStore 打开数据库，后端按配置项 MCPHUB_DB_DRIVER / 连接串形态推断。
 //
-// add / servers / probe --db 这三个子命令都走它：它们和 serve 读的是
-// 同一份配置，所以"serve 连的是哪个库"与"add 写进哪个库"不可能不一致。
-//
-// dsn 为空时回落到配置项 MCPHUB_DB；SQLite 下再为空则用当前目录的默认库文件。
+// add / servers / probe --db 都走它，与 serve 读同一份配置，保证读写的库一致。
+// dsn 为空时回落到 MCPHUB_DB；SQLite 下再为空则用当前目录的默认库文件。
 func openStore(dsn string) (*store.Store, error) {
 	if dsn == "" {
 		dsn = config.String(config.EnvDB)

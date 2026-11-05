@@ -110,8 +110,8 @@ func TestLogQueryFiltersAndPaginates(t *testing.T) {
 		t.Errorf("按调用方过滤 total = %d, want 2", total)
 	}
 
-	// 匿名走保留值。空串在这里表示"不筛"，所以"只看匿名"必须另有词
-	// 来表达 —— 否则它会被理解成"看全部"，筛出来的东西恰好相反。
+	// 匿名走保留值：空串在这里表示"不筛"，所以"只看匿名"必须另有词来表达，
+	// 否则它会被理解成"看全部"，筛出来的东西恰好相反。
 	got, total, _ = s.List(ctx, logs.LogQuery{APIKeyID: logs.LogCallerAnonymous})
 	if total != 1 || len(got) != 1 || got[0].ExposedName != "two__c" {
 		t.Errorf("筛匿名得到 total=%d logs=%v, want 1/two__c", total, got)
@@ -162,8 +162,6 @@ func TestLogQueryFiltersAndPaginates(t *testing.T) {
 	if _, total, _ = s.List(ctx, logs.LogQuery{Since: base.Add(30 * time.Second)}); total != 2 {
 		t.Errorf("按起始时间过滤 total = %d, want 2", total)
 	}
-
-	// ── 排序 ──
 
 	// 正序：最旧的一条在最前。
 	got, _, _ = s.List(ctx, logs.LogQuery{Order: logs.LogOrderAsc})

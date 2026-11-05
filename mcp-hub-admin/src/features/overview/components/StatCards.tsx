@@ -3,8 +3,7 @@ import { DotStat, MetricCard } from '@/components/common/KeyValue'
 import { formatInt, formatPercent } from '@/lib/format'
 import type { OverviewResponse } from '@/lib/api/types'
 
-/** 顶部指标卡区。四张卡全部取自 useOverview() 的返回值
- *  （ServerStats / ToolStats / CallStats / KeySummary），不用写死的假数字。 */
+/** 顶部指标卡，全部取自 useOverview() 的返回值。 */
 export function StatCards({ overview }: { overview: OverviewResponse }) {
   const { servers, tools, calls, credentials: keys } = overview
 

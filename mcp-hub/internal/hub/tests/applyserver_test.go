@@ -10,11 +10,8 @@ import (
 )
 
 // 改 key 是更新，不是新建。
-//
-// 判据是"这条记录在不在"，不是"这个 key 在不在"：更新路径带着已知的
-// id，改 key 只是同一行换了个前缀。按 key 判新建会把这次更新误判成
-// 新建，于是走新建的分类校验——请求体里没带分类时直接被"新建 server
-// 必须指定分类"挡住，改个 key 就改不动。
+// 判据是"这条记录在不在"，不是"这个 key 在不在"：更新路径带着已知 id，改 key 只是同一行换前缀。
+// 按 key 判新建会误判，进而走新建的分类校验，没带分类就被挡住，改个 key 就改不动。
 func TestApplyServerKeyChangeIsUpdateNotCreate(t *testing.T) {
 	st, svc := openSvc(t)
 	ctx := context.Background()
@@ -109,9 +106,8 @@ func TestApplyServerSameKeyIsNotCreate(t *testing.T) {
 }
 
 // 换目标后，旧探活状态与旧工具缓存必须立刻失效。
-//
-// 旧工具属于另一个端点。继续暴露它们，调用会带着旧工具名打到新下游；
-// 而状态还显示 healthy，会让"改完 URL 看起来就好了"变成假象。
+// 旧工具属于另一个端点，继续暴露会让调用带着旧工具名打到新下游；
+// 状态还显示 healthy 则会让"改完 URL 看起来就好了"成为假象。
 func TestApplyServerTargetChangeInvalidatesProbeCache(t *testing.T) {
 	st, svc := openSvc(t)
 	ctx := context.Background()
@@ -192,10 +188,8 @@ func TestApplyServerTargetChangeInvalidatesProbeCache(t *testing.T) {
 }
 
 // 更新时给了不存在的分类必须被拦下。
-//
-// 分类只有"新建"那条路校验过存在性，更新这条路不校验：写进去的是一个
-// 不存在的 id，也就是悬空引用——界面上那一列显示成空白分类，检索侧则
-// 永远查不到它。校验要发生在落库之前：失败的写入不该把原记录改坏。
+// 分类只有"新建"那条路校验存在性，更新这条路写进去就是悬空引用：界面显示空白、
+// 检索侧永远查不到。校验要发生在落库之前，失败的写入不该把原记录改坏。
 func TestApplyServerUpdateRejectsUnknownCategory(t *testing.T) {
 	st, svc := openSvc(t)
 	ctx := context.Background()
@@ -245,9 +239,7 @@ func TestApplyServerUpdateRejectsUnknownCategory(t *testing.T) {
 }
 
 // 更新时没带分类：原分类要留着。
-//
-// "没提"不等于"清空"。更新路径以前把请求体里的空分类整体写回，于是
-// 一次没带该字段的保存就把分类抹了（界面上那一列变空）。
+// "没提"不等于"清空"：一次没带该字段的保存不该把分类抹掉。
 func TestApplyServerUpdateKeepsCategoryWhenOmitted(t *testing.T) {
 	st, svc := openSvc(t)
 	ctx := context.Background()

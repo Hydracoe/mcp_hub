@@ -78,7 +78,6 @@ export function formatUptime(seconds: number | undefined | null): string {
   return `${m}min`
 }
 
-/** 传输类型的展示名。 */
 export function transportLabel(t: string): string {
   return t === 'streamable_http' ? 'streamable_http' : t
 }

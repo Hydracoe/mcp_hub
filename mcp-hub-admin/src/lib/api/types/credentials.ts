@@ -29,7 +29,6 @@ export interface CredentialView {
   lastUsedAt?: number
   lastError?: string
 
-  /** 界面统计（可选）。 */
   callCount?: number
   failCount?: number
   successRate?: number

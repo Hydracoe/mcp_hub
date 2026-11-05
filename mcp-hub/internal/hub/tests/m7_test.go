@@ -28,12 +28,9 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// ---- 测试基建 --------------------------------------------------------------
-
-// newMetaEnv 起一个 meta 列表模式的完整网关（PRD §4.7.6）。
+// newMetaEnv 起一个 meta 列表模式的完整网关。
 //
-// 与 newEnv 的唯一区别：ListMode=meta 且挂上空 embed 管理器
-// （注册 meta-tool，不启用向量检索）。
+// 与 newEnv 的区别：ListMode=meta 且挂空 embed 管理器（注册 meta-tool，不启用向量检索）。
 func newMetaEnv(t *testing.T, specs []downstream.Spec) *env {
 	t.Helper()
 
@@ -102,9 +99,7 @@ func openSvc(t *testing.T) (*store.Store, *hub.Service) {
 }
 
 // fakeModel 是测试用的 OpenAI 兼容 embed 服务 + Jina 风格 rerank 服务。
-//
-// vecOf 决定每条文本的向量；rerank 端点按输入倒序返回，
-// 用于验证"精排确实改变了最终顺序"。
+// vecOf 决定每条文本的向量；rerank 端点按输入倒序返回，用于验证"精排确实改变了顺序"。
 type fakeModel struct {
 	mu      sync.Mutex
 	embeds  int
@@ -222,7 +217,7 @@ func hitContains(hits []retrieval.ToolHit, exposed string) bool {
 }
 
 // seedSearchServer 建一个带两个工具（中文描述）的 server，返回其 id。
-// 分类是新建必填（PRD §4.7.3），这里显式建一个真实分类。
+// 分类是新建必填，这里显式建一个真实分类。
 func seedSearchServer(t *testing.T, svc *hub.Service, key string) string {
 	t.Helper()
 	down := startDownstream(t,
@@ -246,8 +241,6 @@ func seedSearchServer(t *testing.T, svc *hub.Service, key string) string {
 	enableAllCachedTools(t, svc.Store(), svc)
 	return res.ID
 }
-
-// ---- meta 列表模式（PRD §4.7.6）-------------------------------------------
 
 func TestMetaModeListOnlyMetaTools(t *testing.T) {
 	down := startDownstream(t,
@@ -360,8 +353,6 @@ func TestMetaModeAllFiveToolsCallable(t *testing.T) {
 	}
 }
 
-// ---- 树式发现：薄结果 + facets（PRD §4.7.6）--------------------------------
-
 func TestSearchThinResultsWithFacets(t *testing.T) {
 	down := startDownstream(t,
 		toolSpec{name: "forecast", desc: "查询城市天气"},
@@ -409,8 +400,6 @@ func TestSearchThinResultsWithFacets(t *testing.T) {
 		t.Fatalf("with_schema=true 应内联 inputSchema: %+v", sr2)
 	}
 }
-
-// ---- 检索三模式与降级（PRD §4.7.4）----------------------------------------
 
 func TestSearchToolsModes(t *testing.T) {
 	_, svc := openSvc(t)
@@ -499,8 +488,6 @@ func TestSearchKeepsOfflineServerTools(t *testing.T) {
 	}
 }
 
-// ---- 嵌入重建与 rerank（PRD §4.7.5）---------------------------------------
-
 func TestEmbedRebuildIncremental(t *testing.T) {
 	st, svc := openSvc(t)
 	ctx := context.Background()
@@ -566,14 +553,9 @@ func TestEmbedRebuildIncremental(t *testing.T) {
 	}
 }
 
-// Reconcile 是"改了 .env 重启"之后向量怎么跟上来的地方。
-//
-// 场景：换了 MCPHUB_EMBED_MODEL / EMBED_DIMS，库里只有上一代的向量。
-// 启动对账必须把当前代补齐——当前代完全就绪后向量分支才激活（activeGen），
-// 此时上一代行没有任何一处会再读，清掉只是省存储。
-//
-// 但服务打不通时必须反过来：当前代补不齐，向量分支保持降级，
-// 上一代一个字节都不能删。
+// Reconcile 是"改了 .env 重启"后向量怎么跟上来的地方：当前代补齐并完全就绪后
+// 向量分支才激活（activeGen），旧代行不再被读，清掉只为省存储。
+// 服务打不通时必须反过来：当前代补不齐、向量分支保持降级，上一代一个字节都不能删。
 func TestReconcileRebuildsCurrentGeneration(t *testing.T) {
 	st, svc := openSvc(t)
 	ctx := context.Background()
@@ -678,14 +660,9 @@ func TestSearchHybridRerankReorders(t *testing.T) {
 	}
 }
 
-// rerank 的凭据与地址可以独立于 embed。
-//
-// "embed 在 A 家、rerank 在 B 家"是产品明确支持的形态，两边各自生效
-// 才成立；若 rerank 那组被 embed 那组悄悄覆盖，换服务商时会表现为
-// "改了配置但精排还是从老地方来"，且不报任何错。
-//
-// 三组配置各建一个 manager 就够：配置不再落库，同一个库上重复构造
-// 不会读到上一次的值。
+// rerank 的凭据与地址可以独立于 embed：两边各自生效，"embed 在 A 家、
+// rerank 在 B 家"才成立；若 rerank 那组被 embed 那组悄悄覆盖，换服务商时
+// 会表现为"改了配置但精排还是从老地方来"，且不报任何错。
 func TestRerankIndependentCredentials(t *testing.T) {
 	st, _ := openSvc(t)
 
@@ -718,7 +695,7 @@ func TestRerankIndependentCredentials(t *testing.T) {
 		t.Fatalf("留空时应回落共用 embed 凭据: key=%q base=%q", r2.APIKey, r2.BaseURL)
 	}
 
-	// 没配 rerank 模型 = 关闭精排（PRD 降级阶梯里合法的一档）
+	// 没配 rerank 模型 = 关闭精排（降级阶梯里合法的一档）
 	em3 := retrieval.NewEmbedManager(st, nil, retrieval.EmbedOptions{
 		APIKey: "embed-key", BaseURL: "http://embed", Model: "m", Dimensions: 4,
 	})
@@ -750,8 +727,6 @@ func TestEmbedBatchConfigurable(t *testing.T) {
 		t.Fatalf("batch 零值应回落默认 %d: %+v", searchclient.DefaultBatch, e)
 	}
 }
-
-// ---- 自动归类（PRD §4.7.3）------------------------------------------------
 
 func TestAutoCategorizeThreshold(t *testing.T) {
 	st, svc := openSvc(t)
@@ -887,8 +862,6 @@ func TestApplyServerAutoCategorize(t *testing.T) {
 	}
 }
 
-// ---- 分类生命周期（PRD §4.7.3）---------------------------------------------
-
 func TestCategoryLifecycle(t *testing.T) {
 	st, svc := openSvc(t)
 	ctx := context.Background()
@@ -925,10 +898,8 @@ func TestCategoryLifecycle(t *testing.T) {
 	}
 
 	// 检索索引里能看到分类名，按名称过滤可用。
-	//
-	// 钉住"分类只做元数据、不进工具名"：分类的中文名是"天气预报"、
-	// 英文名是 weather，但对外工具名仍然是 wx__forecast——分类信息
-	// 只走 category 字段与过滤器，不参与命名。
+	// 钉住"分类只做元数据、不进工具名"：分类的中文名/英文名都不参与命名，
+	// 对外工具名仍是 wx__forecast，分类只走 category 字段与过滤器。
 	svc.RefreshAll(ctx)
 	enableAllCachedTools(t, st, svc)
 	hits, err := svc.SearchTools(ctx, retrieval.SearchQuery{
@@ -939,8 +910,7 @@ func TestCategoryLifecycle(t *testing.T) {
 	}
 
 	// 删分类：分类下还有 server → 拒绝，server 的引用一动不动。
-	// "顺手把 server 摘成未分类"是一次用户没点过的批量改动，
-	// 界面上只表现为分类列空掉，回不到这次点击。
+	// "顺手把 server 摘成未分类"是用户没点过的批量改动，界面上只表现为分类列空掉。
 	if err := svc.DeleteCategory(ctx, c2.ID); !errors.Is(err, categories.ErrCategoryInUse) {
 		t.Fatalf("分类下还有 server 应报 ErrCategoryInUse，实际 %v", err)
 	}

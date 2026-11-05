@@ -5,8 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
-/* ────────────────────────────── 空状态 ────────────────────────────── */
-
 export interface EmptyStateProps {
   icon?: IconName
   title: string
@@ -29,8 +27,6 @@ export function EmptyState({ icon = 'box', title, description, action, className
     </div>
   )
 }
-
-/* ────────────────────────────── 错误 ────────────────────────────── */
 
 export interface ErrorStateProps {
   title?: string
@@ -73,12 +69,9 @@ export function ErrorState({ title = '加载失败', error, onRetry, className }
   )
 }
 
-/* ────────────────────────────── 加载 ────────────────────────────── */
-
 /** 表格加载骨架不在这里，见 `ui/table.tsx` 的 `TableSkeletonRows`：
- *  它由 TableFrame 渲染在真实表头下面，行高与真实行一致。 */
+ *  由 TableFrame 渲染在真实表头下，行高与真实行一致。 */
 
-/** 指标卡骨架。 */
 export function CardSkeleton({ count = 4 }: { count?: number }) {
   return (
     <div className="stat-grid">
@@ -99,7 +92,8 @@ export function Spinner({ size = 14, className }: { size?: number; className?: s
   return <Icon name="refresh-cw" size={size} className={cn('animate-spin', className)} />
 }
 
-/** 路由级懒加载占位：只复刻工具栏与内容区的外框尺寸，不画假页面骨架——页面形状各异，猜错反而更晃眼。 */
+/** 路由级懒加载占位：只复刻工具栏与内容区外框尺寸，不画假页面骨架——
+ *  页面形状各异，猜错反而更晃眼。 */
 export function PageSkeleton() {
   return (
     <>

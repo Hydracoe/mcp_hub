@@ -19,9 +19,7 @@ export class ApiError extends Error {
 
 const API_KEY_STORAGE = 'mcp-hub.admin.apiKey'
 
-/** 旧版本把同一个令牌也存进了 zustand persist 的 'mcp-hub.auth' 键
- *  （JSON：`{"state":{"apiKey":"..."},"version":0}`）。令牌现在只有
- *  apiKeyStorage 一个来源，这个键迁移一次后不再使用。 */
+/** 旧版 zustand persist 的令牌键（`{"state":{"apiKey":"..."}}`）；令牌现仅由 apiKeyStorage 保管，此键迁移后弃用。 */
 const LEGACY_AUTH_STORAGE = 'mcp-hub.auth'
 
 /** 管理接口鉴权令牌（`--api-key` 启用时必需）。仅存本机 localStorage。 */
@@ -41,10 +39,7 @@ export const apiKeyStorage = {
       /* 隐私模式下 localStorage 不可写，忽略即可 */
     }
   },
-  /** 一次性迁移：把旧 persist 键里的令牌搬到新键，然后删掉旧键。
-   *
-   *  新键已有值时以新键为准（旧键是历史遗留，不该反过来覆盖）。
-   *  旧键无论有没有令牌都删掉——迁移后不再使用它。 */
+  /** 把旧 persist 键的令牌搬到新键后删除旧键；新键已有值时以新键为准。 */
   migrateLegacy() {
     try {
       const legacy = localStorage.getItem(LEGACY_AUTH_STORAGE)
@@ -71,7 +66,6 @@ export function onUnauthorized(fn: UnauthorizedListener) {
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
-  /** 查询参数。`undefined` / 空串会被丢弃。 */
   query?: Record<string, string | number | boolean | undefined | null>
   body?: unknown
   signal?: AbortSignal

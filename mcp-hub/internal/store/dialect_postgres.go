@@ -17,10 +17,7 @@ import (
 )
 
 // postgresDialect 是 PostgreSQL 后端。
-//
-// 唯一的状态是 nativeVector：pgvector 装没装上只有连上之后才知道，
-// 而这个判断要影响 embeddings 子 Store 的构造，所以探测结果留在实例上。
-// 每次 Open 都会 new 一个，不存在跨连接串串味的问题。
+// nativeVector 记录 pgvector 是否可用的探测结果，供 embeddings 子 Store 构造时使用。
 type postgresDialect struct {
 	nativeVector bool
 }
@@ -46,10 +43,8 @@ func (*postgresDialect) TunePool(db *sql.DB) {
 }
 
 // AfterOpen 确保 pgvector 可用并记录探测结果。
-//
-// 000007 起 vector 列已是 pgvector 的 vector 类型，扩展是 PostgreSQL
-// 部署的硬依赖。这里仍先 CREATE EXTENSION 并只记日志不返回错误：
-// 缺扩展时真正的失败发生在迁移阶段，让迁移报出准确的位置。
+// vector 列是 pgvector 的硬依赖；CREATE EXTENSION 失败只记日志，
+// 真正的失败留给迁移 000007 报出位置。
 func (d *postgresDialect) AfterOpen(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS vector"); err != nil {
 		log.Printf("store: pgvector 扩展不可用，迁移 000007 大概率会失败: %v", err)
@@ -88,7 +83,6 @@ func (*postgresDialect) Migrate(_ *sql.DB, dsn string) error {
 
 func (*postgresDialect) LikeOp() string { return "ILIKE" }
 
-// NativeVectorSearch 由 AfterOpen 的探测结果决定。
-// 未探测（例如单测直接构造 Dialect）时保守返回 false：
+// NativeVectorSearch 由 AfterOpen 的探测结果决定。未探测时保守返回 false：
 // 退回内存计算只是慢一点，用错算子却是一条必然失败的查询。
 func (d *postgresDialect) NativeVectorSearch() bool { return d.nativeVector }

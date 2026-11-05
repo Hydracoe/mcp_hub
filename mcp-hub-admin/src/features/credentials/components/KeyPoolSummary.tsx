@@ -7,7 +7,7 @@ export interface CredentialCounts {
   unavailable: number
 }
 
-/** 池子现状：可用 / 冷却 / 停用三个数。和两个入口按钮同一行。 */
+/** 池子现状：可用 / 冷却 / 停用。 */
 export function KeyPoolSummary({ counts }: { counts: CredentialCounts }) {
   return (
     <span className="flex items-center gap-x-3 gap-y-1 text-[11.5px] text-muted-foreground">
@@ -24,7 +24,7 @@ export function KeyPoolSummary({ counts }: { counts: CredentialCounts }) {
   )
 }
 
-/** 表格页脚注释。把「不可用合计」的口径写在这里，避免用户误读 0。 */
+/** 页脚注明「不可用合计」的口径，避免误读 0。 */
 export function CredentialsTableFoot({ counts }: { counts: CredentialCounts }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-separator px-4 py-2.5 text-[11.5px] text-muted-foreground">

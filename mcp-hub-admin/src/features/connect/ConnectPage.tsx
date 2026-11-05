@@ -13,8 +13,7 @@ import { EndpointGrid } from './components/EndpointGrid'
 import { ClientGuide } from './components/ClientGuide'
 import { ConnectTest } from './components/ConnectTest'
 
-/** 把后端 {名称:url} 折成客户端 mcpServers。需鉴权时连 headers 占位符一起给
- *  （放占位符而非真实密钥——明文只在创建时交付一次，本页不该拿到）。 */
+/** 把后端 {名称:url} 折成客户端 mcpServers；需鉴权时带 headers 占位符，不放真实密钥。 */
 function buildMcpServers(servers: Record<string, string>, keyRequired: boolean) {
   if (!keyRequired) return servers
   const out: Record<string, { url: string; headers: Record<string, string> }> = {}
@@ -44,7 +43,7 @@ export function ConnectPage() {
   const { data: connect, error, refetch } = useConnect()
   const { data: keys } = useApiKeys()
 
-  /* 端点鉴权开关 = 库里有没有 key（见 httpd.mcpAuth），配置示例随之变化。 */
+  /* 端点鉴权开关 = 库里有没有 key，配置示例随之变化。 */
   const keyRequired = (keys?.total ?? 0) > 0
   const usableKeys = keys?.items.filter((k) => k.enabled).length ?? 0
 
@@ -69,7 +68,6 @@ export function ConnectPage() {
         <>
           <Section>
             <p className="text-sm text-muted-foreground">{connect.summary}</p>
-            {/* 规模数属于「接入概况」，是读的信息不是按钮，跟着摘要走 */}
             <div className="mt-3">
               <ScaleChips connect={connect} />
             </div>

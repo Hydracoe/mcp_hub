@@ -20,7 +20,6 @@ export interface HeaderRow {
 }
 
 export interface ServerFormState {
-  /* ── 基础与传输 ── */
   name: string
   key: string
   enabled: boolean
@@ -33,7 +32,6 @@ export interface ServerFormState {
   legacyOnly: boolean
   timeoutMs: number
 
-  /* ── 鉴权与元信息 ── */
   needsKey: boolean
   headerRows: HeaderRow[]
   description: string
@@ -43,7 +41,6 @@ export interface ServerFormState {
   /** 提交创建时是否顺带 ?probe=1 刷新工具缓存。 */
   probe: boolean
 
-  /* ── 探活与启用（Step 3） ── */
   probeStatus: 'idle' | 'probing' | 'ok' | 'fail'
   probeTools: ProbeTool[]
   /** 工具名 → 是否启用。默认全选。 */

@@ -16,9 +16,7 @@ export function toastError(error: unknown, fallback = '操作失败') {
   toast.error(fallback)
 }
 
-/** 错误说明。多数错误体的 `error` 已经是中文句子，原样用；
- *  改 key 撞车时后端给的是英文原文（server key already in use），
- *  那就换成人话——用户看到的是"换个前缀"，不是半句英文。 */
+/** 错误说明：多数 `error` 已是中文句子，原样用；`key_taken` 时后端给英文原文，换成人话。 */
 function errorDescription(error: ApiError): string {
   if (error.code === 'key_taken' && !hasCJK(error.message)) {
     return '该工具前缀已被其他 Server 占用，换一个前缀再保存。'

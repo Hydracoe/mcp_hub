@@ -14,15 +14,14 @@ import (
 	"go.uber.org/zap"
 )
 
-// 检索模式（PRD §4.7.4）。
+// 检索模式。
 const (
 	searchModeBM25   = "bm25"
 	searchModeHybrid = "hybrid"
 )
 
-// ToolHit 是一次工具检索的结果（PRD §4.7.4）。
-// 树式发现下默认是"薄结果"：不带 inputSchema，AI 圈定候选后再用
-// hub__tool 按名取完整定义——单次搜索的上下文开销与工具总数无关。
+// ToolHit 是一次工具检索的结果。
+// 树式发现下默认是"薄结果"：不带 inputSchema，AI 圈定候选后再用 hub__tool 按名取完整定义。
 type ToolHit struct {
 	Exposed     string          `json:"exposedName"`
 	Name        string          `json:"name"`
@@ -52,8 +51,7 @@ type FacetCount struct {
 }
 
 // Facets 是结果的命中分布，告诉 AI 下一步该用哪个过滤器收窄。
-// 搜偏了不必靠瞎猜换词：看到"3 个命中都在 amap"，自然知道带
-// server=amap 重搜。
+// 例如"3 个命中都在 amap"，自然知道带 server=amap 重搜。
 type Facets struct {
 	Categories []FacetCount `json:"categories,omitempty"`
 	Servers    []FacetCount `json:"servers,omitempty"`
@@ -101,11 +99,10 @@ type idScore struct {
 	score float64
 }
 
-// SearchTools 按两种模式检索工具（PRD §4.7.4）。
+// Search 按两种模式检索工具。
 //
 // 降级阶梯，每一级都保持可用：rerank 挂 → 保持融合顺序；向量一路挂
-// （embed 未配置 / 当前代未就绪 / 检索报错）→ 退回纯 bm25 融合。辅助
-// 能力挂掉不该让检索整体报错——搜不到比报错更接近可用。
+// （embed 未配置 / 当前代未就绪 / 检索报错）→ 退回纯 bm25 融合。
 func (e *Engine) Search(ctx context.Context, q SearchQuery) ([]ToolHit, error) {
 	e.mu.Lock()
 	ix := e.ix

@@ -37,9 +37,7 @@ func lastObs(rec *Recorder) Observation {
 }
 
 // classify 把一次失败归入 ErrorKind。
-//
-// 判定顺序即诊断顺序：超时 → 网络层 → HTTP 语义 → 协议层。这样"网络不通"
-// 不会先被误报成"协议不兼容"。
+// 判定顺序即诊断顺序：超时 → 网络层 → HTTP 语义 → 协议层，避免网络不通被误报成协议不兼容。
 func classify(err error, obs Observation) ErrorKind {
 	if err == nil {
 		return KindNone
@@ -48,8 +46,8 @@ func classify(err error, obs Observation) ErrorKind {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return KindTimeout
 	}
-	// 被主动取消：停用收尾超时后强制关闭会走到这里。单列一类，日志里才能
-	// 一眼看出"是我们关的"，而不是下游的毛病。
+	// 被主动取消：停用收尾超时后强制关闭会走到这里；单列一类，日志里才能
+	// 一眼看出是我们关的。
 	if errors.Is(err, context.Canceled) {
 		return KindCanceled
 	}
@@ -58,14 +56,13 @@ func classify(err error, obs Observation) ErrorKind {
 		return kind
 	}
 
-	// HTTP 语义。只在响应确实异常时采信状态码：状态码是 2xx 说明失败发生在
-	// 响应体处理阶段，交给下面的协议层判断。
+	// HTTP 语义。只在响应确实异常时采信状态码：2xx 说明失败发生在响应体处理阶段，
+	// 交给下面的协议层判断。
 	if obs.Err == nil && obs.StatusCode >= http.StatusBadRequest {
 		switch {
 		case obs.StatusCode == http.StatusTooManyRequests:
 			// 429 有两种含义，只有 body 能区分。判错的代价不对称：把额度耗尽
-			// 当成限流，会让一把没钱的密钥被无限退避重试；反过来会把还能用的
-			// 密钥直接弃用。
+			// 当成限流会让没钱的密钥被无限退避重试，反过来会把还能用的密钥弃用。
 			if quotaExhaustedIn(obs.BodySnippet) {
 				return KindQuotaExhausted
 			}
@@ -81,9 +78,8 @@ func classify(err error, obs Observation) ErrorKind {
 		}
 	}
 
-	// 2xx 但不是 MCP 支持的媒体类型——典型是把普通网页地址填成了 MCP 端点：
-	// 状态码 200，返回的是 HTML。mcp-go 对这种情况只给字符串错误，所以在这里
-	// 用结构化的 Content-Type 判断。
+	// 2xx 但不是 MCP 支持的媒体类型——典型是把普通网页地址填成了 MCP 端点。
+	// mcp-go 对这种情况只给字符串错误，只能靠结构化的 Content-Type 判断。
 	if obs.Err == nil &&
 		obs.StatusCode >= http.StatusOK && obs.StatusCode < http.StatusMultipleChoices &&
 		!isMCPContentType(obs.ContentType) {
@@ -109,10 +105,8 @@ func classify(err error, obs Observation) ErrorKind {
 }
 
 // quotaMarkers 是各家在"额度/余额用尽"时给出的响应体标记。
-//
-// 全包唯一一处刻意保留的字符串匹配：额度信号只存在于响应体文案里，协议层没有
-// 对应字段。集中在此，某家改了措辞只需加一条；只放明确指向"没钱/额度"的词——
-// 少了会退化成无限退避重试，多了会把额度耗尽当成限流。
+// 全包唯一一处字符串匹配：额度信号只在响应体文案里，协议层没有对应字段。
+// 只放明确指向"没钱/额度"的词——少了会无限退避重试，多了会把额度耗尽当成限流。
 var quotaMarkers = []string{
 	"insufficient_quota",
 	"quota exceeded",
@@ -145,9 +139,8 @@ func quotaExhaustedIn(body string) bool {
 }
 
 // isMCPContentType 报告该 Content-Type 是否为 MCP 传输可用的类型。
-//
-// Streamable HTTP 只在 application/json 与 text/event-stream 下承载 JSON-RPC。
-// 空值不做判断——部分 server 不声明，交给后续解析定夺。
+// Streamable HTTP 只在 application/json 与 text/event-stream 下承载 JSON-RPC；
+// 空值交给后续解析定夺（部分 server 不声明）。
 func isMCPContentType(raw string) bool {
 	if raw == "" {
 		return true

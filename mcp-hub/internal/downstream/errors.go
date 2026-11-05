@@ -13,8 +13,7 @@ var ErrDraining = errors.New("downstream 连接正在停用")
 
 // CallError 是带分类的下游调用错误。
 //
-// 网关对外必须讲清楚"下游为什么失败"，而不是抛一个裸 error——上层据此
-// 决定 HTTP 状态码、日志字段与给 AI 的可读说明。
+// 上层据此决定 HTTP 状态码、日志字段与给 AI 的可读说明，而不是抛一个裸 error。
 type CallError struct {
 	Kind   ErrorKind
 	Stage  Stage
@@ -22,9 +21,8 @@ type CallError struct {
 	Stderr string // 仅 stdio
 
 	// Obs 是本次调用自己的 HTTP 观测（状态码、Retry-After、响应体片段）。
-	//
-	// 带着它走，是为了让上层的密钥调度不必再猜：判决要看状态码与响应体
-	// 内容，而这些信息在错误被 mcp-go 包装成字符串后就没了。
+	// 带着它走，是为了让上层密钥调度不必再猜：判决要看的内容在错误被
+	// mcp-go 包装成字符串后就没了。
 	Obs Observation
 }
 
@@ -44,9 +42,9 @@ func CallErrorKind(err error) ErrorKind {
 	if errors.As(err, &ce) {
 		return ce.Kind
 	}
-	// 密钥池打空不是"下游坏了"，但它有明确分类。漏掉这一步，用户看到的是
-	// "未知错误"：一段本可执行的说明（还有几把在冷却、约多久后重试）
-	// 会被降级成一句无用的"稍后重试即可"。
+	// 密钥池打空不是"下游坏了"，但有明确分类。漏掉这一步，用户看到的是
+	// "未知错误"：本可执行的说明（还有几把在冷却、约多久后重试）会被降级成
+	// 一句无用的"稍后重试即可"。
 	var noKey *ErrNoUsableKey
 	if errors.As(err, &noKey) {
 		return KindNoUsableKey

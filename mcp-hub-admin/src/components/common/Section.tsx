@@ -4,9 +4,7 @@ import { cn } from '@/lib/utils'
 
 export interface SectionProps {
   title?: ReactNode
-  /** 标题右侧的补充说明。 */
   hint?: ReactNode
-  /** 标题行右侧的操作区。 */
   actions?: ReactNode
   /** 去掉标题行下方的间距（内容自带表头时用）。 */
   tight?: boolean

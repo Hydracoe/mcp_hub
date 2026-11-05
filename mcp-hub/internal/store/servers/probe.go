@@ -14,17 +14,15 @@ import (
 )
 
 // ProbeChangeStats 是一次探活对账产生的变更计数。
-// 每轮探活后网关据此向运维打日志：上游迭代了什么，日志里要一眼可见，
-// 不能只躺在 tool_changes 表里等人来查。
+// 每轮探活后网关据此向运维打日志：上游迭代了什么要一眼可见。
 type ProbeChangeStats struct {
 	Added   int `json:"added"`
 	Updated int `json:"updated"`
 	Removed int `json:"removed"`
 
-	// AutoEnabled 是本轮新增里被"自动启用"放行的数量（O5）。
-	// 它是 Added 的子集：默认策略下新工具禁用待人工，开了自动启用的
-	// server 才会计到这里。分开设是因为两者的处置责任不同——
-	// 默认路径要人来看，自动路径只要事后能查到就行。
+	// AutoEnabled 是本轮新增里被"自动启用"放行的数量（O5），是 Added 的子集：
+	// 默认策略下新工具禁用待人工，只有开了自动启用的 server 才会计到这里。
+	// 分开设是因为两者的处置责任不同：默认路径要人来看，自动路径只需事后可查。
 	AutoEnabled int `json:"autoEnabled"`
 }
 
@@ -32,24 +30,16 @@ type ProbeChangeStats struct {
 func (s ProbeChangeStats) Total() int { return s.Added + s.Updated + s.Removed }
 
 // SaveProbe 把探活结果写回 servers，成功时把工具缓存与最新清单对账。
-// 探活失败只更新状态与错误信息，不动工具缓存——下游抖动不应让已聚合
-// 的工具凭空消失。
-//
-// 对账语义（见 reconcileTools）：
-//   - 新工具入库但默认禁用，须人工启用；创建向导勾选过的（引导名单内）
-//     直接入库为启用；
-//   - 已存在工具的 id 与启用状态保留，只刷新描述 / schema；
-//   - 上游已删除的工具从缓存清掉，并写变更记录。
+// 探活失败只更新状态与错误信息，不动工具缓存——下游抖动不应让已聚合的工具凭空消失。
+// 对账语义见 reconcileTools。
 func (s *Store) SaveProbe(ctx context.Context, serverID string, res *downstream.ProbeResult) error {
 	_, err := s.SaveProbeReported(ctx, serverID, res)
 	return err
 }
 
-// InvalidateProbe 清掉一个 server 的探活结果与工具缓存。
-//
-// 只在"目标已经换了"时调用：旧工具属于另一个 URL/命令，继续留在缓存里
-// 会被聚合层当成新目标的工具暴露出去，调用时带着旧工具名打到新下游。
-// 探活失败不清缓存是另一条规则——同一个目标抖动时，上次已知的工具仍然有效。
+// InvalidateProbe 清掉一个 server 的探活结果与工具缓存。只在"目标已经换了"时调用：
+// 旧工具属于另一个 URL/命令，留在缓存会被聚合层当成新目标的工具暴露出去。
+// 探活失败不清缓存——同一个目标抖动时，上次已知的工具仍然有效。
 func (s *Store) InvalidateProbe(ctx context.Context, serverID string) (int64, error) {
 	var removed int64
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -151,12 +141,8 @@ func (s *Store) saveProbeTx(ctx context.Context, tx *gorm.DB, serverID string, r
 }
 
 // reconcileTools 把工具缓存与下游最新清单对账，并把差异写进 tool_changes。
-//
-// 刻意"按名对账"而不是整表删了重建：
-//   - tools.id 必须稳定——tool_embeddings 以 tool_id 为键，每轮换 id
-//     会让向量被无意义地全量重嵌（花 embedding 的钱）；
-//   - enabled 是人工决定，整表重建会把它冲掉，"禁用一个工具"必须
-//     跨探活周期存活。
+// 刻意"按名对账"而不是整表删了重建：tools.id 必须稳定（tool_embeddings 以 tool_id
+// 为键，换 id 会全量重嵌）；enabled 是人工决定，必须跨探活周期存活。
 func reconcileTools(tx *gorm.DB, sv *serverRow, tools []downstream.ToolInfo) (ProbeChangeStats, error) {
 	// 既有行按名索引：id 与 enabled 都要从它们身上延续。
 	var oldRows []toolRow
@@ -205,12 +191,9 @@ func reconcileTools(tx *gorm.DB, sv *serverRow, tools []downstream.ToolInfo) (Pr
 		return writeChanges(tx, sv, changes)
 	}
 
-	// 2) Upsert 最新清单：新行按引导名单给 enabled，旧行只刷元数据、
-	//    不动 id 与 enabled。冲突键是 (server_id, name) 唯一约束。
-	//
-	// 引导名单（boot_enabled_tools）来自创建向导的勾选，只对"新行"生效
-	// 一次，消费后即清空。旧行的 enabled 是人工决定，任何探活都不能覆盖
-	// ——否则"禁用一个工具"撑不过下一个探活周期。
+	// 2) Upsert 最新清单：新行按引导名单给 enabled，旧行只刷元数据、不动 id 与 enabled，
+	//    冲突键是 (server_id, name) 唯一约束。引导名单来自创建向导勾选，只对"新行"
+	//    生效一次，消费后即清空；旧行的 enabled 是人工决定，任何探活都不能覆盖。
 	boot := make(map[string]struct{})
 	if names := storeutil.DecodeStringSlice(sv.BootEnabledTools); len(names) > 0 {
 		for _, n := range names {
@@ -259,11 +242,9 @@ func reconcileTools(tx *gorm.DB, sv *serverRow, tools []downstream.ToolInfo) (Pr
 			continue
 		}
 
-		// 新行的启用判据有两条来源，优先级明确：
-		//   1) 引导名单（创建向导勾选）——一次性，只对这一轮新行生效；
-		//   2) server 的自动启用开关（O5）——持续性策略，默认关闭。
-		// 两者都只作用于**新发现**的工具：已存在的行无论启用与否都保留
-		// 原值，否则"人工禁用过的工具"撑不过下一个探活周期。
+		// 新行的启用判据有两条来源：引导名单（创建向导勾选，一次性）与 server 的
+		// 自动启用开关（O5，默认关闭）。两者都只作用于**新发现**的工具：
+		// 已存在的行无论启用与否都保留原值，否则"人工禁用过的工具"撑不过下一个探活周期。
 		enabled := int64(0)
 		why := addedWhyDefault
 		switch {
@@ -338,8 +319,7 @@ func namesOf(tools []downstream.ToolInfo) []string {
 }
 
 // addedWhy 是新工具被写成"启用"的原因，决定变更记录里那句话怎么说。
-// 三句话必须能区分：默认禁用是要人来做决定，另两种是"网关替你决定了，
-// 原因写在这儿"——混成一句"直接启用"，事后没法回答"谁批准它上线的"。
+// 默认禁用是要人来做决定，另两种是"网关替你决定了，原因写在这儿"，必须能区分。
 type addedWhy int
 
 const (
@@ -368,10 +348,9 @@ func hasBool(set map[string]struct{}, key string) bool {
 // SetToolEnabled 启用或禁用单个工具。
 // 返回 false 表示该 server 下没有这个工具（上层映射 404）。
 func (s *Store) SetToolEnabled(ctx context.Context, serverID, toolName string, enabled bool) (bool, error) {
-	// 启用方向必须与 server 的启用状态在同一个 UPDATE 里判定。Service 层
-	// 的预检查与这里之间有一个窗口：并发停用 server 时，预检查看到启用、
-	// 随后把工具翻成启用，就会留下「server 停用但工具启用」的矛盾状态。
-	// 把条件写进 WHERE，数据库最终只会落在一致的一侧。
+	// 启用方向必须与 server 的启用状态在同一个 UPDATE 里判定。Service 层的预检查
+	// 与这里之间有一个窗口：并发停用 server 时，预检查看到启用、随后把工具翻成启用，
+	// 就会留下「server 停用但工具启用」的矛盾状态。把条件写进 WHERE，只会落在一致的一侧。
 	q := s.db.WithContext(ctx).Model(&toolRow{}).
 		Where("server_id = ? AND name = ?", serverID, toolName)
 	if enabled {

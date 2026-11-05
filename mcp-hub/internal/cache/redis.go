@@ -10,17 +10,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Redis 是缓存的唯一后端，实现 Store 接口。
-//
-// 语义严格按包级注释里的契约落地：
-//   - ttl > 0 交给 Redis 的 EXPIRE；ttl <= 0 不设过期。
-//   - DeletePrefix 用 SCAN MATCH + 批量 UNLINK，不用 KEYS：
-//     KEYS 是全表阻塞操作，key 一多就会卡住整个实例。
-//   - 多进程可以同时读写同一份 key；DeletePrefix 之后，另一个进程
-//     可能立刻写回旧值。调用方不能依赖跨进程强一致。
-//
-// 所有 key 都带一层全局前缀（默认 mcp-hub:）。与别的应用共享一个
-// 实例时，前缀把命名空间隔开，DeletePrefix 也只会清掉自己的前缀。
+// Redis 实现 Store 接口。契约：ttl > 0 交给 EXPIRE（<= 0 不设过期）；
+// DeletePrefix 用 SCAN MATCH + 批量 UNLINK，禁用 KEYS（全表阻塞会卡住整个实例）；
+// 多进程读写时 DeletePrefix 后可能被立刻写回旧值；所有 key 带全局前缀（默认 mcp-hub:）。
 type Redis struct {
 	client    *redis.Client
 	keyPrefix string
@@ -113,9 +105,7 @@ func (r *Redis) Delete(ctx context.Context, keys ...string) error {
 }
 
 // DeletePrefix 实现 Store。
-//
-// SCAN 按游标增量取，key 再多也不会阻塞 Redis；UNLINK 在 Redis
-// 内部异步释放内存，对大 value 比 DEL 更轻。
+// SCAN 按游标增量取，key 再多也不阻塞 Redis；UNLINK 异步释放内存，对大 value 比 DEL 更轻。
 func (r *Redis) DeletePrefix(ctx context.Context, prefix string) error {
 	pattern := r.keyPrefix + prefix + "*"
 

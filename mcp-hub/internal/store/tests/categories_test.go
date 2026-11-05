@@ -18,15 +18,9 @@ func newCategories(t *testing.T) *categories.Store {
 	return newTestStore(t).Categories
 }
 
-// TestCreateCategoryNeedsBothNames 中文名与英文名都是必填，且英文名不合规
-// 直接报错、不做任何改写。
-//
-// 缺中文名 → 界面无处显示；英文名是筛选参数与工具名前缀段。
-// 两者都是用户的输入问题，必须映射成 400 而不是 500。
-//
-// 这组用例钉住"不静默替换"：大写、空格、下划线、中文、超长全部报错，
-// 而不是被折成 weather / web-search / 截断版。落库的值必须与用户填的
-// 完全一致（除首尾空白），否则用户照着界面再改一次会改不动。
+// TestCreateCategoryNeedsBothNames 中文名与英文名都必填，英文名不合规直接报错、不做任何改写：
+// 缺中文名界面无处显示；英文名是筛选参数与工具名前缀段，两者都必须映射成 400 而非 500。
+// 落库值必须与用户填的完全一致（除首尾空白），否则用户照界面再改一次会改不动。
 func TestCreateCategoryNeedsBothNames(t *testing.T) {
 	s := newCategories(t)
 	ctx := context.Background()
@@ -59,10 +53,8 @@ func TestCreateCategoryNeedsBothNames(t *testing.T) {
 }
 
 // TestCategoryNamesAreUnique 中文名与英文名各自唯一（创建与编辑两条路径）。
-//
-// 英文名唯一不为工具名服务（对外工具名里只有 serverKey 与工具名），
-// 而是不让"两个分类叫同一个英文名"这种梳理不清的状态建出来——
-// 按分类筛选时会命中两份语义。
+// 英文名唯一不只是为工具名服务（对外工具名里只有 serverKey 与工具名），
+// 而是避免建出"两个分类叫同一个英文名"这种梳理不清的状态——按分类筛选会命中两份语义。
 func TestCategoryNamesAreUnique(t *testing.T) {
 	s := newCategories(t)
 	ctx := context.Background()
@@ -102,10 +94,8 @@ func TestCategoryNamesAreUnique(t *testing.T) {
 	}
 }
 
-// TestDeleteCategoryRequiresNoServers 分类下有 server 时不能删。
-//
-// 删分类顺手把 server 摘成"未分类"是一次用户没点过的批量改动：
-// 界面上只是若干行的分类列空掉，没人会把它和刚才那次点击联系起来。
+// TestDeleteCategoryRequiresNoServers 分类下有 server 时不能删：顺手摘成"未分类"是一次
+// 用户没点过的批量改动，界面上只是若干行的分类列空掉，没人会把它和刚才那次点击联系起来。
 // 必须报错（ErrCategoryInUse），且分类行与 server 的引用都不许动。
 func TestDeleteCategoryRequiresNoServers(t *testing.T) {
 	s := newTestStore(t)

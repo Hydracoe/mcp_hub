@@ -18,12 +18,9 @@ type SuggestedCategory struct {
 	Score float64 `json:"score"`
 }
 
-// RefreshCategoryVectors 把分类的名称+描述嵌入进内存缓存。
-// 不持久化：分类数量少，启动时重嵌一遍比多一张表划算。失败保留旧缓存
-// ——自动归类是辅助能力，不该被它拖死。
-//
-// 缓存按“名称+描述”的文本判新旧，而不只看 id 是否存在：分类改名/改描述
-// 后旧向量继续参与相似度计算，自动归类会用一份已经不存在的语义做决定。
+// RefreshCategoryVectors 把分类的名称+描述嵌入进内存缓存，不持久化；失败保留旧缓存。
+// 缓存按"名称+描述"文本判新旧，而不只看 id：改名/改描述后旧向量必须重算，
+// 否则自动归类会用一份已经不存在的语义做决定。
 func (m *EmbedManager) RefreshCategoryVectors(ctx context.Context) {
 	m.mu.Lock()
 	e := m.embedder
@@ -70,10 +67,8 @@ func (m *EmbedManager) RefreshCategoryVectors(ctx context.Context) {
 		m.log.Warn("分类向量化失败，保留旧缓存", zap.Error(err))
 		return
 	}
-	// 缓存单位向量：查询向量也归一化后，相似度就退化成一次点积，
-	// 不必每跟一个分类比一次就重算两边的范数。
-	// 归一化失败（空向量/零向量）的分类直接不缓存——它的相似度没有定义，
-	// 存进去只会让所有查询都拿到 0 分。
+	// 缓存单位向量：查询向量也归一化后，相似度退化成一次点积。
+	// 归一化失败（空向量/零向量）的分类不缓存——其相似度没有定义，存进去只会得 0 分。
 	m.catMu.Lock()
 	for i, c := range missing {
 		unit, err := rank.Normalize(vecs[i])
@@ -88,10 +83,9 @@ func (m *EmbedManager) RefreshCategoryVectors(ctx context.Context) {
 	m.catMu.Unlock()
 }
 
-// AutoCategorize 用相似度为给定文本建议分类（PRD §4.7.3）。
+// AutoCategorize 用相似度为给定文本建议分类。
 //
-// applied 是应当自动应用的 top-1（相似度过线才有，否则 nil）；suggestions
-// 是完整 top-3，无论 applied 是否为 nil 都返回，让响应始终有备选可展示。
+// applied 是相似度过线的 top-1（否则 nil）；suggestions 是完整 top-3，始终返回；
 // embedding 服务不可用时返回空，调用方优雅跳过。
 func (m *EmbedManager) AutoCategorize(ctx context.Context, text string) (applied *categories.Category, suggestions []SuggestedCategory, err error) {
 	text = strings.TrimSpace(text)
@@ -135,9 +129,8 @@ func (m *EmbedManager) AutoCategorize(ctx context.Context, text string) (applied
 		}
 		score, err := rank.Dot(qn, v)
 		if err != nil {
-			// 维度对不上说明缓存里的分类向量与当前查询向量不是同一代。
-			// 这里曾经静默算成 0 分，结果是自动分类无声失效（applied 恒为
-			// nil），排查只能靠"结果看起来不对"。不可比就要报出来。
+			// 维度对不上说明缓存里的分类向量与当前查询向量不是同一代，
+			// 不可比必须报出来：静默算 0 分会让自动分类无声失效。
 			return nil, nil, fmt.Errorf("分类 %s 的向量与查询向量不可比: %w", c.ID, err)
 		}
 		byID[c.ID] = c

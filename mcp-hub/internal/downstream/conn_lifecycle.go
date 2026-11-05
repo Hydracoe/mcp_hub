@@ -9,21 +9,15 @@ import (
 )
 
 // DefaultMaxInflight 是单个下游允许的并发调用上限。
-//
-// 存在的理由：一个卡住的下游不该把网关的 goroutine 全部占满。超出上限的调用
-// 先排队，再由 ctx 决定是等待还是放弃。
+// 卡住的下游不该把网关 goroutine 占满；超出上限的调用先排队，由 ctx 决定等待还是放弃。
 const DefaultMaxInflight = 16
 
 // drainPollInterval 是 Drain 检查在飞调用的间隔。
-//
-// 用轮询而不是条件变量：Drain 是低频的管理操作（用户点一下停用），每次最多
-// 浪费几十个 tick，换来的是不必维护一套唤醒机制——而唤醒机制出错时的症状
-// （等不到在飞归零）恰好是最难排查的那种。
+// 用轮询而非条件变量：Drain 是低频管理操作，代价可忽略，也不必维护易错的唤醒机制。
 const drainPollInterval = 20 * time.Millisecond
 
 // acquire 取出一份可用的 client 引用，并占用一个并发额度。
-//
-// 未连接时先尝试连接：连接池是懒建的，调用路径不该因为"探活还没跑完"而失败。
+// 未连接时先尝试连接（池是懒建的，调用路径不该因"探活还没跑完"而失败）。
 // 连接失败即以结构化错误返回，不能让调用方陷入等待。
 func (c *Conn) acquire(ctx context.Context) (*mcpclient.Client, error) {
 	c.mu.RLock()
@@ -34,7 +28,7 @@ func (c *Conn) acquire(ctx context.Context) (*mcpclient.Client, error) {
 	if closed {
 		return nil, ErrClosed
 	}
-	// 停用收尾期间不再接新调用，但在飞的那些照常跑完：
+	// 停用收尾期间不再接新调用，在飞的那些照常跑完：
 	// "拒绝新来的"与"不打断已有的"是同一个决定的两面。
 	if c.draining.Load() {
 		return nil, &CallError{Kind: KindDraining, Stage: StageCall, Err: ErrDraining}
@@ -63,16 +57,12 @@ func (c *Conn) acquire(ctx context.Context) (*mcpclient.Client, error) {
 func (c *Conn) release() { <-c.sem }
 
 // Inflight 返回当前正在执行的调用数。
-//
-// 直接读 sem 的占用数，不另设计数器：多一个计数器就多一处可能与它不同步的
-// 状态，而在飞数算错会直接导致停用等错时机。
+// 直接读 sem 的占用数，不另设计数器：多一处状态就可能不同步，算错会导致停用等错时机。
 func (c *Conn) Inflight() int { return len(c.sem) }
 
 // beginCall 为一次调用准备可取消的上下文，并登记到在飞集合。
-//
-// 登记是为了让 Close 能撤销它。把连接从池里摘掉并不等于调用会停下来——已经
-// 发出的 HTTP 请求有它自己的生命周期。没有这一步，"等到上限就强关"只是一句
-// 空话：连接关了，调用还挂着，界面上的"停用中"永远不会结束。
+// 登记是为了让 Close 能撤销它：从池里摘掉连接不等于调用会停下来，已发出的
+// HTTP 请求有自己的生命周期；没有这一步，"等到上限就强关"只是一句空话。
 func (c *Conn) beginCall(ctx context.Context) (context.Context, func()) {
 	callCtx, cancel := context.WithCancel(ctx)
 
@@ -106,10 +96,8 @@ func (c *Conn) cancelInflight() {
 }
 
 // Drain 停止接受新调用，等在飞调用自然结束，然后关闭连接。
-//
-// 等待期间不打断任何已发出的请求——这是"优雅停用"的全部意义。ctx 决定愿意等
-// 多久，到期返回 ctx.Err()，是否强关留给调用方判断：等多久算太久是策略，
-// 不该由连接层决定。
+// 等待期间不打断已发出的请求。ctx 决定愿意等多久，到期返回 ctx.Err()；
+// 是否强关留给调用方判断：等多久算太久是策略，不该由连接层决定。
 func (c *Conn) Drain(ctx context.Context) error {
 	c.draining.Store(true)
 
@@ -139,7 +127,7 @@ func (c *Conn) Close() error {
 	c.closed = true
 
 	// 取消在飞调用。正常收尾（Drain 等到归零）时这里没有东西可取消；
-	// 只有超时强关才会走到，而那时不取消就等于没关。
+	// 只有超时强关才会走到，那时不取消就等于没关。
 	c.cancelInflight()
 
 	// 取消生命周期 ctx 会连带回收 stdio 子进程，即使 client.Close 因故没清干净。
@@ -150,7 +138,7 @@ func (c *Conn) Close() error {
 	}
 	err := c.client.Close()
 	// client.Close 不回收 Transport 空闲池里的 socket，主动关掉，
-	// 避免旧下游的连接挂满 90s 的 IdleConnTimeout。
+	// 避免下游连接挂满 90s 的 IdleConnTimeout。
 	if c.rec != nil {
 		c.rec.CloseIdleConnections()
 	}

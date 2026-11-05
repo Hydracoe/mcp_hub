@@ -16,7 +16,6 @@ type Mutations = ReturnType<typeof useCategoryMutations>
 
 interface CategoriesTableProps {
   items: Category[]
-  /** 外壳、状态位与页脚统一交给 TableFrame。 */
   frame?: Omit<TableFrameProps, 'head' | 'colCount' | 'children'>
   mutations: Mutations
   onEdit: (c: Category) => void
@@ -24,8 +23,8 @@ interface CategoriesTableProps {
 
 const COLS = ['中文名', '英文名', '描述', 'Server', '工具', '操作']
 
-/** 分类列表。「英文名」（slug）用于列表与筛选，不进对外工具名。
- *  存量分类可能没有英文名，这类行要就地标出——筛选参数里它会缺位。 */
+/** 分类列表。slug 用于列表与筛选，不进对外工具名。
+ *  存量分类可能没有 slug，这类行要就地标出。 */
 export function CategoriesTable({ items, frame, mutations, onEdit }: CategoriesTableProps) {
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null)
 
@@ -33,7 +32,7 @@ export function CategoriesTable({ items, frame, mutations, onEdit }: CategoriesT
     if (!deleteTarget) return
     try {
       await mutations.remove.mutateAsync(deleteTarget.id)
-      // 能走到这里说明分类下已无 Server（有 Server 后端会拒绝删除）。
+      // 走到这里说明分类下已无 Server（有 Server 后端会拒绝删除）。
       toastSuccess('已删除分类')
     } catch (e) {
       toastError(e)

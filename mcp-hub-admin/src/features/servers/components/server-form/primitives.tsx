@@ -63,7 +63,7 @@ export function Callout({
   )
 }
 
-/** 两段式切换按钮组（「需要 / 不需要」）。 */
+/** 两段式切换按钮组。 */
 export function SegmentedToggle<T extends string>({
   value,
   options,

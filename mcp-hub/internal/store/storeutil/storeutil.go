@@ -1,8 +1,5 @@
-// Package storeutil 是 store 及其子包共享的持久化小工具。
-//
-// 独立成叶子包是拆分的结果：servers/credentials/… 各自成包后，
-// "记录不存在"这类跨域哨兵错误与行映射辅助必须有一个谁都能引、
-// 又不构成环的落脚点。
+// Package storeutil 是 store 及其子包共享的持久化小工具：
+// "记录不存在"这类跨域哨兵错误与行映射辅助的叶子包，避免各子包互相引用成环。
 package storeutil
 
 import (

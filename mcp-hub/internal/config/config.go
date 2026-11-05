@@ -1,9 +1,5 @@
-// Package config 是 mcp-hub 唯一的配置来源。
-//
-// 它刻意不依赖任何部署形态：命令行（cmd/mcp-hub）与桌面壳
-// （cmd/mcp-hub-desktop）读同一份声明表、同一套校验，因此"能怎么配"
-// 永远只有一个答案。
-//
+// Package config 是 mcp-hub 唯一的配置来源：命令行与桌面壳读同一份声明表、同一套校验，
+// “能怎么配”只有一个答案。
 // 优先级：进程环境变量 > 配置文件 > 声明表里的内置默认值。
 package config
 
@@ -70,14 +66,12 @@ const (
 // DefaultProbeInterval 是周期探活的默认间隔，声明表与命令行共用同一个值。
 const DefaultProbeInterval = 45 * time.Second
 
-// ginModeEnv 是 gin 自己认的环境变量名（gin.EnvGinMode）。
-// 这里不 import gin 就为了一个字符串常量——配置层不该依赖 HTTP 框架；
-// 它以"同义名"的形式挂在 MCPHUB_GIN_MODE 上（见 configItem.aliases）。
+// ginModeEnv 是 gin 自己认的环境变量名。
+// 配置层不 import gin；它作为同义名挂在 MCPHUB_GIN_MODE 上（见 configItem.aliases）。
 const ginModeEnv = "GIN_MODE"
 
 // Settings 是引擎运行需要的全部配置。
-//
-// 这是部署形态无关的：命令行与桌面壳拿到的都是这一个结构体。
+// 部署形态无关：命令行与桌面壳拿到的都是这一个结构体。
 type Settings struct {
 	// DB 是数据库位置：postgres:// 连接串，或 sqlite 的文件路径。
 	DB string
@@ -165,8 +159,8 @@ type configItem struct {
 	required bool     // 必填：缺了直接报错（退出码 2）
 	choices  []string // 枚举项的可填值
 
-	// aliases 是同义的环境变量名，优先级低于 env：给"外部已有一套约定名"
-	// 的开关用（目前只有 GIN_MODE）。让老用法照旧、新名字也能进配置清单。
+	// aliases 是同义的环境变量名，优先级低于 env；给“外部已有约定名”的开关用
+	// （目前只有 GIN_MODE）。
 	aliases []string
 
 	// emptyOverridesDefault 让"显式写空"能压过内置默认值。
@@ -348,17 +342,15 @@ func newConfigViper() *viper.Viper {
 			// 配置文件路径本身不能由配置文件决定。
 			continue
 		}
-		// BindEnv 是纯可变参数函数（key 在第一位），Go 不允许"普通实参 + 展开切片"
-		// 混用，所以要把 key、env、aliases 合成一个切片再一次展开。
-		// 环境变量名的先后即优先级：env 在 aliases 前面，本项名优先。
+		// BindEnv 是可变参数函数，key 在前；把 key、env、aliases 合成一个切片一次展开。
+		// 环境变量名顺序即优先级：本名在 aliases 前。
 		v.BindEnv(append([]string{keyOf(it.env), it.env}, it.aliases...)...)
 	}
 	return v
 }
 
 // reader 是所有配置的取值口：先按环境变量名取字符串，再按表里声明的类型解析。
-// 不直接用 viper.GetInt/GetBool 是为了给出明确的中文错误，
-// 并把一类配置错误攒起来一次报完，而不是改一个跑一次。
+// 不用 viper.GetInt/GetBool，是为了给出明确的中文错误，并把配置错误攒起来一次报完。
 type reader struct {
 	errs  []string
 	warns []string
@@ -385,9 +377,8 @@ func (r *reader) str(env string) string {
 	return it.def
 }
 
-// 下面三个类型化取值都是"总函数"：解析不了就回落默认值。
-// validate 已经先跑过一轮，真有问题时根本走不到这里，
-// 所以它们不必再回报错，返回值也就能直接用。
+// 下面三个类型化取值都是“总函数”：解析不了就回落默认值。
+// validate 已经先跑过一轮，真有问题时根本走不到这里。
 func (r *reader) integer(env string) int {
 	if v := r.raw(env); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -507,8 +498,7 @@ func (r *reader) validate() {
 }
 
 // resolvedCacheDriver 是校验阶段用的后端推断：此时 Settings 还没构造出来。
-// 规则与 Settings.ResolvedCacheDriver 一致。枚举值本身合不合法由声明表那一轮
-// 负责，这里只在"认得出"时给答案，认不出就回 auto 交给 validateBackends 报错。
+// 规则与 Settings.ResolvedCacheDriver 一致；认不出就回 auto 交给 validateBackends。
 func (r *reader) resolvedCacheDriver() string {
 	switch d := r.raw(EnvCacheDriver); d {
 	case "", DriverAuto:
@@ -688,17 +678,13 @@ type File struct {
 }
 
 // LoadFile 定位并加载配置文件：只用第一个命中的文件。
-// 进程环境变量里的值优先于文件（viper 的环境变量层本来就压过配置文件层）。
-//
-// 文件里的键还会照旧注入进程环境变量（已有的键不覆盖）：serve / probe / add
-// 拉起的 stdio 子进程继承父进程环境，配置文件里给下游准备的变量不能断在这里。
+// 进程环境变量优先于文件；文件里的键也会注入进程环境（已有的键不覆盖），
+// 以便 serve/probe/add 拉起的 stdio 子进程继承。
 func LoadFile() (File, error) { return LoadFileFrom("") }
 
 // LoadFileFrom 与 LoadFile 相同，但把查找锚定在一个目录上（桌面入口
-// 用它指向应用数据目录下的配置）。
-//
-// 锚定意味着**不回退**：explicit 不存在时不会转头去读 ./.env，
-// 结果是"没有配置"而不是"读到了别人的配置"。理由见 resolveConfigFile。
+// 用它指向应用数据目录下的配置）。锚定意味着不回退：explicit 不存在时
+// 不会转头去读 ./.env，结果是“没有配置”而不是“读到了别人的配置”。
 func LoadFileFrom(explicit string) (File, error) {
 	path := resolveConfigFile(explicit)
 	if path == "" {
@@ -710,7 +696,7 @@ func LoadFileFrom(explicit string) (File, error) {
 		return File{}, fmt.Errorf("读取 %s 失败: %w", path, err)
 	}
 	// 用 viper 内置 dotenv 编解码器所用的同一个库解析，行为与 ReadInConfig 一致，
-	// 同时拿到原始键名——既进 viper 的配置层，也补进进程环境变量。
+	// 同时拿到原始键名：既进 viper 配置层，也补进进程环境变量。
 	vars, err := gotenv.StrictParse(bytes.NewReader(raw))
 	if err != nil {
 		return File{}, fmt.Errorf("解析 %s 失败: %w", path, err)
@@ -736,24 +722,9 @@ func LoadFileFrom(explicit string) (File, error) {
 }
 
 // resolveConfigFile 按顺序找配置文件，返回第一个存在的；都没有则返回空串。
-//
-// 两种查找口径，由 explicit 是否为空决定：
-//
-//	explicit == ""（命令行入口）  $MCPHUB_ENV_FILE → ./.env → 可执行文件旁的 .env
-//	explicit != ""（桌面入口）    $MCPHUB_ENV_FILE → explicit，到此为止
-//
-// 第二种刻意不回退到 ./.env：桌面形态的配置位置是它自己的一部分
-// （应用数据目录），而它的工作目录完全不可控——双击启动时是 / 或
-// System32，从终端启动时是随手进的某个目录。让"同一个二进制会读到
-// 哪份配置"取决于你在哪敲的命令，是那种只在别人机器上复现的 bug；
-// 在这里它是真的发生过：桌面端站在仓库里启动，读到了仓库的 .env，
-// 于是一个理应零配置可用的应用去连了并不存在的 PostgreSQL。
-//
-// 真要覆盖位置，用 $MCPHUB_ENV_FILE——那是一个明确写下来的意图，
-// 而不是"碰巧站在哪儿"。
-//
-// $MCPHUB_ENV_FILE 只能从进程环境变量读——它决定去哪找配置，
-// 不能反过来由配置决定。两个口径都把它排在第一位。
+// explicit == ""：$MCPHUB_ENV_FILE → ./.env → 可执行文件旁；
+// explicit != "":$MCPHUB_ENV_FILE → explicit，不回退到 ./.env。
+// 桌面形态的工作目录不可控，回退会读到仓库的 .env，让零配置应用连上错误的数据库。
 func resolveConfigFile(explicit string) string {
 	candidates := make([]string, 0, 3)
 	if p := strings.TrimSpace(os.Getenv(EnvFile)); p != "" {

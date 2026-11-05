@@ -13,19 +13,12 @@ import (
 	"github.com/hydra/mcp-hub/internal/hub/retrieval"
 )
 
-// ---- 向量重建的并发与取消语义 ----------------------------------------------
-//
 // 这两个用例盯住 retrieval.EmbedManager.Rebuild 的两条契约：
-//
-//  1. 同一时刻只有一次重建在跑，重复调用必须明确告诉调用方"已有重建在
-//     进行"（skipped），不能静默返回一个会被误读成"已完成"的进度快照；
-//  2. 重建全程吃调用方传入的 ctx：调用方取消后，在途的 embed 请求必须
-//     随之取消，这次重建以失败收场。
-//
+// 同一时刻只有一次重建在跑（重复调用返回 skipped），且重建全程吃调用方的 ctx（取消即失败）。
 // 时序全部用 channel 控制，不靠 sleep 竞速。
 
-// blockingEmbed 是一个"卡住"的 embed 服务：收到请求先发信号，然后一直
-// 阻塞，直到被显式放行（releaseAll）或调用方断开（请求 ctx 结束）。
+// blockingEmbed 是一个"卡住"的 embed 服务：收到请求先发信号，然后一直阻塞，
+// 直到被显式放行（releaseAll）或调用方断开（请求 ctx 结束）。
 type blockingEmbed struct {
 	mu      sync.Mutex
 	calls   int

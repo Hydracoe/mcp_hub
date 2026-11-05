@@ -8,11 +8,7 @@ import (
 )
 
 // 停用的 server 不该出现在全量测试报告里：它既不是"健康"也不是"失败"，
-// 它是一个用户主动做的决定。
-//
-// 回归守卫：早先的实现把停用项也填进 results，末尾统计靠 "ServerKey 非空"
-// 判断该不该计数——而停用项的 ServerKey 早就被填好了，于是"停用"被
-// 报成"探活失败"，Healthy + Failed 会大于 Total。
+// 而是用户主动做的决定，也不该计入成败统计（否则 Healthy + Failed 会大于 Total）。
 func TestRefreshAllExcludesDisabled(t *testing.T) {
 	e := newEnv(t, nil)
 	ctx := context.Background()

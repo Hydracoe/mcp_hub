@@ -11,20 +11,14 @@ import (
 )
 
 // SetToolEnabled 启用或禁用单个工具，并立刻让聚合端点生效。
-//
-// 启用方向要求所属 server 处于启用状态：停用 server 时它的工具已被级联
-// 禁用，放行单个启用会造出「server 停用却有权重工具启用」的矛盾状态——
-// 工具显示已启用却对外不可见，排障时只会让人怀疑哪里出了 bug。
-//
-// 与 server 级启停同一节奏：先落库（含一条变更记录），再重建聚合快照——
-// 禁用是"别再被 AI 看到/调到"，必须当场从 tools/list 撤下，而不是等
-// 下一轮探活。不存在的工具名返回 storeutil.ErrNotFound（上层 404）。
+// 启用方向要求所属 server 处于启用状态，否则会造出工具已启用却对外不可见的矛盾状态。
+// 先落库再重建快照；不存在的工具名返回 storeutil.ErrNotFound（上层 404）。
 func (s *Service) SetToolEnabled(ctx context.Context, serverID, toolName string, enabled bool) error {
 	key := s.serverKey(ctx, serverID)
 
 	if enabled {
 		// 先验工具存在性，再验 server 状态：未知工具永远 404，
-		// 不能因为 server 恰好停用就把 404 吃成"先启用 Server"。
+		// 不能因为 server 停用就把 404 吃成"先启用 Server"。
 		ok, err := s.store.Servers.HasTool(ctx, serverID, toolName)
 		if err != nil {
 			return err
@@ -68,8 +62,7 @@ func (s *Service) SetToolEnabled(ctx context.Context, serverID, toolName string,
 		Actor:     toolchanges.ActorAdmin,
 		TS:        time.Now(),
 	}); err != nil {
-		// 留痕失败不回滚启停本身：开关已经生效，只是少了一条审计行；
-		// 日志里留痕便于补账。
+		// 留痕失败不回滚启停本身：开关已生效，只是少了一条审计行，日志留痕便于补账。
 		s.log.Warn("工具变更记录写入失败",
 			zap.String("server", key), zap.String("tool", toolName), zap.Error(err))
 	}
@@ -79,9 +72,8 @@ func (s *Service) SetToolEnabled(ctx context.Context, serverID, toolName string,
 	s.log.Info("工具启用状态已更新",
 		zap.String("server", key), zap.String("tool", toolName), zap.Bool("enabled", enabled))
 
-	// 禁用方向补一条约束：server 没有可用工具就自动停用。否则会留下
-	// "启用中却 0 个工具"的空转状态——探活照跑、健康统计照算，但 AI 侧
-	// 永远看不到它的任何工具，概览数字只会让人困惑。
+	// 禁用方向补一条约束：server 没有可用工具就自动停用，
+	// 避免留下"启用中却 0 个工具"的空转状态。
 	if !enabled {
 		s.autoDisableIfNoTools(ctx, serverID, key)
 	}
@@ -89,9 +81,8 @@ func (s *Service) SetToolEnabled(ctx context.Context, serverID, toolName string,
 }
 
 // autoDisableIfNoTools 在禁用工具后检查：若所属 server 仍启用且启用工具数
-// 归零，就把它一并停用（级联禁用是幂等空转，连接优雅退场）。检查或停用
-// 失败只打日志不回传：工具停用本身已成功，自动停用是附加动作，下一轮
-// 再禁一个工具还会重新触发检查。
+// 归零，就把它一并停用。检查或停用失败只打日志不回传：工具停用本身已成功，
+// 自动停用是附加动作，下一轮再禁一个工具还会重新触发检查。
 func (s *Service) autoDisableIfNoTools(ctx context.Context, serverID, key string) {
 	sv, err := s.store.Servers.Get(ctx, serverID)
 	if err != nil {
@@ -117,11 +108,8 @@ func (s *Service) autoDisableIfNoTools(ctx context.Context, serverID, key string
 }
 
 // recordCascadeDisable 为级联禁用的工具补变更记录。
-//
-// Actor 用 system 而不是 admin：管理员动的是 server 的开关，并没有对每个
-// 工具逐个表态。保留「从未被人工碰过」的判定，server 重新启用后这些工具
-// 会重新落进「待启用」告警，提示用户逐个重新决定，而不是悄悄消失。
-// 单条写入失败不回滚级联本身：工具已经禁用，只是审计缺一行，日志留痕补账。
+// Actor 用 system 而不是 admin，保留「从未被人工碰过」的判定：
+// server 重新启用后这些工具会落进「待启用」告警；单条写入失败不回滚级联本身，只记日志。
 func (s *Service) recordCascadeDisable(ctx context.Context, serverID, key string, tools []string) {
 	if len(tools) == 0 {
 		return

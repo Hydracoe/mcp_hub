@@ -22,7 +22,6 @@ const AUTH_LABEL: Record<string, string> = {
   api_key: 'api_key',
 }
 
-/** Step 3：探活、勾选要启用的工具，并给出即将提交的配置快照。 */
 export function Step3Probe({ f, set, onProbe, sigStale }: Props) {
   return (
     <>

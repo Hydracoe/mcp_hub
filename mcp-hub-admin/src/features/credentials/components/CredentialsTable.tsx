@@ -24,7 +24,6 @@ type Mutations = ReturnType<typeof useCredentialMutations>
 
 interface CredentialsTableProps {
   items: CredentialView[]
-  /** 外壳、状态位与页脚统一交给 TableFrame。 */
   frame?: Omit<TableFrameProps, 'head' | 'colCount' | 'children'>
   mutations: Mutations
   onEdit: (c: CredentialView) => void
@@ -162,9 +161,7 @@ function CredentialRow({ c, mutations, onEdit, onTest, testing, testResult, onDe
         </span>
       </TableCell>
       <TableCell>
-        {/* 状态列只做「读」：徽章 + 停用原因。启停是动作，放操作列，
-            和测试/编辑/删除并排 —— 混在状态格里会被当成状态的一部分。 */}
-        {/* 停用原因已并入徽章文案（中文），不再重复渲染副行。 */}
+        {/* 状态列只读；启停放操作列，避免被当成状态的一部分。停用原因已并入徽章文案。 */}
         <CredentialStateBadge state={c.state} disabledKind={c.disabledKind} enabled={c.enabled} />
       </TableCell>
       <TableCell>
@@ -199,7 +196,7 @@ function CredentialRow({ c, mutations, onEdit, onTest, testing, testResult, onDe
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1">
-          {/* 启停开关：从状态列挪过来放最前 —— 它是这一行最高频的动作。 */}
+          {/* 启停是本行最高频动作，放最前。 */}
           <Switch
             checked={c.enabled}
             disabled={mutations.setEnabled.isPending}

@@ -8,10 +8,9 @@ import (
 	"github.com/hydra/mcp-hub/internal/hub/retrieval"
 )
 
-// handleSearchTools 是管理界面的检索入口（PRD §4.7.7）。
-//
+// handleSearchTools 是管理界面的检索入口。
 // AI 客户端走 MCP meta-tool hub__search_tools，人走这个 HTTP 端点，
-// 两条路共用同一个 SearchTools 实现，看到的必须是同一份结果。
+// 两条路共用同一个 SearchTools 实现，结果必须一致。
 func (a *API) handleSearchTools(c *gin.Context) {
 	q := c.Request.URL.Query()
 

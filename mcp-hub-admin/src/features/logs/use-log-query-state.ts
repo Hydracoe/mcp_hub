@@ -15,8 +15,7 @@ import {
   toLogQuery,
 } from './log-query'
 
-/** 调用日志页的查询状态全部挂 URL：筛选结果可复制、可后退、刷新不丢，
- *  能直接发给同事 —— 这正是这一页的用法，内存 store 做不到。 */
+/** 调用日志页的查询状态全部挂 URL：筛选结果可复制、可后退、刷新不丢。 */
 export function useLogQueryState() {
   const uiPageSize = useUiStore((s) => s.pageSize)
   const [params, setParams] = useSearchParams()
@@ -79,7 +78,7 @@ export function useLogQueryState() {
     [set],
   )
 
-  // query 挂 URL 便于把筛选结果发给同事；必须 memo，否则每次渲染换 identity 触发无限重拉。
+  // query 必须 memo，否则每次渲染换 identity 触发无限重拉。
   const query = useMemo(
     () =>
       toLogQuery({

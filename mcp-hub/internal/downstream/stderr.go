@@ -10,7 +10,6 @@ import (
 const maxStderrBytes = 4 << 10
 
 // stderrSink 捕获子进程 stderr 的尾部内容，实现 io.Writer。
-//
 // 用 WithCommandStderrWriter 注入而不是读 GetStderr：后者返回的 reader
 // 在进程存活时可能阻塞。
 type stderrSink struct {

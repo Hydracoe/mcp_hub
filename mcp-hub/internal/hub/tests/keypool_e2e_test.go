@@ -19,10 +19,8 @@ import (
 )
 
 // keyedGate 是按凭据给不同答复的下游门卫。
-//
-// 只统计**工具调用**请求：一次调用在下游侧会产生不止一条 HTTP 往返
-// （事件流通道会另开一条），把那些也算进去会让"这把密钥被打了几次"
-// 变成 2 的倍数。握手与工具列举同样不计——它们与密钥轮换无关。
+// 只统计工具调用请求：一次调用在下游侧会产生不止一条 HTTP 往返，全算进去会让
+// "这把密钥被打了几次"变成 2 的倍数；握手与工具列举同样不计。
 type keyedGate struct {
 	mu         sync.Mutex
 	policy     map[string]int // "Bearer xxx" → 状态码
@@ -148,13 +146,9 @@ func specOf(t *testing.T, e *env, serverKey string) downstream.Spec {
 	return sv.Spec
 }
 
-// --- 429：换一把密钥，调用照常成功 ---
-
-// 断言的是"调用方看不到限流"这件事，而不是"第几次用了哪把密钥"。
-//
-// 轮换游标的起点在网关内部（装载时的工具刷新也会借走一把并推进它），
-// 把测试钉在"第一把必定是先插入的那把"上，会变成一个只要刷新时机变
-// 就碎的用例——而它真正要守的性质（限流对调用方无感）从未受威胁。
+// 断言的是"调用方看不到限流"，而不是"第几次用了哪把密钥"。
+// 轮换游标的起点在网关内部（装载时的工具刷新也会借走一把并推进它），把测试钉在
+// "第一把必定是先插入的那把"上，会变成一个只要刷新时机变就碎的用例。
 func TestKeyPoolSwitchesKeyOnRateLimit(t *testing.T) {
 	gate := newKeyedGate("30")
 	url := startKeyedDownstream(t, gate, echoTool("ping"))
@@ -191,12 +185,8 @@ func TestKeyPoolSwitchesKeyOnRateLimit(t *testing.T) {
 	}
 }
 
-// --- 多把密钥大面积限流：只要还有一把能用，调用方就看不到失败 ---
-
-// 预算必须覆盖池子里的全部可用密钥：4 把被限流、1 把健康时，无论
-// 轮换游标从哪把开始，这一次调用最坏要把 4 把坏的全试一遍再摸到
-// 健康的那把。若预算被截断在 3，游标恰好从坏密钥排起时调用方就会
-// 看到 429——而池子里明明还有可用的密钥。
+// 预算必须覆盖池子里的全部可用密钥：4 把被限流、1 把健康时，最坏要把 4 把坏的
+// 全试一遍再摸到健康的那把。预算被截断在 3，游标恰好从坏密钥排起时调用方就会看到 429。
 func TestKeyPoolTransparentWhenAnyKeyUsable(t *testing.T) {
 	gate := newKeyedGate("30")
 	url := startKeyedDownstream(t, gate, echoTool("ping"))
@@ -209,9 +199,7 @@ func TestKeyPoolTransparentWhenAnyKeyUsable(t *testing.T) {
 	}
 
 	gate.reset()
-	// 连打 6 次，覆盖轮换游标的各个起点（含最坏情况：4 把坏密钥
-	// 全部排在健康密钥之前）。任何一次失败都违反"有可用密钥时
-	// 调用方无感"。
+	// 连打 6 次，覆盖轮换游标的各个起点（含最坏情况：4 把坏密钥全部排在健康密钥之前）。
 	for i := 0; i < 6; i++ {
 		res := e.callTool(t, "pool__ping", `{"v":1}`)
 		if res.IsError {
@@ -230,8 +218,6 @@ func TestKeyPoolTransparentWhenAnyKeyUsable(t *testing.T) {
 		}
 	}
 }
-
-// --- 401：弃用该密钥，并且后续永不使用 ---
 
 func TestKeyPoolDisablesInvalidKey(t *testing.T) {
 	gate := newKeyedGate("")
@@ -278,8 +264,6 @@ func TestKeyPoolDisablesInvalidKey(t *testing.T) {
 	}
 }
 
-// --- 429 且无可用替补：快速失败并给出 retryAfter ---
-
 func TestKeyPoolAllCoolingSurfacesUnavailable(t *testing.T) {
 	gate := newKeyedGate("20")
 	url := startKeyedDownstream(t, gate, echoTool("ping"))
@@ -317,12 +301,6 @@ func TestKeyPoolAllCoolingSurfacesUnavailable(t *testing.T) {
 	}
 }
 
-// --- 调用进行中池子被打空：上抛的必须是"无可用密钥"，不是裸 429 ---
-
-// 把预算调得比池子大，让"借不到密钥"发生在循环中间而非预算耗尽后：
-// k1 429 → k2 429 → 第三把借不到。此刻调用方能拿到的唯一正确答复是
-// ErrNoUsableKey（带 retryAfter 与失败原因）——"等 20 秒"；而裸 429
-// 只描述了最后一把的遭遇，丢掉了"两把都在冷却"这个更关键的事实。
 func TestKeyPoolMidLoopDrainSurfacesNoUsableKey(t *testing.T) {
 	gate := newKeyedGate("20")
 	url := startKeyedDownstream(t, gate, echoTool("ping"))
@@ -354,8 +332,6 @@ func TestKeyPoolMidLoopDrainSurfacesNoUsableKey(t *testing.T) {
 		t.Error("Cause 为空：调用方只看到池空了，不知道为什么空")
 	}
 }
-
-// --- 5xx 与超时：密钥状态零变化，且不重试 ---
 
 func TestKeyPoolNeutralFailureDoesNotTouchKeys(t *testing.T) {
 	gate := newKeyedGate("")
@@ -396,8 +372,6 @@ func TestKeyPoolNeutralFailureDoesNotTouchKeys(t *testing.T) {
 		t.Errorf("5xx 触发了重试（下游收到 %d 次调用）", total)
 	}
 }
-
-// --- 并发归因：被冷却的必须是收到 429 的那一把 ---
 
 func TestKeyPoolConcurrentAttribution(t *testing.T) {
 	gate := newKeyedGate("30")
@@ -441,8 +415,6 @@ func TestKeyPoolConcurrentAttribution(t *testing.T) {
 	}
 }
 
-// --- 密钥池打空后，AI 读到的那段文字必须是可执行的 ---
-
 // 这段文字是调用方唯一能读到的"该怎么办"。退化成一个分类名或一句
 // "未知错误"，等于把"等 20 秒"这个唯一有用的结论丢掉。
 func TestNoUsableKeyAdviceIsActionable(t *testing.T) {
@@ -473,8 +445,6 @@ func TestNoUsableKeyAdviceIsActionable(t *testing.T) {
 		t.Errorf("给的建议不对——应当是\"稍后重试\"而不是\"改用其他工具\":\n%s", text)
 	}
 }
-
-// --- 用量的密钥归因：日志里能看到是哪一把 ---
 
 func TestKeyPoolLogsCredentialID(t *testing.T) {
 	gate := newKeyedGate("")
@@ -507,8 +477,6 @@ func TestKeyPoolLogsCredentialID(t *testing.T) {
 	}
 }
 
-// --- 单密钥模式回归：没配密钥池时行为一字不变 ---
-
 func TestSingleKeyModeUnchanged(t *testing.T) {
 	gate := newKeyedGate("")
 	url := startKeyedDownstream(t, gate, echoTool("ping"))
@@ -539,8 +507,6 @@ func TestSingleKeyModeUnchanged(t *testing.T) {
 	}
 }
 
-// --- 探活与调用共用密钥池 ---
-
 // startStrictAuthDownstream 拒绝所有未带指定凭据的请求（包括握手）。
 // 与 keyedGate 只拦 tools/call 不同，它能证明探活本身带了池里的密钥。
 func startStrictAuthDownstream(t *testing.T, token string, tools ...toolSpec) string {
@@ -558,9 +524,8 @@ func startStrictAuthDownstream(t *testing.T, token string, tools ...toolSpec) st
 }
 
 // 只配密钥池、servers.headers 为空的 server，探活也必须能过。
-//
-// 探活走 servers.headers 的旧行为会在这里稳定 401：状态被判 offline，
-// 连续几次后还把整个 server 拦进 blockGate，池里健康的密钥完全用不上。
+// 探活走 servers.headers 会让这里稳定 401：状态被判 offline，连续几次后还把整个
+// server 拦进 blockGate，池里健康的密钥完全用不上。
 func TestProbeUsesKeyPoolCredentials(t *testing.T) {
 	url := startStrictAuthDownstream(t, "good", echoTool("ping"))
 	e := newEnv(t, []downstream.Spec{remoteSpec("probe-pool", url)})

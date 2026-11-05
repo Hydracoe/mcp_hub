@@ -1,10 +1,7 @@
-/* ─────────────────────── 分类 / 元数据 ─────────────────────── */
-
 export interface Category {
   id: string
   name: string
-  /** 英文名（slug），用于分类列表与筛选参数，不进对外工具名
-   *  （对外工具名 = `<serverKey>__<toolName>`）。仅允许 [a-z0-9-]。 */
+  /** 英文名（slug），用于分类列表与筛选，不进对外工具名（对外名 = `<serverKey>__<toolName>`）；仅允许 [a-z0-9-]。 */
   slug: string
   description: string
   serverCount?: number

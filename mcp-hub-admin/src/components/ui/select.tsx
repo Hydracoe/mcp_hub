@@ -73,9 +73,8 @@ function SelectContent({
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
           className
         )}
-        /* 默认 popper：菜单贴着触发器展开。
-           shadcn 默认的 item-aligned 会把菜单**对齐到当前选中项**，
-           19 项里选中最后一项时菜单会往上翻一大截，筛选场景很跳。 */
+        /* 默认 popper：菜单贴着触发器展开。item-aligned 会把菜单对齐到当前
+           选中项，19 项里选中最后一项时菜单会上翻一大截，筛选场景很跳。 */
         position={position}
         align={align}
         {...props}
@@ -83,8 +82,7 @@ function SelectContent({
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
           className={cn(
-            /* 内边距只在这里给一次。此前 Content 和 Viewport 各写一个 p-1，
-               叠加成 8px 内缩。 */
+            /* 内边距只在这里给一次，避免与 Content 的内边距叠加。 */
             "p-1",
             position === "popper" &&
             "h-(--radix-select-trigger-height) w-full min-w-(--radix-select-trigger-width) scroll-my-1"
@@ -122,7 +120,7 @@ function SelectItem({
       className={cn(
         "relative flex h-8 w-full cursor-default items-center gap-2 rounded-md py-1 pr-8 pl-2.5 text-[13px] outline-hidden select-none",
         /* data-highlighted 是键盘/指针高亮位，data-state=checked 是选中项。
-           两者都依赖 --color-selection，这个令牌没注册就不会有任何底色。 */
+           两者都依赖 --color-selection，该令牌没注册就不会有底色。 */
         "data-[highlighted]:bg-selection data-[highlighted]:text-foreground",
         "data-[state=checked]:bg-selection data-[state=checked]:font-medium data-[state=checked]:text-foreground",
         "data-disabled:pointer-events-none data-disabled:opacity-50",

@@ -10,9 +10,7 @@ import (
 )
 
 // categoryItem 是分类列表一行。
-//
-// name 与 slug 同时回显：界面显示中文名，工具名里用的是英文名，
-// 两张皮摆在一起用户才看得出来"我改了这个，工具名会跟着变"。
+// name 用于展示，slug 进入对外工具名的前缀段。
 type categoryItem struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -39,8 +37,8 @@ type categoryRequest struct {
 	Description string `json:"description"`
 }
 
-// categoryNames 一次读出分类的 id→name 映射，供列表/详情展示分类名。
-// 读失败时返回空表：分类名只是展示字段，不该让整个 server 列表 500。
+// categoryNames 一次读出分类的 id→name 映射；读失败返回空表，
+// 因为分类名只是展示字段，不该让整个 server 列表 500。
 func (a *API) categoryNames(ctx context.Context) map[string]string {
 	out := map[string]string{}
 	cats, err := a.svc.Categories(ctx)
@@ -95,10 +93,8 @@ func (a *API) handleUpdateCategory(c *gin.Context) {
 }
 
 // failForCategory 翻译分类专有的领域错误。
-//
-// 单独一个函数是为了把分类的输入问题在这里就地说清：中文名/英文名撞车
-// （409）、英文名不合规（400）、分类下还有 server（409）。剩下的交给
-// 通用翻译。
+// 中文名/英文名冲突与分类占用为 409，英文名不合规与中文名为空为 400，
+// 其余交给 failFor。
 func failForCategory(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, categories.ErrCategoryTaken):

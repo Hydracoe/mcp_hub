@@ -13,20 +13,14 @@ import (
 // DriverAuto 表示"按连接串形态推断后端"。
 const DriverAuto = "auto"
 
-// 支持的后端名。与 config 包的取值保持一致——刻意的字符串常量重复：
-// store 是业务层，不该 import 配置层（那是装配层的事）。
+// 支持的后端名。必须与 config 包取值一致；store 不 import 配置层。
 const (
 	DriverPostgres = "postgres"
 	DriverSQLite   = "sqlite"
 )
 
-// Dialect 把"哪一种数据库"这一件事收成一个接口。
-//
-// 存在的意义不是"将来可以随便换库"，而是把方言差异集中到一处：
-// 迁移文件、LIKE 的大小写语义、有没有原生向量算子——这三件事以前
-// 散在 store.go / migrate.go / logs / embeddings 四个地方，现在只有这里。
-//
-// 业务层（hub / httpd / api）不认识本接口，也永远不该认识。
+// Dialect 收口数据库方言差异：迁移文件、LIKE 大小写语义、原生向量算子。
+// 业务层（hub / httpd / api）不认识本接口。
 type Dialect interface {
 	// Name 是后端名（postgres / sqlite），也是迁移文件目录名。
 	Name() string
@@ -38,9 +32,8 @@ type Dialect interface {
 	// Open 返回该方言的 GORM dialector。
 	Open(dsn string) gorm.Dialector
 
-	// TunePool 配置连接池。两者的资源模型完全不同：
-	// PG 连接是进程外资源（池子开大只是把压力转给数据库），
-	// SQLite 写是串行的（池子开大换来的是锁等待）。
+	// TunePool 配置连接池。PG 连接是进程外资源，SQLite 写是串行的，
+	// 池子开大只会分别换来数据库压力与锁等待。
 	TunePool(db *sql.DB)
 
 	// AfterOpen 做连接建立后的补充初始化（PG 建扩展、SQLite 设 PRAGMA）。
@@ -59,9 +52,7 @@ type Dialect interface {
 }
 
 // dialects 是后端名到实现的注册表。加一个后端只动这张表。
-//
-// 值都是指针：PG 方言要记住"pgvector 装没装上"这个探测结果，
-// 而每次 Resolve 都新建一个实例，探测结果不会跨连接串串味。
+// 值都是指针：PG 方言要记住 pgvector 探测结果，每次 Resolve 新建实例避免串味。
 var dialects = map[string]func() Dialect{
 	DriverPostgres: func() Dialect { return &postgresDialect{} },
 	DriverSQLite:   func() Dialect { return &sqliteDialect{} },
@@ -85,11 +76,9 @@ func DialectNames() []string {
 	return []string{DriverPostgres, DriverSQLite}
 }
 
-// ResolveDialect 解析"后端 + 连接串"这一对。
-//
-// driver 为空或 auto 时按连接串形态推断：postgres:// / postgresql:// 前缀
-// 即 postgres，其余（含空串）按 sqlite 算。空连接串在 sqlite 下由调用方
-// 补默认路径（见 Options.DataDir）。
+// ResolveDialect 解析"后端 + 连接串"。
+// driver 为空或 auto 时按形态推断：postgres:// / postgresql:// 前缀即 postgres，
+// 其余（含空串）按 sqlite 算；空连接串的默认路径由调用方补（见 Options.DataDir）。
 func ResolveDialect(driver, dsn string) (Dialect, error) {
 	name := strings.ToLower(strings.TrimSpace(driver))
 	if name == "" || name == DriverAuto {
@@ -103,8 +92,8 @@ func ResolveDialect(driver, dsn string) (Dialect, error) {
 	if err != nil {
 		return nil, err
 	}
-	// 显式指定 postgres 却给了个不像 DSN 的值：不能让它掉到 sqlite 上
-	// 被当成文件路径——那会造出一个文件名匪夷所思的空库。
+	// 显式 postgres 却给了不像 DSN 的值：不能落到 sqlite 上被当成文件路径，
+	// 那会造出一个文件名匪夷所思的空库。
 	if d.Name() == DriverPostgres && dsn != "" && !isPostgresDSN(dsn) {
 		return nil, fmt.Errorf("后端是 %s，但连接串 %q 不是 postgres:// 或 postgresql:// 开头", DriverPostgres, dsn)
 	}
@@ -117,8 +106,7 @@ func isPostgresDSN(dsn string) bool {
 }
 
 // migrationsFS 返回某个方言的迁移文件树。
-// 迁移文件按方言分目录（migrations/postgres、migrations/sqlite），
-// 两个目录各自独立演进——PG 的增量迁移历史没有理由拖累 SQLite 基线。
+// 迁移文件按方言分目录（migrations/postgres、migrations/sqlite），各自独立演进。
 func migrationsFS(d Dialect) (fs.FS, error) {
 	sub, err := fs.Sub(migrations, "migrations/"+d.Name())
 	if err != nil {

@@ -12,12 +12,8 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// --- 测试用的假连接 ---
-
 // fakeConn 是可控的假连接：收尾时序由测试说了算，不靠 sleep 抢时间。
-//
-// 真实的连接什么时候收完取决于网络与在飞调用，测试控制不了；把它换成
-// 假的，"什么时候收尾"就变成测试的一行代码。
+// 真实连接的收尾时机取决于网络与在飞调用，测试控制不了。
 type fakeConn struct {
 	inflight atomic.Int64
 
@@ -65,13 +61,9 @@ func (c *fakeConn) allow() {
 	c.releaseOnce.Do(func() { close(c.release) })
 }
 
-// --- 测试用的日志栅栏 ---
-
 // logBarrier 在有日志写出时发信号。
-//
 // 它是测试里的栅栏：某条连接打出"连接已收尾关闭"时，说明它的 goroutine
-// 已经走完收尾的销账（那句日志在销账之后）。栅栏之后对池状态的断言才是
-// 确定的，不必靠 sleep 猜对方走到哪一步了。
+// 已走完销账（那句日志在销账之后），此后对池状态的断言才是确定的。
 type logBarrier struct {
 	zapcore.Core
 	ch chan zapcore.Entry
@@ -128,8 +120,6 @@ func waitLog(t *testing.T, ch chan zapcore.Entry, msg string) {
 	}
 }
 
-// --- 测试辅助 ---
-
 // retiringRecords 取当前登记的收尾记录。
 func retiringRecords(p *Pool) []*retirement {
 	p.mu.RLock()
@@ -151,14 +141,11 @@ func waitDone(t *testing.T, ch chan struct{}) {
 	}
 }
 
-// --- 回归测试 ---
-
-// 同一条 server 的第二次退役（没有在飞调用）不能销掉第一次的账：
+// 同一 server 的第二次退役（没有在飞调用）不能销掉第一次的账：
 // 第一次的完成信号必须等它自己收完才关。
 //
-// 没有在飞调用的那次退役不登记记录，它的 goroutine 曾经会按 serverId
-// 把第一条记录删掉并关掉它的信号——真正的收尾随后读到空，永远不会再关，
-// 等信号的调用方就永久挂住了。
+// 没有在飞调用的那次退役不登记记录；它若按 serverId 销账，会删掉第一条记录
+// 并关掉它的信号，真正的收尾随后再也等不到，等待方就永久挂住。
 func TestSecondRetirementDoesNotClearOtherRecord(t *testing.T) {
 	logger, logs := newBarrierLogger()
 	p := NewPool(logger)
@@ -208,9 +195,6 @@ func TestSecondRetirementDoesNotClearOtherRecord(t *testing.T) {
 }
 
 // 两次都是"有在飞调用"的退役：两条记录各自销账，谁也不能动对方的。
-//
-// 曾经第二条直接顶掉第一条：先收尾的那个会替后一个关掉信号（报"已完成"
-// 的其实是还没收完的那条），后收尾的那个读到空，两条信号都等不到。
 func TestParallelRetirementsAreAccountedSeparately(t *testing.T) {
 	logger, _ := newBarrierLogger()
 	p := NewPool(logger)

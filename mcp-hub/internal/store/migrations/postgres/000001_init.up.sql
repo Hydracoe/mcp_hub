@@ -1,14 +1,6 @@
--- MCP Hub 初始 schema（由 golang-migrate 执行，版本记录在其自带的 schema_migrations 表）
---
--- 目标数据库只有 PostgreSQL（含 pgvector 扩展）。
--- 只用最朴素的存储类型（text / integer / bigint / 内联外键 / partial 索引），
--- 时间戳一律存 epoch 毫秒的 bigint（integer 32 位撑不过一个月），
--- 不碰 timestamp 与时区语义。
---
--- 刻意不用 GORM 的 AutoMigrate：它靠文本解析已有表的 DDL 判断差异，
--- 遇到行内注释会读错列清单，进而触发 DROP TABLE 式"修复"——一条
--- 会把数据写丢的路径。DDL 由迁移文件独占，GORM 只负责读写。
--- 后续 schema 变更：新增 000002_xxx.up.sql / .down.sql，不改动本文件。
+-- MCP Hub 初始 schema（由 golang-migrate 执行，版本记录在其自带的 schema_migrations 表）。目标只有 PostgreSQL（含 pgvector）。
+-- 时间戳一律存 epoch 毫秒的 bigint（integer 32 位撑不过一个月），不碰 timestamp 与时区语义。
+-- 刻意不用 GORM 的 AutoMigrate：它靠文本解析已有 DDL，遇到行内注释会读错列清单并触发 DROP TABLE 式"修复"。DDL 由迁移文件独占。
 
 CREATE TABLE servers (
   id                TEXT PRIMARY KEY,
@@ -140,8 +132,7 @@ CREATE UNIQUE INDEX idx_creds_label
 
 -- 分类。单值：一个 server 至多归属一个分类，多标签需求由 servers.tags 承担。
 -- name 是中文展示名，slug 是英文名，刻意分开：slug 进对外工具名的第一段
--- （<slug>__<serverKey>__<toolName>），必须是 ASCII；中文名折叠后只剩空串。
--- slug 唯一走 partial 索引：空 slug 走 id 回退，不算冲突。
+-- （<slug>__<serverKey>__<toolName>），必须是 ASCII；slug 唯一走 partial 索引，空 slug 不算冲突。
 CREATE TABLE categories (
   id            TEXT PRIMARY KEY,
   name          TEXT NOT NULL UNIQUE,      -- 中文名：展示 + 自动归类匹配
@@ -153,8 +144,6 @@ CREATE TABLE categories (
 CREATE UNIQUE INDEX idx_categories_slug ON categories(slug) WHERE slug <> '';
 
 -- 工具向量（hybrid 检索的向量一路）。
--- vector 刻意存 TEXT（JSON 数组）而不是 pgvector 的 vector 类型：
--- 表的读写不依赖扩展装没装上；查询侧用 `vector::vector <=> $1::vector` 强转做 ANN。
 -- 主键是完整代身份 (tool_id, model, dims, spec)：换模型/换语料字段即新代，
 -- 新代整代建好再原子切换（热切换），期间新旧两代并存。
 CREATE TABLE tool_embeddings (

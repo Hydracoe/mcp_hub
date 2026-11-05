@@ -27,7 +27,7 @@ export interface ConfirmDialogProps {
 }
 
 /** 确认对话框。与 FormDialog 共用同一套弹框皮肤（Header → Body → Footer，
- *  次要靠左、主操作靠右），破坏性操作走红色描边按钮 + 警示图标。 */
+ *  次要操作靠左、主操作靠右），破坏性操作走红色描边按钮 + 警示图标。 */
 export function ConfirmDialog({
   open,
   onOpenChange,

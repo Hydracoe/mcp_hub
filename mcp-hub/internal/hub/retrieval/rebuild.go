@@ -14,19 +14,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// Rebuild 对当前代做增量（重）嵌入（PRD §4.7.5）。
-//
-// corpus_hash 没变的跳过，成本与变更量成正比；单批失败保留旧向量并继续，
-// 重建失败不抹掉已有能力。
-//
-// 同一时刻只有一个重建在跑。已有重建在进行时，本次调用既不排队也不等待
-// （探活每轮都调它，排队会把探活周期拖长），而是立刻返回
-// RebuildSkipped 状态——调用方据此明确知道"已经有一次重建在进行"，
-// 而不是把在跑那次的进度快照误读成"重建已完成"。
-//
-// 重建全程使用调用方传入的 ctx：调用方取消后，在途的 embed 批次随之
-// 取消（保留旧向量），这次重建以失败收场，不会假装成功。
-// 探活循环每轮调用它：补新工具向量、重嵌变更语料、清理死工具向量。
+// Rebuild 对当前代做增量（重）嵌入：corpus_hash 没变的跳过，单批失败保留旧向量并继续。
+// 同一时刻只有一个重建在跑，已有重建时立刻返回 RebuildSkipped（不排队，避免拖长探活周期）。
+// ctx 取消会取消在途批次并以失败收场，不会假装成功。
 func (m *EmbedManager) Rebuild(ctx context.Context) RebuildStatus {
 	m.mu.Lock()
 	if m.status.State == RebuildRunning {
@@ -50,8 +40,7 @@ func (m *EmbedManager) Rebuild(ctx context.Context) RebuildStatus {
 }
 
 // buildGeneration 构建某一代的向量：增量判定 → 批量 embed → 写库。
-//
-// 写库只触碰目标代的行（upsert 键含代身份），因此与其它代的行互不干扰。
+// 写库只触碰目标代的行（upsert 键含代身份），与其它代的行互不干扰。
 func (m *EmbedManager) buildGeneration(ctx context.Context, cfg EmbedConfig, e *client.Embedder) RebuildStatus {
 	if e == nil {
 		return m.finish(RebuildFailed, 0, 0, 0, 0, 0,
@@ -213,14 +202,9 @@ func (m *EmbedManager) coverageOf(ctx context.Context, gen embeddings.Generation
 	return covered, live
 }
 
-// Reconcile 是启动时的一次性对齐：把当前代（由进程配置算出）的向量补齐，
-// 补全后清掉其它代的遗留行。换了 MCPHUB_EMBED_MODEL / EMBED_DIMS 后重启
-// 走的就是这条路。构建期间检索只用上一代就绪的向量（没有就绪代时降级为
-// bm25），半成品代从不参与，完成即刻生效，不需要重启或人工干预。
-//
-// 清理只在完全就绪（无失败 + 全覆盖）时做：embed 服务暂时打不通时旧代的
-// 行还留着——它们不参与检索（检索只查 activeGen），留着是因为"把配置改回
-// 旧代再重启"时可以直接就绪，不必重新花一遍嵌入的钱。
+// Reconcile 是启动时的一次性对齐：补齐当前代（由进程配置算出）的向量，
+// 补全后清掉其它代的遗留行。构建期间检索只用上一代就绪的向量（没有就降级 bm25）。
+// 清理只在完全就绪时做：旧代行不参与检索，留着便于改回旧配置后直接就绪。
 func (m *EmbedManager) Reconcile(ctx context.Context) RebuildStatus {
 	st := m.Rebuild(ctx)
 	if st.State == RebuildSkipped {

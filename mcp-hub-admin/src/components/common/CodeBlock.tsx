@@ -5,16 +5,15 @@ import { cn } from '@/lib/utils'
 
 export interface CodeBlockProps {
   code: string
-  /** 语言。目前只对 json 做高亮。 */
+  /** 仅 json 会高亮。 */
   language?: 'json' | 'text' | 'bash'
-  /** 右上角是否显示复制按钮。 */
   copyable?: boolean
   className?: string
   /** 最大化高度，超出滚动。 */
   maxHeight?: number
 }
 
-/** 代码块。JSON 走一个极小的分词高亮，不引高亮库。 */
+/** 代码块；JSON 用极简分词高亮，不引高亮库。 */
 export function CodeBlock({
   code,
   language = 'text',
@@ -51,7 +50,7 @@ function escapeHtml(s: string) {
     .replace(/>/g, '&gt;')
 }
 
-/** 极简 JSON 高亮：先逐个 token 转义再包 span，避免在已插入标签的字符串上继续正则而吃掉标签内容。 */
+/** 极简 JSON 高亮：先逐个 token 转义再包 span，避免正则吃掉已插入的标签。 */
 function highlightJson(raw: string): string {
   const out: string[] = []
   const re = /("(?:\\.|[^"\\])*")(\s*:)?|(\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|\b(true|false|null)\b|([{}[\],:])/g

@@ -17,8 +17,7 @@ import (
 )
 
 // CredentialSpec 是新增或编辑一把密钥的输入。
-// headers 是完整的一组注入头而不是单个头字段：供应商凭据形态各异
-// （Bearer / X-API-Key / 多字段签名），只有整组才是一次可独立轮换的单位。
+// headers 是完整的一组注入头而非单个字段：供应商凭据形态各异，整组才是一次可独立轮换的单位。
 type CredentialSpec struct {
 	Label    string
 	Headers  map[string]string
@@ -43,8 +42,7 @@ func (s *Service) AllKeyStatuses() map[string][]downstream.KeyStatus {
 }
 
 // AddCredential 新增一把密钥并让它立即参与轮换。
-// 保存前做同值检测（O3）：两把请求头完全相同的密钥不增加任何配额，
-// 只会白占轮换名额——在保存时拦下，而不是等用户事后对着界面排查。
+// 保存前做同值检测：请求头完全相同的两把密钥不增加配额，只会白占轮换名额。
 func (s *Service) AddCredential(ctx context.Context, serverID string, in CredentialSpec) (credentials.Credential, error) {
 	sv, err := s.requireKeyPoolSupport(ctx, serverID)
 	if err != nil {
@@ -59,20 +57,15 @@ func (s *Service) AddCredential(ctx context.Context, serverID string, in Credent
 		zap.String("server", sv.Spec.Key),
 		zap.String("credential", c.LabelOrFallback()),
 		zap.String("id", c.ID))
-	// O2：保存后自动试测一次（只读探活）。结果只记日志不改状态——
-	// 失败可能只是下游在抖，"禁用"的判决留给在线结算。
-	//
-	// 试测在写临界区之外：它要连一次下游（握手 + tools/list），
-	// 慢操作不该把凭据写路径整条锁住。
+	// 保存后自动试测一次（只读探活）：结果只记日志不改状态，禁用判决留给在线结算。
+	// 试测在写临界区之外，慢操作不占写锁。
 	s.asyncTestCredential(sv.Spec, c)
 	return c, nil
 }
 
 // addCredential 是新增密钥的写路径：同值检测 + 落库 + 同步密钥池，
 // 三步在同一个临界区内完成（见 Service.credWriteMu）。
-//
-// 检测与落库必须原子：中间插一个并发写入，两个同值的新增会双双通过
-// 检测，库里就留下两份同值凭据。
+// 检测与落库必须原子，否则并发同值新增会双双通过检测。
 func (s *Service) addCredential(ctx context.Context, sv servers.Server, in CredentialSpec) (credentials.Credential, error) {
 	s.credWriteMu.Lock()
 	defer s.credWriteMu.Unlock()
@@ -92,8 +85,8 @@ func (s *Service) addCredential(ctx context.Context, sv servers.Server, in Crede
 	if err != nil {
 		return credentials.Credential{}, err
 	}
-	// 密钥池同步留在临界区内：它按库里的全量凭据覆盖池子，与写并行
-	// 会出现"旧快照后到、把新凭据覆盖掉"的错位。
+	// 密钥池同步留在临界区内：它按库里的全量凭据覆盖池子，
+	// 与写并行会出现"旧快照后到、覆盖新凭据"的错位。
 	s.reloadKeyRingAfterCommit(ctx, sv.Spec.Key, sv.Spec.ID)
 	return c, nil
 }
@@ -114,15 +107,9 @@ func (s *Service) ImportCredentials(ctx context.Context, serverID string, in []C
 	}
 	s.log.Info("密钥已批量导入",
 		zap.String("server", sv.Spec.Key), zap.Int("count", len(out)))
-	// O2：批量导入逐把自动试测。并发有上限（见 testCredentialsBounded）：
-	// 逐把一个 goroutine 的写法在导入几十把密钥时会让几十个探活同时打向
-	// 下游，既是突发流量（可能触发限流甚至封禁），也让"哪一把出了问题"
-	// 难以分辨。
-	//
-	// 顺序不变：先落库、再同步密钥池、最后才试测——试测发生在密钥池已经是
-	// 最新一批之后，不会出现"库里没有、池里已经在了"的错位。
-	//
-	// 试测在写临界区之外（慢操作不占着写锁）。
+	// 批量导入逐把自动试测，并发有上限（见 testCredentialsBounded），
+	// 避免几十个探活同时打向下游。先落库、再同步密钥池、最后才试测，
+	// 试测在写临界区之外。
 	s.testCredentialsBounded(sv.Spec, out)
 	return out, nil
 }
@@ -133,8 +120,8 @@ func (s *Service) importCredentials(ctx context.Context, sv servers.Server, in [
 	s.credWriteMu.Lock()
 	defer s.credWriteMu.Unlock()
 
-	// O3：批量导入同样要拦同值密钥——批量粘贴是"同一个 Key 粘两遍"的
-	// 高发场景。对比范围：本 server 存量、其他 server 存量（K7）、本批次内部。
+	// 批量导入同样要拦同值密钥：批量粘贴是"同一个 Key 粘两遍"的高发场景。
+	// 对比范围：本 server 存量、其他 server 存量、本批次内部。
 	existing, err := s.store.Credentials.List(ctx, sv.Spec.ID)
 	if err != nil {
 		return nil, err
@@ -190,8 +177,8 @@ func (s *Service) importCredentials(ctx context.Context, sv servers.Server, in [
 }
 
 // UpdateCredential 编辑一把密钥。
-// 刻意不允许改状态：状态是判决结果，改配置不该顺手复位它，否则
-// "这把密钥为什么被禁"的线索会凭空消失。重新启用请走 SetCredentialEnabled。
+// 刻意不允许改状态：状态是判决结果，改配置不该顺手复位它，
+// 否则"这把密钥为什么被禁"的线索会消失。重新启用请走 SetCredentialEnabled。
 func (s *Service) UpdateCredential(ctx context.Context, serverID, credID string, in CredentialSpec) (credentials.Credential, error) {
 	sv, err := s.requireKeyPoolSupport(ctx, serverID)
 	if err != nil {
@@ -211,8 +198,7 @@ func (s *Service) UpdateCredential(ctx context.Context, serverID, credID string,
 
 // updateCredential 是编辑密钥的写路径：读旧值 + 同值检测 + 落库 +
 // 同步密钥池，在同一个临界区内完成（见 Service.credWriteMu）。
-//
-// 读旧值也放进临界区：否则可能拿一份过期的旧值去覆盖别人刚写的内容。
+// 读旧值也放进临界区，避免用过期旧值覆盖别人刚写的内容。
 func (s *Service) updateCredential(ctx context.Context, sv servers.Server, credID string, in CredentialSpec) (credentials.Credential, error) {
 	s.credWriteMu.Lock()
 	defer s.credWriteMu.Unlock()
@@ -228,7 +214,7 @@ func (s *Service) updateCredential(ctx context.Context, sv servers.Server, credI
 	}
 	existing.RPMLimit = max(in.RPMLimit, 0)
 
-	// O3：编辑同样不放过同值——把 A 改成和 B 一样，等于绕过新增时的检测。
+	// 编辑同样不放过同值：把 A 改成和 B 一样，等于绕过新增时的检测。
 	if err := s.rejectDuplicateHeaders(ctx, sv.Spec.ID, credID, existing.Headers, existing.Label); err != nil {
 		return credentials.Credential{}, err
 	}
@@ -266,15 +252,14 @@ func (s *Service) DeleteCredential(ctx context.Context, serverID, credID string)
 		zap.String("server", key),
 		zap.String("credential", cred.LabelOrFallback()),
 		zap.String("id", credID))
-	// 删除已经提交：密钥池同步失败只是运行时状态没跟上（记日志），
-	// 不该把一次成功的删除报成失败——库里已经没有这把密钥了。
+	// 删除已提交：密钥池同步失败只是运行时状态没跟上（记日志），
+	// 不该把一次成功的删除报成失败。
 	s.reloadKeyRingAfterCommit(ctx, key, serverID)
 	return nil
 }
 
 // SetCredentialEnabled 人工启停一把密钥。
-// 启用会顺带清掉冷却：用户点"启用"就是要现在用它，残留的冷却会让
-// 这个动作静默失效（点完还是不用，而两个按钮长得一模一样）。
+// 启用会顺带清掉冷却：用户点"启用"就是要现在用它，残留冷却会让动作静默失效。
 func (s *Service) SetCredentialEnabled(ctx context.Context, serverID, credID string, enabled bool) error {
 	cred, err := s.credentialOf(ctx, serverID, credID)
 	if err != nil {
@@ -303,8 +288,7 @@ func (s *Service) SetCredentialEnabled(ctx context.Context, serverID, credID str
 }
 
 // ResetCredentialQuota 清零一把密钥的本地配额计数。
-// 只清计数不动冷却：本地计数是网关的保守估计，用户更清楚真实配额；
-// 冷却是下游给的客观信号，清掉等于骗自己。
+// 只清计数不动冷却：本地计数是网关的保守估计，冷却是下游给的客观信号。
 func (s *Service) ResetCredentialQuota(ctx context.Context, serverID, credID string) error {
 	cred, err := s.credentialOf(ctx, serverID, credID)
 	if err != nil {
@@ -321,11 +305,9 @@ func (s *Service) ResetCredentialQuota(ctx context.Context, serverID, credID str
 	return nil
 }
 
-// TestCredential 用单把密钥做一次探活。
-//
-// 只读：不改密钥状态、不动工具缓存，只回答"这个配置现在能用吗"。
-// 刻意不按判决弃用密钥——连续次数（如 403 的两次阈值）是状态机的一部分，
-// 绕过它单独禁用会让手工测试与在线调用的结论互相矛盾。
+// TestCredential 用单把密钥做一次探活。只读：不改密钥状态、不动工具缓存，
+// 只回答"这个配置现在能用吗"。
+// 刻意不按判决弃用密钥——连续次数是状态机的一部分，绕过它会让手工测试与在线调用结论矛盾。
 func (s *Service) TestCredential(ctx context.Context, serverID, credID string) (*downstream.ProbeResult, downstream.KeyVerdict, error) {
 	sv, err := s.store.Servers.Get(ctx, serverID)
 	if err != nil {
@@ -348,8 +330,7 @@ func (s *Service) TestCredential(ctx context.Context, serverID, credID string) (
 }
 
 // KeySummary 是密钥池的整体状况，供概览展示。
-// 三种"用不上"的原因分开计数：合并成一个数字会丢掉用户唯一需要的线索
-// ——冷却会自己好、弃用要换密钥、人工停用要人改主意，动作完全不同。
+// 三种"用不上"的原因分开计数：冷却会自己好、弃用要换密钥、人工停用要人改主意，动作完全不同。
 type KeySummary struct {
 	Total int `json:"total"`
 	// Servers 是配了密钥池的 server 数（未配的走单密钥模式，不在统计内）。
@@ -428,8 +409,7 @@ func (s *Service) ActiveKeyCounts() map[string]int {
 }
 
 // CredentialHeaders 返回一把密钥的完整注入头。
-// 只给内部用（编辑时把回显的 *** 换回真值）：明文绝不出现在任何对外
-// 响应里，调用点必须留在管理 API 的入参处理那一步。
+// 只给内部用：明文绝不出现在任何对外响应里，调用点必须留在管理 API 的入参处理那一步。
 func (s *Service) CredentialHeaders(ctx context.Context, serverID, credID string) (map[string]string, error) {
 	c, err := s.credentialOf(ctx, serverID, credID)
 	if err != nil {
@@ -451,8 +431,7 @@ func (s *Service) requireKeyPoolSupport(ctx context.Context, serverID string) (s
 }
 
 // credentialOf 读取一把密钥并确认它确实属于该 server。
-// 归属校验不能省：密钥 id 全局唯一，漏掉就意味着拿着 A 的密钥 id
-// 能改到 B 的配置上。
+// 归属校验不能省：密钥 id 全局唯一，漏掉就意味着拿 A 的密钥 id 能改到 B 的配置上。
 func (s *Service) credentialOf(ctx context.Context, serverID, credID string) (credentials.Credential, error) {
 	c, err := s.store.Credentials.Get(ctx, credID)
 	if err != nil {
@@ -464,23 +443,17 @@ func (s *Service) credentialOf(ctx context.Context, serverID, credID string) (cr
 	return c, nil
 }
 
-// --- 内部 ---
-
 // credChecked 是写路径上的测试接缝：在同值检测通过之后、真正落库之前
-// 被调用，且仍在写临界区内（见 Service.credCheckedHook）。
-//
-// 生产路径上它是一个空判断。
+// 被调用，且仍在写临界区内（见 Service.credCheckedHook）。生产路径上是空判断。
 func (s *Service) credChecked() {
 	if s.credCheckedHook != nil {
 		s.credCheckedHook()
 	}
 }
 
-// rejectDuplicateHeaders 在保存前检测同值密钥（O3 / K6 / K7）。
-// excludeID 是编辑场景里要跳过的自己（新增时传空）。头名按 HTTP 惯例
-// 不区分大小写，头值精确相等。incomingLabel 只用于错误文案。
-// 两层拦截：同 server 内同值（白占轮换名额），以及跨 server 同值
-// （把限流压力集中到同一个上游身份，用量归属随之搅浑）。
+// rejectDuplicateHeaders 在保存前检测同值密钥。excludeID 是编辑场景里要跳过的自己（新增时传空）。
+// 头名按 HTTP 惯例不区分大小写，头值精确相等；incomingLabel 只用于错误文案。
+// 两层拦截：同 server 内同值，以及跨 server 同值（限流压力会集中到同一个上游身份）。
 func (s *Service) rejectDuplicateHeaders(ctx context.Context, serverID, excludeID string, headers map[string]string, incomingLabel string) error {
 	if len(headers) == 0 {
 		return nil
@@ -536,22 +509,14 @@ func sameHeaders(a, b map[string]string) bool {
 // credentialTestTimeout 是自动试测的单钥超时。
 const credentialTestTimeout = 30 * time.Second
 
-// credentialTestConcurrency 是凭据自动试测的并发上限。
-//
-// 批量导入一次可能带来几十把密钥，每把都要单独试测一次，而试测是真的会
-// 连一次下游（握手 + tools/list）。不设上限的话，这些探活会同时打出去：
-// 对下游是突发流量（可能触发限流甚至封禁），对本机是瞬间拉满的 socket。
-//
-// 4 是折中：够快（几十把密钥一两分钟内试完），又不会把下游打成一片。
-// 它只约束"凭据试测"这一条路径，与错峰探活（probeSem）各自独立。
+// credentialTestConcurrency 是凭据自动试测的并发上限：批量导入可能带来几十把密钥，
+// 每把都真的连一次下游，不设上限会形成突发流量。
+// 4 是折中：几十把密钥一两分钟内试完，又不至于把下游打成一片；与错峰探活（probeSem）各自独立。
 const credentialTestConcurrency = 4
 
-// asyncTestCredential 在后台对一把密钥做一次只读探活（O2）。
-// 只记日志，不改任何状态：试测失败可能只是下游在抖，禁用判决必须
-// 留给在线结算（连续次数是状态机的一部分，旁路测试不参与）。
-//
-// 单条路径一次只发一把，天然不构成突发；它与批量导入共用同一把试测
-// 名额，所以批量导入进行中时单条试测最多排在后面，不会给下游加压。
+// asyncTestCredential 在后台对一把密钥做一次只读探活。
+// 只记日志，不改任何状态：禁用判决必须留给在线结算。
+// 单条路径一次只发一把，天然不构成突发；与批量导入共用同一把试测名额。
 func (s *Service) asyncTestCredential(spec downstream.Spec, c credentials.Credential) {
 	go func() {
 		s.testCredential(spec, c)
@@ -559,13 +524,8 @@ func (s *Service) asyncTestCredential(spec downstream.Spec, c credentials.Creden
 }
 
 // testCredentialsBounded 批量试测：并发有上限，逐把独立成败。
-//
-// 用固定数量的 worker 轮流试测，而不是"每把一个 goroutine"：后者在批量
-// 导入几十把密钥时会让几十个探活同时打向下游。剩下的排队即可——试测是
-// 只读旁路，排队不影响导入本身。
-//
-// 每一把的成败互不影响：失败只记日志并计入汇总，不中断整批，也不改密钥
-// 状态。导入已经落库，试测失败不该把一批已经写进去的密钥变成"导入失败"。
+// 用固定数量的 worker 轮流试测，而不是每把一个 goroutine，避免几十个探活同时打向下游；
+// 剩余排队即可，试测是只读旁路，排队不影响导入本身。失败只记日志并计入汇总。
 func (s *Service) testCredentialsBounded(spec downstream.Spec, creds []credentials.Credential) {
 	if len(creds) == 0 {
 		return
@@ -597,8 +557,7 @@ func (s *Service) testCredentialsBounded(spec downstream.Spec, creds []credentia
 		}()
 	}
 
-	// 整批结束后补一条汇总：逐条日志能看出"哪一把没通过"，汇总能一眼
-	// 看出这批的健康度（导入 20 把、通过 3 把，是完全不同的两件事）。
+	// 整批结束后补一条汇总：逐条日志能看出"哪一把没通过"，汇总能一眼看出这批的健康度。
 	go func() {
 		wg.Wait()
 		s.log.Info("批量导入的密钥试测完成",
@@ -639,7 +598,6 @@ func (s *Service) testCredential(spec downstream.Spec, c credentials.Credential)
 }
 
 // probeCredential 对一把密钥做只读探活。
-//
 // probeFn 是接缝：留空用真实的 Prober，只有测试会替换它。
 func (s *Service) probeCredential(ctx context.Context, spec downstream.Spec, c credentials.Credential) *downstream.ProbeResult {
 	probeSpec := spec

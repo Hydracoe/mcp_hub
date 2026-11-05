@@ -35,8 +35,8 @@ type KeyStatus struct {
 	LastUsedAt time.Time `json:"lastUsedAt,omitempty"`
 	LastError  string    `json:"lastError,omitempty"`
 
-	// Fingerprint 是密钥内容的短指纹，让用户分得清"是哪一把"。它不是用来验证
-	// 密钥对不对的——那需要把明文交出去。
+	// Fingerprint 是密钥内容的短指纹，让用户分得清"是哪一把"，不是用来验证
+	// 密钥对不对的（那需要把明文交出去）。
 	Fingerprint string `json:"fingerprint"`
 }
 
@@ -67,8 +67,7 @@ func (r *KeyRing) StatusOf(id string) (KeyStatus, bool) {
 
 // ResetQuota 清零某把密钥的本地配额计数。
 //
-// 只清计数，不动冷却：本地计数是网关的保守估计，用户比网关更清楚真实配额；
-// 而冷却是下游给的客观信号，清掉就等于骗自己。
+// 只清计数，不动冷却：本地计数是网关的保守估计，冷却是下游给的客观信号。
 func (r *KeyRing) ResetQuota(id string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -82,13 +81,8 @@ func (r *KeyRing) ResetQuota(id string) bool {
 }
 
 // ClearCooling 解除某把密钥的冷却（人工干预）。
-//
-// 冷却与"进过冷却"的标记一起复位：人工把冷却清掉之后，密钥是被人放回池子的，
-// 下一次成功不是"冷却后的首次成功"，不该报出 Recovered——那个信号说的是
-// "它自己真的回来了"，人工解除的冷却谈不上回来。
-//
-// 只复位冷却相关的标记，不动连续限流计数：M8 明确"人工启用不清计数"，
-// "再犯立刻弃用"是威慑，清了就没了。
+// 冷却与"进过冷却"的标记一起复位：人工清掉冷却后密钥是被人放回池子的，
+// 下一次成功不该报 Recovered。连续限流计数不清，"再犯立刻弃用"是威慑。
 func (r *KeyRing) ClearCooling(id string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -102,11 +96,9 @@ func (r *KeyRing) ClearCooling(id string) bool {
 	return true
 }
 
-// ResetLimitedCount 清零某把密钥的连续限流计数与退避标记（O1 自动救回专用）。
-//
-// 与人工启用的语义刻意不同（M8：人工启用不清计数，"再犯立刻弃用"是明确
-// 的威慑）：自动救回的前提是探活已通过，带着顶格的旧计数回池，下一次 429
-// 会立刻把它再禁掉，形成禁用↔救回的抖动。探活通过即视为干净的起点。
+// ResetLimitedCount 清零某把密钥的连续限流计数与退避标记（自动救回专用）。
+// 与人工启用不同：自动救回的前提是探活已通过，带着顶格的旧计数回池会立刻
+// 再次被禁，形成禁用↔救回的抖动。探活通过即视为干净的起点。
 func (r *KeyRing) ResetLimitedCount(id string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -136,7 +128,6 @@ func (r *KeyRing) UsableCount() int {
 }
 
 // KeyFingerprint 返回一组头的短指纹，用于界面上区分"是哪一把密钥"。
-//
 // 取全部头值拼接后的哈希前 4 位。不取末尾字符：有些供应商的密钥末尾是固定
 // 后缀，那样每把看起来都一样。
 func KeyFingerprint(headers map[string]string) string {

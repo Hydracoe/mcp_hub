@@ -10,8 +10,7 @@ import (
 )
 
 // enqueueLog 把调用日志投入异步队列。
-// 队列满时直接丢弃而不是阻塞：日志是观测手段，不该成为调用路径上的
-// 一个可用性依赖。
+// 队列满时直接丢弃而不是阻塞：日志不该成为调用路径上的可用性依赖。
 func (s *Service) enqueueLog(rec aggregate.LogRecord) {
 	entry := logs.LogEntry{
 		ServerID:     rec.ServerID,

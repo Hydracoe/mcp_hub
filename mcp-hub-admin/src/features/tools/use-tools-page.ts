@@ -23,7 +23,7 @@ export const UNCATEGORIZED = '__none__'
 /** 待启用是"未启用"里最有行动价值的一撮：它不是决定，是欠一个决定。 */
 export const isPending = (t: ToolEntry): boolean => t.pending === true
 
-/** enabled 缺省（老响应）当启用处理，宁可少报"未启用"。 */
+/** enabled 缺省时当启用处理，宁可少报「未启用」。 */
 export const isEnabled = (t: ToolEntry): boolean => t.enabled !== false
 
 /** 按分类统计工具数，供左栏导航显示计数。 */
@@ -102,10 +102,8 @@ export function useToolsPage() {
 
   const tools = useMemo(() => data?.items ?? [], [data])
 
-  /* server 参数既收 serverKey 也收 serverId。
-   * 对外只认 key（稳定、可读，是日志与工具名里的那一段），但历史链接、
-   * 手敲 URL、从别的页面顺手复制的 id 都得能用——否则就会出现
-   * "传了 id 进来筛选对不上、界面还回显一串哈希"这种一眼看不出所以然的状态。
+  /* server 参数既收 serverKey 也收 serverId。对外只认 key（稳定、可读），
+   * 但旧链接、手敲 URL、从别处复制的 id 都得能用。
    * 认不出来的值原样保留：筛选结果为空，比悄悄把条件丢掉更诚实。 */
   const server = useMemo(() => {
     if (!rawServer) return ''

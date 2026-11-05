@@ -1,7 +1,6 @@
 // Package registry 持有对外聚合视图：一份不可变的工具列表与路由表。
-//
-// 它只回答两个问题——"对外有哪些工具"与"某个对外名该发给谁"——不碰
-// 连接、不碰存储。快照整体替换、读路径无锁，tools/list 因此一次库都不查。
+// 它只回答"对外有哪些工具"与"某个对外名该发给谁"，不碰连接、不碰存储；
+// 快照整体替换、读路径无锁，tools/list 因此一次库都不查。
 package registry
 
 import (
@@ -22,10 +21,8 @@ const Separator = "__"
 
 // ExposedToolName 按 <serverKey>__<toolName> 拼出对外工具名。
 //
-// 两段都是创建后不再变的字段，名字因此天然稳定（serverKey 有唯一约束，
-// 按构造不会重复）。分类刻意不进名字：它是可变的组织元数据，写进标识符
-// 就等于"改一次分类 = 对所有调用方做一次破坏性重命名"；分类信息仍可从
-// hub__list_categories 与检索 facet 拿到。
+// 两段都是创建后不再变的字段，名字因此天然稳定。分类刻意不进名字：它是可变的
+// 组织元数据，写进标识符就等于"改一次分类 = 对所有调用方做一次破坏性重命名"。
 func ExposedToolName(serverKey, toolName string) string {
 	return serverKey + Separator + toolName
 }
@@ -43,10 +40,7 @@ type Route struct {
 }
 
 // HiddenTool 是"在缓存里、但不进入聚合列表"的工具。
-//
-// Enabled=false（人工把开关关掉了）的工具不该出现在 AI 的 tools/list
-// 里，但管理界面必须看得到——否则"被禁用的工具"就成了黑洞：
-// 既看不见，也没地方把它放回来。
+// Enabled=false 的工具不该出现在 AI 的 tools/list 里，但管理界面必须看得到。
 type HiddenTool struct {
 	Info downstream.ToolInfo
 }
@@ -118,13 +112,8 @@ func NewRegistry() *Registry {
 }
 
 // Build 依据一组 tool source 构建快照并原子换上。
-//
-// 只接受 Enabled 的 source；不可用的 source 仍贡献缓存的工具，只标记
-// unavailable——已聚合的工具不该因为下游抖动从 AI 的列表里凭空消失。
-//
-// 快照里有两份列表，别混：tools（与 routes）是给 AI 的，只含人工启用的
-// 工具；entries 是给管理界面的，额外含 Hidden 里那些"缓存里有、但开关
-// 关着"的，靠 Enabled 区分。ToolCount 只数前者。
+// 只接受 Enabled 的 source；不可用者仍贡献缓存工具，只标记 unavailable，避免下游抖动让
+// 已聚合工具从 AI 列表里消失。tools/routes 给 AI，entries 额外含 Hidden（靠 Enabled 区分）。
 func (r *Registry) Build(sources []ToolSource) *Snapshot {
 	snap := &Snapshot{
 		routes:  make(map[string]Route),
@@ -185,8 +174,7 @@ func (r *Registry) Build(sources []ToolSource) *Snapshot {
 			view.Tools = append(view.Tools, t.Name)
 		}
 
-		// 未启用的工具：只进 entries，不进 routes / tools。
-		// 它们的存在只为让管理界面能看见并操作，AI 的列表里一个都不会有。
+		// 未启用的工具只进 entries，不进 routes/tools：管理界面可见，AI 列表里没有。
 		for _, h := range src.Hidden {
 			snap.entries = append(snap.entries, ToolEntry{
 				Exposed:     ExposedToolName(src.ServerKey, h.Info.Name),
@@ -240,20 +228,14 @@ func (s *Snapshot) Servers() []ServerView { return s.servers }
 // BuiltAt 返回快照构建时刻（Unix 毫秒）。
 func (s *Snapshot) BuiltAt() int64 { return s.builtAt }
 
-// maxSchemaBytes 是单个工具 schema 的透传上限（T12）。
-// schema 会原样进入每次 tools/list 响应与检索语料，超大 schema 会撑爆
-// AI 的上下文。32KB 足以容纳任何认真设计的参数定义——超过它几乎必然是
-// 下游把整份文档误塞进了 schema。
+// maxSchemaBytes 是单个工具 schema 的透传上限。
+// schema 会原样进入每次 tools/list 响应与检索语料，超大 schema 会撑爆 AI 的上下文；
+// 32KB 足以容纳任何认真设计的参数定义，超过它几乎必然是把整份文档塞进了 schema。
 const maxSchemaBytes = 32 * 1024
 
-// normalizeSchema 保证透传给 AI 客户端的 schema 是一段合法且尺寸可控的 JSON。
-// 只兜底不改写：畸形 schema 退化成空对象，别让整批工具装载失败；
-// 超大的降级为提示性描述（T12），宁可少信息也不撑爆上下文。
-//
-// 必须是 JSON **对象**：`[1,2,3]` 与 `"oops"` 都通过 json.Valid，却不是
-// inputSchema——它们会让客户端按数组/字符串去解析参数。用首字符 '{' 判定
-// 而不是反序列化后再判类型：这是每次 tools/list 都要跑的路径，且只需要
-// "是不是对象"这一个答案。
+// normalizeSchema 保证透传给 AI 客户端的 schema 是一段合法且尺寸可控的 JSON 对象。
+// 只兜底不改写：畸形或非对象退化成空对象，避免整批工具装载失败；超大者降级为提示描述。
+// 用首字符 '{' 而非反序列化判类型：这是 tools/list 的热路径，只需知道"是不是对象"。
 func normalizeSchema(raw json.RawMessage) json.RawMessage {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || trimmed[0] != '{' || !json.Valid(trimmed) {

@@ -19,16 +19,13 @@ import (
 )
 
 // authGate 是包在下游外面的凭据校验层。
-//
-// 它同时干三件事：拒绝错误凭据、记下每次请求带的凭据、统计握手次数。
-// 三样都是"从外部观察网关行为"的证据，比断言网关内部字段可靠——
-// 内部字段对不对不是重点，请求到底带出去什么才是。
+// 它拒绝错误凭据、记下每次请求带的凭据、统计握手次数——三样都是"从外部观察
+// 网关行为"的证据，比断言网关内部字段可靠：请求到底带出去什么才是重点。
 type authGate struct {
 	accept atomic.Value // string：当前接受的密钥
 
-	// delay 是拒绝之前先拖多久。用来制造"请求在路上时凭据被换掉"
-	// 那个瞬间——没有它，401 会在测试有机会动手之前就返回，
-	// 那条重试路径根本覆盖不到。
+	// delay 是拒绝之前先拖多久，用来制造"请求在路上时凭据被换掉"那个瞬间；
+	// 没有它，401 会在测试有机会动手之前就返回，重试路径覆盖不到。
 	delay atomic.Int64
 
 	handshakes atomic.Int64
@@ -89,9 +86,8 @@ func (g *authGate) wrap(next http.Handler) http.Handler {
 }
 
 // isHandshake 判断一个请求体是不是协议握手。
-//
-// 新版走 server/discover，旧版走 initialize，两种都要认——
-// 否则"连接重建了吗"这个问题会取决于下游协商到了哪一代协议。
+// 新版走 server/discover，旧版走 initialize，两种都要认，否则"连接重建了吗"
+// 会取决于下游协商到了哪一代协议。
 func isHandshake(body []byte) bool {
 	return bytes.Contains(body, []byte("server/discover")) ||
 		bytes.Contains(body, []byte(`"initialize"`))
@@ -165,10 +161,7 @@ func (e *env) apply(t *testing.T, spec downstream.Spec) {
 	}
 }
 
-// --- 凭据轮换 ---
-
-// 轮换密钥不该被调用方感知：连接不重建，在飞调用不被打断，
-// 后续请求自动带上新凭据。
+// 轮换密钥不该被调用方感知：连接不重建，在飞调用不被打断，后续请求自动带上新凭据。
 func TestCredentialRotationKeepsConnectionAndInflightCall(t *testing.T) {
 	gate := newAuthGate("old")
 	url := startGatedDownstream(t, gate, slowTool("slow", 400*time.Millisecond))
@@ -270,9 +263,6 @@ func TestAuthFailureIsNotRetriedWhenCredentialUnchanged(t *testing.T) {
 	}
 }
 
-// --- 优雅停用 ---
-
-// 停用要分两步落地：工具立刻从聚合列表撤下，在飞调用照常跑完。
 func TestDisableWaitsForInflightCall(t *testing.T) {
 	const work = 500 * time.Millisecond
 
@@ -312,7 +302,7 @@ func TestDisableWaitsForInflightCall(t *testing.T) {
 }
 
 // 等到上限还没收尾时必须强关，否则管理界面上那个 server 会永远停在
-// "停用中"，而用户没有任何办法——这是"无限等待"方案的死结。
+// "停用中"，用户没有任何办法。
 func TestDisableForceClosesAfterDrainTimeout(t *testing.T) {
 	url := startDownstream(t, slowTool("stuck", 10*time.Second))
 	e := newEnv(t, []downstream.Spec{remoteSpec("stuck-node", url)})
@@ -379,10 +369,6 @@ func TestDrainFinishesAndClearsState(t *testing.T) {
 	t.Error("收尾已经结束，但停用状态一直没清掉")
 }
 
-// --- 目标变更 ---
-
-// 真的换了目标就必须重建连接，否则请求会打到上一个地址上——
-// 这类故障最难查，因为一切看起来都正常。
 func TestTargetChangeRebuildsConnection(t *testing.T) {
 	urlA := startDownstream(t, taggedTool("which", "A"))
 	urlB := startDownstream(t, taggedTool("which", "B"))

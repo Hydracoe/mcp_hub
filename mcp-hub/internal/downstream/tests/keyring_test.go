@@ -12,7 +12,7 @@ import (
 	"github.com/hydra/mcp-hub/internal/downstream"
 )
 
-// --- 轮换：N 把密钥要均匀用上 ---
+// 轮换：N 把密钥要均匀用上
 
 func TestKeyRingRotatesEvenly(t *testing.T) {
 	clock := newFakeClock()
@@ -42,7 +42,7 @@ func TestKeyRingRotatesEvenly(t *testing.T) {
 	}
 }
 
-// --- 冷却中的密钥会被跳过，到点自动回来 ---
+// 冷却中的密钥会被跳过，到点自动回来
 
 func TestKeyRingSkipsCoolingKey(t *testing.T) {
 	clock := newFakeClock()
@@ -75,7 +75,7 @@ func TestKeyRingSkipsCoolingKey(t *testing.T) {
 	}
 }
 
-// --- 退避：Retry-After 优先、指数递增、成功后重置 ---
+// 退避：Retry-After 优先、指数递增、成功后重置
 
 func TestKeyRingBackoffRampAndReset(t *testing.T) {
 	clock := newFakeClock()
@@ -140,7 +140,7 @@ func TestKeyRingPrefersRetryAfter(t *testing.T) {
 	}
 }
 
-// --- 401 弃用，且重启后仍是弃用 ---
+// 401 弃用，且重启后仍是弃用
 
 func TestKeyRingInvalidKeyDisables(t *testing.T) {
 	clock := newFakeClock()
@@ -170,7 +170,7 @@ func TestKeyRingInvalidKeyDisables(t *testing.T) {
 	}
 }
 
-// --- 403 给两次机会 ---
+// 403 给两次机会
 
 func TestKeyRingRevokedNeedsTwoStrikes(t *testing.T) {
 	clock := newFakeClock()
@@ -198,7 +198,7 @@ func TestKeyRingRevokedNeedsTwoStrikes(t *testing.T) {
 	}
 }
 
-// --- 全部冷却时快速失败，并给出可执行的 retryAfter ---
+// 全部冷却时快速失败，并给出可执行的 retryAfter
 
 func TestKeyRingAllCoolingFailsFast(t *testing.T) {
 	clock := newFakeClock()
@@ -225,7 +225,7 @@ func TestKeyRingAllCoolingFailsFast(t *testing.T) {
 	}
 }
 
-// --- 5xx 与超时让密钥状态零变化 ---
+// 5xx 与超时让密钥状态零变化
 
 func TestKeyRingNeutralFailureChangesNothing(t *testing.T) {
 	clock := newFakeClock()
@@ -252,7 +252,7 @@ func TestKeyRingNeutralFailureChangesNothing(t *testing.T) {
 	}
 }
 
-// --- 集体失败保护：别把用户的密钥逐个禁用成一片红 ---
+// 集体失败保护：别把用户的密钥逐个禁用成一片红
 
 func TestKeyRingCollectiveFailureProtection(t *testing.T) {
 	clock := newFakeClock()
@@ -280,7 +280,7 @@ func TestKeyRingCollectiveFailureProtection(t *testing.T) {
 	}
 }
 
-// --- RPM 超额后流量转到下一把，窗口滚动即恢复 ---
+// RPM 超额后流量转到下一把，窗口滚动即恢复
 
 func TestKeyRingRPMExhaustionSpillsOver(t *testing.T) {
 	clock := newFakeClock()
@@ -319,7 +319,7 @@ func TestKeyRingRPMExhaustionSpillsOver(t *testing.T) {
 	}
 }
 
-// --- 重启语义：cooling 复位、disabled 保持 ---
+// 重启语义：cooling 复位、disabled 保持
 
 func TestKeyRingRestartSemantics(t *testing.T) {
 	clock := newFakeClock()
@@ -342,7 +342,7 @@ func TestKeyRingRestartSemantics(t *testing.T) {
 	}
 }
 
-// --- Sync 保留运行态 ---
+// Sync 保留运行态
 
 func TestKeyRingSyncKeepsRuntimeState(t *testing.T) {
 	clock := newFakeClock()
@@ -369,7 +369,7 @@ func TestKeyRingSyncKeepsRuntimeState(t *testing.T) {
 	}
 }
 
-// --- 指纹：能区分，但不泄露 ---
+// 指纹：能区分，但不泄露
 
 func TestKeyFingerprintDoesNotLeakAndDistinguishes(t *testing.T) {
 	a := downstream.KeyFingerprint(map[string]string{"Authorization": "Bearer alpha-secret"})
@@ -390,7 +390,7 @@ func TestKeyFingerprintDoesNotLeakAndDistinguishes(t *testing.T) {
 	}
 }
 
-// --- 判决映射与重试边界 ---
+// 判决映射与重试边界
 
 func TestVerdictOfMapping(t *testing.T) {
 	cases := []struct {
@@ -436,7 +436,7 @@ func TestKeyVerdictRetryBoundary(t *testing.T) {
 	}
 }
 
-// --- 密钥池打空要有自己的分类 ---
+// 密钥池打空要有自己的分类
 
 // NO_USABLE_KEY 如果没有人产生，用户就会看到"未知错误"：一段本可执行的说明
 // （还有几把在冷却、约多久后重试）被降级成一句无用的"稍后重试即可"。
@@ -468,7 +468,7 @@ func TestNoUsableKeyHasItsOwnKind(t *testing.T) {
 	}
 }
 
-// --- 在飞期间被人工停用的密钥，429 反馈不得使其复活 ---
+// 在飞期间被人工停用的密钥，429 反馈不得使其复活
 
 // 时间线：借出密钥 → 管理端停用该密钥（Sync 写入 disabled）→ 在飞调用收到
 // 429 → settle。若 settle 顺手把 state 写回 active，冷却一结束密钥就复活，
@@ -517,11 +517,11 @@ func TestSettleRateLimitedKeepsManualDisable(t *testing.T) {
 	}
 }
 
-// --- 并发 Sync + Acquire：租约必须持有配置快照 ---
+// 并发 Sync + Acquire：租约必须持有配置快照
 
 // 管理端（改密钥头、启停、重载）调 Sync，在锁内改写 entry 的 label 与 headers；
-// 调用方在 Acquire 返回后不持锁地读 lease 的头。租约若不持有快照而直接读 entry，
-// -race 会抓到这次无锁读；本用例守住该回归，必须用 `go test -race` 运行。
+// 调用方在 Acquire 返回后不持锁地读 lease 的头。直接读 entry 会被 -race 抓到，
+// 本用例须用 `go test -race` 运行。
 func TestKeyLeaseIsolatesFromConcurrentSync(t *testing.T) {
 	clock := newFakeClock()
 	ring := newTestRing(t, clock, testCreds(2))

@@ -4,8 +4,6 @@ import * as api from '../endpoints'
 import { POLL, queryKeys } from '../query-keys'
 import type { ServerRequest } from '../types'
 
-/* ────────────────────────────── 查询 ────────────────────────────── */
-
 export function useServers() {
   return useQuery({
     queryKey: queryKeys.servers,
@@ -22,9 +20,6 @@ export function useServer(id: string | undefined) {
   })
 }
 
-/* ────────────────────────────── 变更 ────────────────────────────── */
-
-/** 服务端数据被改动后，统一失效哪些查询。 */
 function useRefreshAfterServerChange() {
   const qc = useQueryClient()
   return (serverId?: string) => {

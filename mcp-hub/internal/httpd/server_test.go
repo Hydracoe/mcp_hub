@@ -16,12 +16,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// 这一组用例锁的是**路由层的行为契约**，与业务无关。
-//
-// 迁移到 gin 之后，路径匹配、尾斜杠、方法不匹配、CORS 预检这几处的
-// 默认行为都与标准库 mux 不同，而且差异只以状态码的形式表现——
-// 不显式钉住，就会在客户端侧变成"某个请求偶尔 301"这种最难查的形态。
-// internal/api 的测试打的是业务语义，覆盖不到这些。
+// 这一组用例锁路由层的行为契约，与业务无关。
+// gin 的路径匹配、尾斜杠、方法不匹配、CORS 预检默认行为与标准库 mux 不同，
+// 差异只以状态码表现，不显式钉住就会变成“某个请求偶尔 301”这类难查问题。
 
 // newTestServer 起一个真实的服务实例：真 PostgreSQL、真 hub，只是不占端口。
 // 不配置任何下游——路由行为不需要下游参与。
@@ -157,9 +154,7 @@ func TestCORSPreflight(t *testing.T) {
 }
 
 // 鉴权作用域：/api/* 归管理 API 管，健康探针与 /api/status 刻意不设防。
-//
-// /api/status 是给探活与运维脚本用的，加鉴权等于让它在有 APIKey 的
-// 部署里直接失效。
+// /api/status 供探活与运维脚本使用，加鉴权会让它在有 APIKey 的部署里失效。
 func TestAPIGuardScope(t *testing.T) {
 	ts := newTestServer(t, httpd.Options{APIKey: "s3cret"})
 

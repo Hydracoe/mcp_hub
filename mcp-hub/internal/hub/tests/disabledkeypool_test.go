@@ -9,9 +9,8 @@ import (
 )
 
 // gateSawToken 报告下游有没有见过某把密钥。
-//
-// 用"见过没有"而不是"用了几次"：握手与工具列举也在下游那边记一遍，
-// 次数会随协议实现变；"有没有被选中"才是这里要断言的东西。
+// 用"见过没有"而不是"用了几次"：握手与工具列举也在下游记一遍，次数会随协议实现变；
+// "有没有被选中"才是这里要断言的东西。
 func gateSawToken(gate *keyedGate, token string) bool {
 	for _, got := range gate.Credentials() {
 		if got == "Bearer "+token {
@@ -22,11 +21,8 @@ func gateSawToken(gate *keyedGate, token string) bool {
 }
 
 // 停用的 server 不该继续持有可用密钥。
-//
-// 停用原本只做了两件事：把工具从聚合列表里摘掉、让连接退役。密钥池却留在
-// 池子里——那些密钥还在，随时可能被选中发出去，停用因此只是"看起来停了"。
-//
-// 这里从外面观察：下游到底收到了哪把密钥。
+// 停用若只把工具从聚合列表摘掉、让连接退役，密钥池仍留在池子里，那些密钥随时
+// 可能被选中发出去，停用就只是"看起来停了"。这里从外部观察下游收到了哪把密钥。
 func TestDisabledServerDropsKeyPool(t *testing.T) {
 	gate := newKeyedGate("")
 	url := startKeyedDownstream(t, gate, echoTool("ping"))
@@ -80,9 +76,7 @@ func TestDisabledServerDropsKeyPool(t *testing.T) {
 }
 
 // 停用 → 重新启用：密钥池装回来，密钥重新参与轮换。
-//
-// 停用清掉的是内存里的条目，不是库里的凭据。要是重新启用后密钥装不回来，
-// "停用一会儿再开"就等于把密钥全丢了。
+// 停用清掉的是内存条目，不是库里的凭据；装不回来就等于把密钥全丢了。
 func TestReEnabledServerRestoresKeyPool(t *testing.T) {
 	gate := newKeyedGate("")
 	url := startKeyedDownstream(t, gate, echoTool("ping"))
@@ -122,9 +116,8 @@ func TestReEnabledServerRestoresKeyPool(t *testing.T) {
 }
 
 // 编辑表单把 server 关掉时，密钥池一样要退场。
-//
-// 停用有两条路：开关（SetEnabled）与编辑表单（ApplyServer）。两条路对
-// "停用"的定义必须一致——否则被编辑关掉的 server，它的密钥还留在池子里。
+// 停用有两条路：开关（SetEnabled）与编辑表单（ApplyServer），两条路对"停用"
+// 的定义必须一致，否则被编辑关掉的 server 的密钥还留在池子里。
 func TestApplyServerDisableDropsKeyPool(t *testing.T) {
 	gate := newKeyedGate("")
 	url := startKeyedDownstream(t, gate, echoTool("ping"))

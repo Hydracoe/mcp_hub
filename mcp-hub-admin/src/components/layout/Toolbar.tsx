@@ -9,7 +9,6 @@ import { cn } from '@/lib/utils'
 
 export interface ToolbarProps {
   title: string
-  /** 传了就渲染返回按钮。 */
   backTo?: string
   /** 版本 chip，来自 `/api/overview`，不要写死。 */
   version?: string
@@ -23,7 +22,8 @@ const CONNECTION_VIEW = {
   disconnected: { dot: 'error', variant: 'error', label: 'Not Ready' },
 } as const
 
-/** 顶部工具栏（52px 材质栏）：只放跨页面稳定的东西（返回/标题/版本/就绪）。页面按钮走 `PageLayout.actions`，否则导航栏会变成第二排工具栏。 */
+/** 顶部工具栏（52px 材质栏）：只放跨页面稳定元素（返回/标题/版本/就绪）。
+ *  页面按钮走 `PageLayout.actions`，否则导航栏会变成第二排工具栏。 */
 export function Toolbar({ title, backTo, version, className }: ToolbarProps) {
   const navigate = useNavigate()
 

@@ -1,6 +1,6 @@
 import type { LogQuery } from './types'
 
-/** 查询键集中在一处：便于 `invalidateQueries` 用前缀批量失效，散布的字符串写错一个字母会静默失效（症状「改完界面没变」）。 */
+/** 查询键集中管理：`invalidateQueries` 靠前缀批量失效，散落的字符串写错一个字母会静默失效。 */
 export const queryKeys = {
   overview: ['overview'] as const,
   connect: ['connect'] as const,
@@ -17,7 +17,7 @@ export const queryKeys = {
   apiKeys: ['keys'] as const,
 }
 
-/** 轮询节奏（毫秒）：概览 15s、日志 5s。集中在此而非各 hook：轮询密度是全局性能决策，分散后没人看得出整站每秒打几请求。 */
+/** 轮询节奏（毫秒）。集中在此因为轮询密度是全局性能决策，分散后看不出整站请求量。 */
 export const POLL = {
   overview: 15_000,
   servers: 20_000,

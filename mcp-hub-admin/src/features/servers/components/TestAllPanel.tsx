@@ -21,11 +21,9 @@ import { formatDuration, formatRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { ProbeResultItem, TestAllResponse } from '@/lib/api/types'
 
-/** 最近一次全量测试结果面板。后端不保存报告，`useTestAllServers` 把结果放在
- *  queryKey ['servers','test-all'] 的内存里，这里 enabled:false 读回来。
- *
- *  结果走 BareTable（卡片内已有边框，不再包 ui-table-wrap 外壳）：
- *  7 列定宽对齐，失败行用 `.is-error` 红边突出——与 LogTable 同一语言。 */
+/** 最近一次全量测试结果面板：后端不保存报告，useTestAllServers 把结果放在
+ *  queryKey ['servers','test-all'] 的内存里，这里 enabled:false 读回。
+ *  结果走 BareTable（卡片内已有边框），失败行用 `.is-error` 红边突出。 */
 
 /* 列宽一律百分比、总和 100%，与 ServersTable 同一套约定。 */
 const COL_W = [
@@ -93,7 +91,7 @@ export function TestAllPanel() {
 }
 
 function ResultRow({ r }: { r: ProbeResultItem }) {
-  /* 停用项不算失败：ok=false 只在「启用且探活失败」时染红边。 */
+  /* 停用项不算失败：ok=false 只会在「启用且探活失败」时染红边。 */
   const failed = !r.ok && r.enabled
   return (
     <TableRow className={cn(failed && 'is-error')}>

@@ -2,7 +2,8 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
-/** 卡片/面板外壳。⚠ 与 shadcn 不同：不给 padding/gap，一律由调用方给——内边距五花八门（p-4/p-5/p-6/p-0），写进 Card 反而逼着到处覆盖。 */
+/** 卡片/面板外壳。⚠ 与 shadcn 不同：不给 padding/gap，一律由调用方给——
+ *  内边距五花八门（p-4/p-5/p-6/p-0），写进 Card 反而逼着到处覆盖。 */
 function Card({ className, ...props }: React.ComponentProps<'div'>) {
   return <div data-slot="card" className={cn('ui-card', className)} {...props} />
 }

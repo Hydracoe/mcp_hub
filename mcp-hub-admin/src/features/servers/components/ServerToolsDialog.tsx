@@ -78,8 +78,7 @@ function ToolsBody({ server }: { server: ServerSummary }) {
       <DialogFooter>
         <span className="text-[11.5px] text-muted-foreground">只读视图 · 启停与新增请到工具管理页</span>
         <Button variant="outline" size="sm" asChild>
-          {/* 工具页按 serverKey 过滤（它是稳定的对外标识），所以这里传 key
-              而不是 id：传 id 会让筛选对不上，界面还回显一串哈希。 */}
+          {/* 工具页按 serverKey 过滤（稳定的对外标识），传 id 会让筛选对不上。 */}
           <Link to={`/tools?server=${encodeURIComponent(server.key)}`}>
             <Icon name="external-link" size={13} />
             在工具管理中查看
@@ -112,8 +111,7 @@ function ToolRow({ tool }: { tool: ToolEntry }) {
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {/* 与工具管理页 StatusBadge 口径一致：enabled 是可选字段，
-              缺省视为启用；pending 只在禁用状态下有意义。 */}
+          {/* 与工具管理页口径一致：enabled 可选，缺省视为启用；pending 只在禁用时有意义。 */}
           {tool.enabled === false ? (
             tool.pending ? (
               <Badge variant="warning">待启用</Badge>

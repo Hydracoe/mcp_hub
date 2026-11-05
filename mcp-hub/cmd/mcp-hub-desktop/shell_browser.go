@@ -16,12 +16,10 @@ import (
 
 func newShell(log *zap.Logger) Shell { return &browserShell{log: log} }
 
-// browserShell 是默认的桌面实现：引擎已经起在回环地址上，
-// 把系统默认浏览器指过去。
+// browserShell 把系统默认浏览器指向引擎地址。
 //
-// 它不引入任何 GUI 依赖、不需要 cgo、三平台都能交叉编译，也让
-// "引擎 + 前端"这条链路在没有 GUI 工具链的机器上（CI、容器、
-// 交叉编译的目标机）依然可被端到端验证。要原生窗口就加 -tags wails。
+// 不引入 GUI 依赖、不需要 cgo、三平台可交叉编译，也能在无 GUI 工具链的
+// 环境（CI、容器）端到端验证；要原生窗口就加 -tags wails。
 type browserShell struct {
 	log *zap.Logger
 }
@@ -36,8 +34,7 @@ func (s *browserShell) Run(ctx context.Context, eng *engine.Engine, info engine.
 			zap.String("url", info.BaseURL), zap.Error(err))
 	}
 
-	// 引擎自己挂了要让窗口/进程知道，否则用户面对的是一个
-	// "进程还在但什么都不响应"的黑洞。
+	// 引擎异常退出要让进程知道，否则会留下"进程还在但不响应"的黑洞。
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -59,8 +56,7 @@ func printReady(info engine.Info) {
 }
 
 // openBrowser 用系统默认浏览器打开地址。
-// 三种平台各有一条命令，都不经过 shell 拼接——URL 由本进程生成，
-// 但"不把字符串交给 shell 解释"这条规矩没有例外。
+// 不把 URL 交给 shell 解释：各平台命令都直接传参。
 func openBrowser(url string) error {
 	cmd, args := browserCommand(url)
 	if cmd == "" {
@@ -70,8 +66,7 @@ func openBrowser(url string) error {
 	if err := c.Start(); err != nil {
 		return err
 	}
-	// 不等它退出：浏览器是长驻进程，等下去会把启动流程挂死。
-	// 但也不能直接丢着——起一个短命 goroutine 收尸，避免僵尸进程。
+	// 不等它退出（浏览器是长驻进程），但要收尸避免僵尸进程。
 	go func() {
 		_ = c.Wait()
 	}()
@@ -85,7 +80,7 @@ func browserCommand(url string) (string, []string) {
 	case "darwin":
 		return "open", []string{url}
 	case "windows":
-		// rundll32 是 Windows 上无 shell 打开 URL 的既定做法：
+		// rundll32 是无 shell 打开 URL 的既定做法：
 		// `cmd /c start` 会把 URL 里的 & 交给 cmd 解释。
 		return "rundll32", []string{"url.dll,FileProtocolHandler", url}
 	default:

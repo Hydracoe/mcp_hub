@@ -3,7 +3,6 @@ import { cn } from '@/lib/utils'
 
 import { WIZARD_STEPS } from './form-model'
 
-/** 三步进度条。已完成的步骤显示对勾，当前步高亮，未到的置灰。 */
 export function StepBar({ step }: { step: number }) {
   return (
     <div className="flex items-center gap-2">

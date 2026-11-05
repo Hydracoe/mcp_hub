@@ -5,7 +5,7 @@ import { CheckIcon, ChevronDownIcon, SearchIcon } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
-/** 一项。label 是主文本，hint 是右侧灰字（server 的展示名、分类的英文名）。 */
+/** 一项。label 是主文本，hint 是右侧灰字（server 展示名、分类英文名）。 */
 export interface ComboboxOption {
   value: string
   label: string
@@ -49,9 +49,8 @@ function matches(o: ComboboxOption, needle: string): boolean {
 }
 
 /** 带搜索的下拉，用于选项多于 8 个的场景；短列表请用 `@/components/ui/select`。
- *  用 Popover + cmdk 而非 Radix Select：后者是「选中即提交」，硬塞输入框会跟
- *  它自带的「输入字母跳选项」打架。
- *  过滤自己实现（cmdk 传 shouldFilter={false}），因为要匹配 hint 与 keywords。 */
+ *  用 Popover + cmdk 而非 Radix Select：后者「选中即提交」，强塞输入框会与其
+ *  自带的「输入字母跳选项」冲突；过滤自实现（cmdk 传 shouldFilter={false}）以匹配 hint/keywords。 */
 export function Combobox({
   value,
   onChange,
@@ -104,7 +103,7 @@ export function Combobox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  /* 过滤后高亮项消失了就把高亮挪到第一项，避免回车时选中一个看不见的项。 */
+  /* 过滤后高亮项消失时挪到第一项，避免回车选中看不见的项。 */
   useEffect(() => {
     if (!open) return
     if (filtered.some((o) => o.value === active)) return
@@ -144,7 +143,7 @@ export function Combobox({
 
       <PopoverContent
         align="start"
-        /* 与触发器同宽（窄工具条里 190px 也不会挤成一坨），下限 224px */
+        /* 与触发器同宽（窄工具条里 190px 也不会挤），下限 224px */
         className="ui-popover w-(--radix-popover-trigger-width) min-w-56 overflow-hidden p-0"
         /* 焦点交给下面那个输入框，不要让面板自己抢 */
         onOpenAutoFocus={(e) => e.preventDefault()}

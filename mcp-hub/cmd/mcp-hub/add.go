@@ -83,9 +83,8 @@ func runAdd(o addOptions) int {
 	if o.name != "" {
 		spec.Name = o.name
 	} else {
-		// --name 留空时显示名同 key（帮助文案如此承诺）。buildSpec 里的
-		// 推断名是在 --key 覆盖之前算的，必须以最终的 key 为准，
-		// 否则名字与用户指定的前缀对不上。
+		// --name 留空时显示名同 key；buildSpec 的推断名在 --key 覆盖前算出，
+		// 必须以最终 key 为准。
 		spec.Name = spec.Key
 	}
 	spec.Env = o.envs
@@ -113,8 +112,7 @@ func runAdd(o addOptions) int {
 		return 2
 	}
 
-	// 分类必须真实存在：写进去一个不存在的 id 就是悬空引用，界面上
-	// 那一列会变成空白分类。与管理接口的校验同一把尺。
+	// 分类必须真实存在，否则就是悬空引用；与管理接口用同一套校验。
 	if cfg.CategoryID != "" {
 		if _, err := st.Categories.Get(ctx, cfg.CategoryID); err != nil {
 			fmt.Fprintf(os.Stderr, "分类 %q 不存在（可用 list-categories 查看分类 id）\n", cfg.CategoryID)

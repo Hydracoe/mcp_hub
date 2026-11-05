@@ -4,15 +4,12 @@ import { Icon } from '@/components/common/Icon'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-/* ────────────────────────────── 标签 chip 输入 ────────────────────────────── */
-
 export interface TagInputProps {
   value: string[]
   onChange: (next: string[]) => void
   placeholder?: string
 }
 
-/** 可增删的标签输入。 */
 export function TagInput({ value, onChange, placeholder = '添加标签后回车' }: TagInputProps) {
   const [draft, setDraft] = useState('')
 
@@ -57,8 +54,6 @@ export function TagInput({ value, onChange, placeholder = '添加标签后回车
     </div>
   )
 }
-
-/* ────────────────────────────── 键值行编辑（Headers / Env） ────────────────────────────── */
 
 export interface KeyValueRow {
   key: string

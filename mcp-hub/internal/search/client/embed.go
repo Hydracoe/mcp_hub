@@ -17,13 +17,12 @@ const (
 	// DefaultBatch 是硅基流动 embed 接口的批量上限。
 	DefaultBatch = 64
 
-	// embedTimeout 是单次 embed 请求的超时上限。openai.DefaultConfig 给的
-	// HTTPClient 没有超时，不显式设一个的话，上游 hang 住就会一直挂着——
-	// 调用方未必每次都带 deadline。
+	// embedTimeout 是单次 embed 请求的超时上限。openai.DefaultConfig 的
+	// HTTPClient 默认无超时，不显式设置会让上游 hang 住时一直挂起。
 	embedTimeout = 60 * time.Second
 
 	// embedConcurrency 是分批提交的并发度。全量重建时逐批串行是纯等待，
-	// 并发能把这段耗时压到几分之一，同时不至于把上游打爆。
+	// 并发能压缩耗时，同时不至于把上游打爆。
 	embedConcurrency = 4
 
 	// pingTimeout 是启动自检的超时。
@@ -31,7 +30,7 @@ const (
 )
 
 // 默认服务与模型。配置默认值唯一出处：维度校验、客户端构造、启动对账
-// 共用同一份常量，cmd 层不得另抄一份，避免两处漂移。
+// 共用同一份常量，cmd 层不得另抄一份。
 const (
 	DefaultBaseURL     = "https://api.siliconflow.cn/v1"
 	DefaultModel       = "BAAI/bge-m3"
@@ -44,18 +43,14 @@ type Embedder struct {
 	client *openai.Client
 	Model  string
 	// Dims 是配置里声明的向量维度，逐条校验返回向量长度，不等即整体报错。
-	// 这里没有"0 表示不校验"的隐式语义：维度不匹配是最隐蔽的一种坏法
-	// （库里 dims 列与 vector 列对不上，检索一路降级而日志只有一行 warn），
-	// 一条用数值 0 表达的旁路会让配置漏填时静默摘掉唯一的守门。
-	// 确实需要跳过校验的场合（探活、测试）走 NewEmbedderUnchecked。
+	// 没有"0 表示不校验"的隐式语义：维度不匹配最隐蔽，配置漏填会静默摘掉唯一的守门。
+	// 需要跳过校验的场合（探活、测试）走 NewEmbedderUnchecked。
 	Dims  int
 	Batch int
 }
 
 // NewEmbedder 构造 embed 客户端。baseURL 形如 https://api.siliconflow.cn/v1。
-//
-// dims 与 batch 必须为正：两者都是配置项，配错就在构造点报错，
-// 不拖到第一次调用、也不静默换成默认值。
+// dims 与 batch 必须为正：在构造点报错，不拖到第一次调用、也不静默换成默认值。
 func NewEmbedder(apiKey, baseURL, model string, dims, batch int) (*Embedder, error) {
 	if dims <= 0 {
 		return nil, errors.New("embed 维度必须为正，请检查 MCPHUB_EMBED_DIMS")
@@ -67,8 +62,7 @@ func NewEmbedder(apiKey, baseURL, model string, dims, batch int) (*Embedder, err
 }
 
 // NewEmbedderUnchecked 构造不做维度校验的 embed 客户端，只给探活与测试用。
-// 名字里带 Unchecked 是刻意的：跳过校验意味着坏向量可以直接进库，
-// 这件事必须在调用点一眼可见，而不是藏在"dims 传 0"里。
+// 名字刻意带 Unchecked：跳过校验意味着坏向量可以直接进库，调用点必须一眼可见。
 func NewEmbedderUnchecked(apiKey, baseURL, model string, batch int) *Embedder {
 	if batch <= 0 {
 		panic("client.NewEmbedderUnchecked: batch 必须为正")
@@ -88,10 +82,8 @@ func newEmbedder(apiKey, baseURL, model string, dims, batch int) *Embedder {
 	}
 }
 
-// Embed 对 texts 分批调 embed 接口，返回与输入同序的向量。任一批失败即
-// 整体返回错误（调用方按 PRD 保留旧向量、只 warn），绝不返回部分结果。
-//
-// 分批并发提交（embedConcurrency 上限），按批次起始下标回填以保持同序。
+// Embed 对 texts 分批调 embed 接口，返回与输入同序的向量。
+// 任一批失败即整体返回错误，绝不返回部分结果；分批并发提交，按批次起始下标回填以保持同序。
 func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float64, error) {
 	if len(texts) == 0 {
 		return nil, nil
@@ -162,16 +154,15 @@ func (e *Embedder) embedBatch(ctx context.Context, batch []string) ([][]float64,
 
 	byIndex := make(map[int][]float64, len(resp.Data))
 	for _, d := range resp.Data {
-		// 维度不匹配是最隐蔽的一种坏法：不报错的话，库里 dims 列（配置值）
-		// 与 vector 列（真实维度）就此对不上，检索一路降级而日志只有一行
-		// warn。写入前拦住，坏数据进不了库。
+		// 维度不匹配最隐蔽：不报错的话库里 dims 列与 vector 列就此对不上，
+		// 检索一路降级而日志只有一行 warn。写入前拦住，坏数据进不了库。
 		if e.Dims > 0 && len(d.Embedding) != e.Dims {
 			return nil, fmt.Errorf(
 				"模型 %q 返回 %d 维向量，与配置的 dimensions=%d 不符（换模型后请同步改 dimensions）",
 				e.Model, len(d.Embedding), e.Dims)
 		}
-		// 越界下标不是可以忽略的噪声：它说明返回体与请求对不上，
-		// 静默丢弃会让后面的 "缺少 index" 报错指向错误的原因。
+		// 越界下标说明返回体与请求对不上，不能静默丢弃，
+		// 否则后面的 "缺少 index" 报错会指向错误的原因。
 		if d.Index < 0 || d.Index >= len(batch) {
 			return nil, fmt.Errorf("返回越界的 index=%d（本批 %d 条）", d.Index, len(batch))
 		}

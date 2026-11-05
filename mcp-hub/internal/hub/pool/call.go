@@ -34,8 +34,7 @@ func (p *Pool) Get(ctx context.Context, spec downstream.Spec) (*downstream.Conn,
 	}
 
 	// 池里那条连接若按另一份配置建，就不能再用它发请求。
-	// 正常路径上 Sync 已淘汰过，这里是兜底：绕过 Sync 的写路径不该让
-	// 请求打到旧目标上——症状是一切正常，实际全发去了上一个环境。
+	// Sync 正常会淘汰，这里是兜底：不让绕过 Sync 的写路径把请求打到旧目标上。
 	var evicted *downstream.Conn
 	entry, ok := p.conns[spec.ID]
 	if ok && entry.fingerprint != fp {
@@ -65,14 +64,13 @@ func (p *Pool) Get(ctx context.Context, spec downstream.Spec) (*downstream.Conn,
 
 	if err != nil {
 		kind := downstream.CallErrorKind(err)
-		// 密钥级失败（401/403/429/402）不该让整个 server 退避：那是某组
-		// 凭据的处境，换一把就过去了。让 server 退避会连累池子里其他
-		// 健康的密钥，把"换一把即可"变成"整个下游不可用"。
+		// 密钥级失败（401/403/429/402）不该让整个 server 退避：那是某组凭据的
+		// 处境，换一把就过去了；让 server 退避会连累池里其他健康的密钥。
 		verdict := downstream.VerdictOf(kind, downstream.CallErrorObservation(err))
 		if !verdict.Retryable() {
 			p.recordFailure(spec.ID, kind, err.Error(), kind == downstream.KindTimeout)
-			// 这次失败已经记过账了。标出来，外层拿到同一个错误时就不该再记
-			// 一次——一次失败被当成两次，退避窗口会翻倍，可用密钥也会被过快淘汰。
+			// 这次失败已经记过账；外层拿到同一错误不应再记，否则退避窗口翻倍、
+			// 可用密钥被过快淘汰。
 			return nil, &countedFailure{err: err}
 		}
 		return nil, err
@@ -84,9 +82,8 @@ func (p *Pool) Get(ctx context.Context, spec downstream.Spec) (*downstream.Conn,
 
 // CallTool 通过连接池转发一次工具调用。
 //
-// 配了密钥池时走"选密钥 → 调用 → 按判决重试"的预算循环，否则只有一次
-// 机会。超时与 5xx 不重试：MCP 工具调用没有标准幂等键，盲目重试可能让
-// 有副作用的工具执行两次。
+// 配了密钥池时走"选密钥 → 调用 → 按判决重试"的预算循环，否则只有一次机会。
+// 超时与 5xx 不重试：MCP 工具调用没有标准幂等键，盲目重试可能让有副作用的工具执行两次。
 func (p *Pool) CallTool(
 	ctx context.Context,
 	spec downstream.Spec,
@@ -139,9 +136,8 @@ func (p *Pool) CallTool(
 
 // Probe 对下游执行一次探活。
 //
-// 配了密钥池时走与调用相同的选钥与判决路径：探活也是真实请求，只用
-// servers.headers 探活会让"只配了密钥池"的 server 每次都被判 401，
-// 进而把整个 server 拖进退避，拦住池里完全健康的密钥。
+// 配了密钥池时走与调用相同的选钥与判决路径：只用 servers.headers 探活会让
+// "只配了密钥池"的 server 每次被判 401，进而把整个 server 拖进退避。
 func (p *Pool) Probe(ctx context.Context, spec downstream.Spec) *downstream.ProbeResult {
 	ring := p.KeyRing(spec.ID)
 	if ring == nil {
@@ -199,8 +195,7 @@ func probeUnavailable(err error) *downstream.ProbeResult {
 }
 
 // ListTools 通过连接池拉取某个 server 的工具清单。
-// 与 CallTool 共用同一条密钥选择与重试路径：探活也是真实调用，限流同样
-// 会打到它，两条路径行为一致才不会出现"调用能过、刷工具却报 429"。
+// 与 CallTool 共用同一条密钥选择与重试路径，避免"调用能过、刷工具却报 429"。
 func (p *Pool) ListTools(ctx context.Context, spec downstream.Spec) ([]mcp.Tool, error) {
 	tools, err := runWithKeys(p, ctx, spec,
 		func(callCtx context.Context, _ *downstream.KeyLease) ([]mcp.Tool, error) {
@@ -221,8 +216,7 @@ func (p *Pool) ListTools(ctx context.Context, spec downstream.Spec) ([]mcp.Tool,
 }
 
 // runWithKeys 是密钥池下的统一执行路径。
-// 写成包级泛型函数而不是方法：Go 的方法不能带类型参数，而这里的逻辑
-// 对 tools/call 与 tools/list 完全相同。
+// 写成包级泛型函数：Go 的方法不能带类型参数，而这里对 call 与 list 逻辑相同。
 func runWithKeys[T any](
 	p *Pool,
 	ctx context.Context,
@@ -233,8 +227,7 @@ func runWithKeys[T any](
 
 	ring := p.KeyRing(spec.ID)
 	if ring == nil {
-		// 单密钥模式：一次调用、一次机会。这是回归底线——
-		// 只填一把密钥的用户不该感知到任何差别。
+		// 单密钥模式：一次调用、一次机会，行为与未配密钥池时一致。
 		res, err := op(ctx, nil)
 		if err != nil {
 			p.noteFailure(spec, err, downstream.VerdictNeutral)
@@ -254,10 +247,8 @@ func runWithKeys[T any](
 		lease, err := ring.Acquire(excluded)
 		if err != nil {
 			// 借不到密钥：池里的密钥要么本轮已失败、要么本就不可用。
-			// 上抛前不带 exclude 重新探测——刚失败的几把此刻已是冷却或
-			// 弃用状态，带 exclude 会把它们的计数算成 0。上抛的
-			// ErrNoUsableKey 带 retryAfter 与各状态计数，并把刚才那次
-			// 429/401 附为 Cause：这是密钥级事件唯一可见于调用方的出口。
+			// 上抛的 ErrNoUsableKey 带 retryAfter 与各状态计数，并把刚才那次 429/401
+			// 附为 Cause：这是密钥级事件唯一可见于调用方的出口。
 			if noKey := ring.Unavailable(nil); noKey != nil {
 				noKey.Cause = lastErr
 				return zero, noKey
@@ -278,10 +269,9 @@ func runWithKeys[T any](
 
 		lastErr = err
 
-		// 退避窗口内的失败没有真正发出请求：它对下游零压力，也不携带任何
-		// 关于这把密钥的新信息。若照样结算并累加失败，窗口会被自己对调用
-		// 的拒绝不断推后——只要调用不停就永远出不来（实测 46s 未自愈）。
-		// 同时它会把"没发出去"误记成这把密钥的失败，进而把健康的钥推进冷却。
+		// 退避窗口内的失败没有真正发出请求，对下游零压力，也不含这把密钥的新信息。
+		// 若照样结算并累加失败，窗口会被自己的拒绝不断推后而永不自愈，
+		// 还会把健康密钥误推进冷却。
 		if isUnavailable(err) {
 			return zero, err
 		}
@@ -306,12 +296,9 @@ func runWithKeys[T any](
 		excluded[lease.ID()] = true
 	}
 
-	// 预算耗尽：池子已被这几轮失败打空（全冷却 / 全弃用），返回
-	// ErrNoUsableKey。它带 retryAfter 与各状态计数，调用方才能告诉用户
-	// "约 30 秒后重试"，而"RATE_LIMITED"只会让人干等着猜。
-	//
-	// 探测时不带 exclude：刚失败的几把已是冷却或弃用状态，排除在外只会
-	// 让冷却计数变成 0——而那正是用户最想知道的。
+	// 预算耗尽：池子已被这几轮失败打空（全冷却 / 全弃用），返回 ErrNoUsableKey。
+	// 它带 retryAfter 与各状态计数，调用方才能告诉用户"约 30 秒后重试"。
+	// 探测时不带 exclude：刚失败的几把已是冷却或弃用状态，排除只会让计数变成 0。
 	p.log.Warn("调用内密钥重试预算耗尽",
 		zap.String("server", spec.Key), zap.Int("attempts", budget), zap.Error(lastErr))
 
@@ -339,19 +326,15 @@ func (p *Pool) noteAttempt(ctx context.Context, credentialID string, attempt int
 	}
 }
 
-// isUnavailable 判断这次失败是不是"压根没发出去"——处于退避窗口内被快速
-// 拒绝，一个字节都没到下游。
-//
-// 它必须被单独识别：这类失败既不代表下游又坏了（没有新的观测），也不该
-// 由它继续延长那个把它拒掉的窗口。
+// isUnavailable 判断这次失败是不是"压根没发出去"——处于退避窗口内被快速拒绝。
+// 它必须被单独识别：既不代表下游又坏了（没有新的观测），也不该延长把它拒掉的窗口。
 func isUnavailable(err error) bool {
 	var ue *UnavailableError
 	return errors.As(err, &ue)
 }
 
 // noteFailure 记录一次与密钥无关的失败。
-// 密钥级判决（限流、无效、额度耗尽）不进这里：那是某一把密钥的处境，
-// 不该让整个 server 退避，否则会连累池子里其他健康的密钥。
+// 密钥级判决（限流、无效、额度耗尽）不进这里：那只会连累池里其他健康的密钥。
 func (p *Pool) noteFailure(spec downstream.Spec, err error, verdict downstream.KeyVerdict) {
 	// 没发出去的请求不算失败：计入它会让退避窗口自己给自己续期。
 	if isUnavailable(err) {
@@ -366,8 +349,8 @@ func (p *Pool) noteFailure(spec downstream.Spec, err error, verdict downstream.K
 		p.Drop(spec.ID)
 		return
 	}
-	// 拨号失败已经在 Get 里记过账：同一次失败只能计一次。
-	// 两条路径都会记的话，一次失败被算成两次，退避窗口翻倍、密钥淘汰翻倍。
+	// 拨号失败已经在 Get 里记过账：同一次失败只能计一次，
+	// 否则退避窗口与密钥淘汰都翻倍。
 	if alreadyCounted(err) {
 		return
 	}
@@ -375,12 +358,9 @@ func (p *Pool) noteFailure(spec downstream.Spec, err error, verdict downstream.K
 	p.recordFailure(spec.ID, kind, err.Error(), kind == downstream.KindTimeout)
 }
 
-// countedFailure 标记"这次失败已经记过账了"。
-//
-// 拨号失败由 Get 记账：那里同时握着错误分类与密钥判决，只有它能分清
-// "这是连接级失败（该让 server 退避）"还是"这是密钥级失败（换一把就好）"。
-// 同一个错误继续往上传到 runWithKeys 时，那里若再记一次，一次失败就被
-// 当成两次——退避窗口翻倍，可用密钥被过快淘汰。
+// countedFailure 标记"这次失败已经记过账了"：拨号失败由 Get 记账（那里同时
+// 掌握错误分类与密钥判决），外层若再记一次，一次失败就被当成两次——退避窗口翻倍、
+// 可用密钥被过快淘汰。
 type countedFailure struct{ err error }
 
 func (e *countedFailure) Error() string { return e.err.Error() }

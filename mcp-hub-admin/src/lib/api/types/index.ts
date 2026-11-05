@@ -1,5 +1,4 @@
-/** 管理 API 的类型定义，与后端 dto 一一对应，字段是接口契约。改字段前先看后端。
- *  按资源分文件，跨资源共用的枚举/错误码在 `common`；页面统一从 `@/lib/api/types` 引。 */
+/** 管理 API 类型与后端 dto 一一对应，字段即接口契约，改字段前先看后端；跨资源共用的枚举/错误码在 `common`。 */
 export * from './common'
 export * from './overview'
 export * from './servers'

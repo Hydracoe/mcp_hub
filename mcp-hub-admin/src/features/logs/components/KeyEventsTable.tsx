@@ -9,9 +9,8 @@ import { formatDateTime } from '@/lib/format'
 
 interface Props {
   serverId?: string
-  /** 与调用日志共用「实时/暂停」开关：暂停时连密钥事件一起停，否则开关看起来是坏的。 */
+  /** 与调用日志共用「实时/暂停」开关：暂停时密钥事件一起停。 */
   enabled?: boolean
-  /** 外壳、状态位与页脚统一交给 TableFrame。 */
   frame?: Omit<TableFrameProps, 'head' | 'colCount' | 'children'>
 }
 
@@ -22,8 +21,7 @@ export function KeyEventsTable({ serverId, enabled = true, frame }: Props) {
 
   const items = data?.items ?? []
 
-  /* 后端可能还没有这个端点（404）。这是「接口没上」不是「加载失败」，
-     所以安静降级成空态，不弹 toast、不打崩整页。 */
+  /* 后端可能还没这个端点（404）：这是「接口没上」不是「加载失败」，安静降级成空态。 */
   const empty = isError ? (
     <EmptyState
       icon="shield-alert"

@@ -6,9 +6,8 @@ import (
 )
 
 // KeyState 是一把密钥的运行状态。
-//
-// 只有三种，且恢复方式各不相同：cooling 到点自动恢复，disabled 只有人工能救。
-// 把两者合成一个"不可用"是这类系统最常见的语义丢失——用户会以为等着就好。
+// 只有三种，恢复方式各不相同：cooling 到点自动恢复，disabled 只有人工能救；
+// 合并成"不可用"会让用户以为等着就好。
 type KeyState string
 
 const (
@@ -18,11 +17,8 @@ const (
 )
 
 // KeyVerdict 是针对密钥调度作出的判决。
-//
-// 与 ErrorKind 并列而非合并：ErrorKind 回答"下游为什么失败"，面向人；
-// KeyVerdict 回答"这把密钥还能不能用"，面向调度器。同一次观测可以给出两个
-// 不同结论——5xx 对前者是 UPSTREAM_ERROR，对后者是"与密钥无关，别动它"。
-// 合并成一个枚举，任何一侧加值都会污染另一侧。
+// 与 ErrorKind 并列而非合并：前者回答"下游为什么失败"，面向人；后者回答
+// "这把密钥还能不能用"，面向调度器。同一次观测可以给出两个不同结论。
 type KeyVerdict string
 
 const (
@@ -40,10 +36,8 @@ const (
 )
 
 // VerdictOf 由错误分类与观测推导密钥判决。
-//
-// 401 与 403 在这里分道扬镳：401 语义无歧义（凭据不对），403 不是——它也可能是
-// IP 白名单、scope 不足、地区封锁，换密钥同样没用。因此 403 不直接判定为
-// "该弃用"，由结算环节给两次机会。
+// 401 与 403 分道扬镳：401 语义无歧义（凭据不对）；403 也可能是 IP 白名单、
+// scope 不足或地区封锁，换密钥同样没用，因此由结算环节给两次机会。
 func VerdictOf(kind ErrorKind, obs Observation) KeyVerdict {
 	switch kind {
 	case KindRateLimited:
@@ -62,9 +56,8 @@ func VerdictOf(kind ErrorKind, obs Observation) KeyVerdict {
 }
 
 // Retryable 报告该判决是否允许"换一把密钥再试一次"。
-//
-// 只有确定未被执行的四类信号在此列：401 / 402 / 403 / 429。超时、5xx 与业务
-// 错误都可能**已经执行过**——密钥池让重试变便宜了，但"可能重复下单"没有。
+// 只有确定未被执行的四类信号在此列：401 / 402 / 403 / 429。
+// 超时、5xx 与业务错误都可能已经执行过——重试会让有副作用的工具跑第二遍。
 func (v KeyVerdict) Retryable() bool {
 	switch v {
 	case VerdictRateLimited, VerdictQuotaExhausted, VerdictInvalidKey, VerdictKeyRevoked:
@@ -106,17 +99,16 @@ const (
 	// DefaultCoolingBase 是指数退避的基数：1s、2s、4s……
 	DefaultCoolingBase = time.Second
 
-	// DefaultCoolingCap 是冷却上限 5 分钟。RPM 的窗口本来就是分钟级，
-	// 退避到这个量级再往上涨没有意义；真需要等更久的，应归类为
-	// QUOTA_EXHAUSTED 走弃用——"等 5 分钟"和"这把没钱了"是两种处境。
+	// DefaultCoolingCap 是冷却上限 5 分钟。RPM 的窗口本来就是分钟级，退避到这个
+	// 量级再涨没有意义；需要等更久的应归类为 QUOTA_EXHAUSTED 走弃用。
 	DefaultCoolingCap = 5 * time.Minute
 
 	// DefaultRevokedThreshold 是 403 连续多少次后弃用。
 	DefaultRevokedThreshold = 2
 
-	// DefaultLimitedDisableThreshold 是连续限流多少次后弃用（R16）。
+	// DefaultLimitedDisableThreshold 是连续限流多少次后弃用。
 	// 退避 1s 起步：第 10 次时 1<<9=512s 已越过 5 分钟上限，再往后只会在
-	// "5 分钟一轮"的循环里原地打转——那已经是账号级限流的形状，该交给人了。
+	// "5 分钟一轮"的循环里打转，那已是账号级限流的形状，该交给人了。
 	DefaultLimitedDisableThreshold = 10
 
 	// collectiveWindow 是判断"集体失败"的时间窗：窗口内多把密钥因同一原因

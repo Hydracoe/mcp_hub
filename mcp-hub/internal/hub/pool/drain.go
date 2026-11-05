@@ -7,9 +7,7 @@ import (
 )
 
 // drainConn 是收尾所需的一小部分连接能力。
-//
-// 抽成接口是为了让收尾流程可测：测试必须能精确控制 Drain 的返回时机，
-// 而真实连接的收尾时序取决于网络与在飞调用，测试控制不了。
+// 抽成接口是为了让收尾流程可测：测试需要精确控制 Drain 的返回时机。
 type drainConn interface {
 	// Inflight 返回当前在飞调用数。
 	Inflight() int
@@ -20,10 +18,8 @@ type drainConn interface {
 }
 
 // Retire 让一条连接优雅退场：先从池中摘除，再等它在飞调用跑完才关。
-//
-// 摘除是立刻的（从这一刻起新调用不会再走到它上面），等的是已经在跑的
-// 那些——它们不该因为运维点了一下开关就被打断，有副作用的工具被拦腰
-// 截断可能留下不一致状态。收尾在后台 goroutine 里进行，不阻塞调用方。
+// 摘除是立刻的（新调用不会再走到它上面）；等在飞调用是为了不打断有副作用的
+// 工具，收尾在后台 goroutine 里进行，不阻塞调用方。
 func (p *Pool) Retire(serverID string) {
 	p.mu.Lock()
 	entry := p.conns[serverID]
@@ -38,10 +34,8 @@ func (p *Pool) Retire(serverID string) {
 }
 
 // retireConn 接手一条已从池中摘除的连接，后台等它收尾。
-//
-// 同一个 server 可能同时有多条连接在收尾：重复停用、连接指纹变化后
-// 旧连接被淘汰，都是这条路。所以每条收尾记录都有自己的唯一身份，
-// 登记与销账一一对应：goroutine 只销自己那一条，绝不碰别人的。
+// 同一 server 可能有多条连接同时收尾（重复停用、指纹变化后淘汰），每条记录
+// 有自己的唯一身份，登记与销账一一对应：goroutine 只销自己那一条。
 func (p *Pool) retireConn(serverID, serverKey string, conn drainConn) {
 	limit := p.drainTimeout()
 
@@ -74,12 +68,9 @@ func (p *Pool) retireConn(serverID, serverKey string, conn drainConn) {
 
 		err := conn.Drain(ctx)
 
-		// 只销自己那一条记录。按 serverId 销账会踩到别人：后一次退役
-		// 会把前一次的记录删掉并关掉它的完成信号——真正在收尾的那条
-		// 永远等不到自己的信号，等它的调用方就永久挂住了。
-		//
-		// close 放在锁外：关通道可能唤醒等待者，持有池锁时唤醒会让
-		// 等待者立刻回头拿池锁，白白拖住整池。
+		// 只销自己那一条记录：按 serverId 销账会删掉别人的记录并提前关信号，
+		// 让真正在收尾的那条永久挂住。close 放在锁外：关通道会唤醒等待者，
+		// 持有池锁时唤醒会让它立刻回头抢池锁。
 		if r != nil {
 			p.mu.Lock()
 			delete(p.retiring, r.id)
@@ -103,9 +94,7 @@ func (p *Pool) retireConn(serverID, serverKey string, conn drainConn) {
 }
 
 // Draining 返回正在收尾的连接，供管理接口展示停用进度。
-//
-// 同一个 server 的多条收尾合成一条：管理接口问的是"这个 server 还在
-// 停用中吗"，不是"有几条连接在收尾"。
+// 同一 server 的多条收尾合成一条：管理接口问的是"这个 server 还在停用中吗"。
 func (p *Pool) Draining() []DrainingInfo {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -133,10 +122,7 @@ func (p *Pool) DrainingOf(serverID string) (DrainingInfo, bool) {
 }
 
 // drainInfoLocked 归并某个 server 的全部收尾记录。
-//
-// 在飞数相加（每条记录各有各的在飞调用），起始时刻取最早（"停用中"
-// 从第一次退役算起），截止时刻取最晚（要等所有连接都收完才算完）。
-// 调用方必须已持有池锁。
+// 在飞数相加，起始时刻取最早、截止时刻取最晚。调用方必须已持有池锁。
 func (p *Pool) drainInfoLocked(serverID string) (DrainingInfo, bool) {
 	var out DrainingInfo
 	found := false

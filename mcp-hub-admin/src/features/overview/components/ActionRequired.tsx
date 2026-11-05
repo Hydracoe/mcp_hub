@@ -24,23 +24,15 @@ const TONE_ICON = {
 } as const
 
 /**
- * 待人工处理告警。
- *
- * 设计前提：网关能自愈的一律自己消化（换钥、冷却、退避、禁用钥探活救回），
- * 剩下的才是「不做决定就不会变好」的事项——这些必须在界面上显性提示，
- * 否则一条落库事件没人看，问题会一直躺着。
- *
- * 计数全部来自 overview 一处，不额外发请求：这张卡是概览的一部分，
- * 少一个数据源就少一个「卡片说有、点进去没有」的对不上的机会。
+ * 待人工处理告警：只列网关无法自愈、不做决定就不会变好的事项。
+ * 计数全部取自 overview 一处，不额外发请求，避免卡片与详情页对不上。
  */
 export function ActionRequired({ overview }: { overview: OverviewResponse }) {
   const { servers, tools, credentials } = overview
 
   const items: ActionItem[] = []
 
-  // 新工具默认禁用是刻意保留的安全默认：上游随手加的工具不该直接裸奔到
-  // 用户面前。代价就是需要人来点一下，所以这里必须显性提示，
-  // 并且要一步跳到能点的地方——工具管理页的"待启用"是精确筛出这一批的。
+  // 新工具默认禁用是刻意的安全默认，需人工确认后放行；这里显性提示并链到「待启用」筛选。
   const pending = tools.pendingEnable ?? 0
   if (pending > 0) {
     items.push({
@@ -55,8 +47,7 @@ export function ActionRequired({ overview }: { overview: OverviewResponse }) {
     })
   }
 
-  // 重新启用 server 不会自动恢复被级联禁用的工具——这种"看起来开着、
-  // AI 侧却全空"的空转状态不会自愈，必须有人决定：放行工具，或停用 server。
+  // 重新启用 server 不会自动恢复被级联禁用的工具，这种「看起来开着、AI 侧却全空」的状态不会自愈。
   const enabledNoTools = servers.enabledNoTools ?? 0
   if (enabledNoTools > 0) {
     items.push({

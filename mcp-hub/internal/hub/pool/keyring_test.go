@@ -31,12 +31,9 @@ func testRingOpts(p *Pool, spec downstream.Spec) downstream.KeyRingOptions {
 	}
 }
 
-// 停用的 server 不该继续持有密钥条目。
-//
-// Sync 是池子与最新配置对齐的那一步：消失的 server 的密钥池在这里被清掉。
-// 停用的 server 同理——它的密钥还在库里（重新启用时会装回来），但留在池里
-// 就意味着随时可能被选中发出去。停用必须真的停用，而不是只把工具从
-// 聚合列表里摘掉。
+// 停用的 server 不该继续持有密钥条目：Sync 会把它的密钥池清掉。
+// 密钥还在库里（重新启用时会装回来），但留在池里就可能随时被选中发出去。
+// 停用必须真的停用，而不是只把工具从聚合列表里摘掉。
 func TestSyncDropsKeyRingOfDisabledServer(t *testing.T) {
 	p := newTestPool(t)
 
@@ -63,10 +60,7 @@ func TestSyncDropsKeyRingOfDisabledServer(t *testing.T) {
 	}
 }
 
-// 停用 → 重新启用：密钥池能装回来。
-//
-// 停用清掉的是内存里的条目，不是库里的凭据：密钥还在，重新启用时必须
-// 还能用（否则"停用一会儿再开"就等于把密钥全丢了）。
+// 停用 → 重新启用：密钥池能装回来。停用清掉的是内存里的条目，不是库里的凭据。
 func TestSyncKeyRingRestoredAfterReEnable(t *testing.T) {
 	p := newTestPool(t)
 	spec := downstream.Spec{ID: "srv-toggle", Key: "toggle"}
@@ -90,10 +84,7 @@ func TestSyncKeyRingRestoredAfterReEnable(t *testing.T) {
 	}
 }
 
-// 消失的 server 的密钥池照旧被清掉。
-//
-// 这是 Sync 一直在做的事：密钥明文不该留在内存里。停用只是把判据从
-// "消失了"扩到"不再服务了"。
+// 消失的 server 的密钥池被清掉：密钥明文不该留在内存里。
 func TestSyncDropsKeyRingOfRemovedServer(t *testing.T) {
 	p := newTestPool(t)
 	spec := downstream.Spec{ID: "srv-gone", Key: "gone"}

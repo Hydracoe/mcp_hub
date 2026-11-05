@@ -15,9 +15,7 @@ import (
 )
 
 // postMCP 向 /mcp 端点发一条原始 JSON-RPC，返回状态码与响应体。
-//
-// 不走 MCP 客户端：401 与否发生在中间件，比协议层早得多，
-// 用原始请求恰好只测鉴权这一层。
+// 不走 MCP 客户端：401 与否发生在中间件，比协议层早得多。
 func postMCP(t *testing.T, base, key string, payload map[string]any) (int, string) {
 	t.Helper()
 
@@ -67,8 +65,6 @@ func callToolPayload(name, args string) map[string]any {
 		},
 	}
 }
-
-// ---- 接入 API key：鉴权与调用日志 --------------------------------------------
 
 func TestAPIKeyAuthAndCallLogging(t *testing.T) {
 	down := startDownstream(t, toolSpec{name: "echo", desc: "Repeat the given text"})

@@ -1,5 +1,3 @@
-/* ────────────────────────────── 工具 ────────────────────────────── */
-
 export interface ToolEntry {
   exposedName: string
   name: string
@@ -15,7 +13,6 @@ export interface ToolEntry {
   /** 探活新发现、默认禁用、且从未被人处理过：等一个「启用或拒绝」的决定。 */
   pending?: boolean
 
-  /** 列表接口聚合出的统计（可选）。 */
   callCount?: number
   successRate?: number
   category?: string

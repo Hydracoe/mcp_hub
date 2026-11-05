@@ -12,7 +12,6 @@ import (
 )
 
 // seedEmbeddingServer 造一个 server 和它的探活工具，返回一个工具 id。
-//
 // tool_embeddings.tool_id 外键到 tools.id，空表写不了向量行。
 func seedEmbeddingServer(t *testing.T, s *store.Store) string {
 	t.Helper()
@@ -110,9 +109,8 @@ func TestEmbeddingDualGenerationCoexist(t *testing.T) {
 	}
 }
 
-// DeleteStaleGenerations 只留指定代：保留集由调用方决定。生产路径
-// （Reconcile）只在当前代完全就绪后保留当前代并清掉其余——没有回滚
-// 接口，清掉的旧代只能重新嵌入。
+// DeleteStaleGenerations 只留指定代，保留集由调用方决定。
+// 生产路径只在当前代完全就绪后才保留当前代并清掉其余——没有回滚接口，清掉的旧代只能重新嵌入。
 func TestDeleteStaleGenerations(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

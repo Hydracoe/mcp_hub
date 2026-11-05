@@ -8,9 +8,8 @@ import (
 )
 
 // ErrorKind 是下游失败的分类。
-//
-// 分类必须由错误类型推导（errors.Is / errors.As），不靠字符串匹配。
-// 唯一例外是"额度耗尽 vs 限流"，供应商只在响应体文案里区分，见 quotaMarkers。
+// 分类必须由错误类型推导（errors.Is / errors.As），不靠字符串匹配。唯一例外是
+// "额度耗尽 vs 限流"，供应商只在响应体文案里区分，见 quotaMarkers。
 type ErrorKind string
 
 const (
@@ -29,8 +28,7 @@ const (
 	KindNotMCP        ErrorKind = "NOT_MCP"
 
 	// 限流与配额。单列是因为它们与"下游坏了"本质不同：服务正常，只是这把
-	// 凭据不被允许继续打。混进 UNKNOWN，用户对着 429 只会看到"未知错误"，
-	// 既不知道该等还是该换密钥。
+	// 凭据不被允许继续打。混进 UNKNOWN，用户对着 429 只会看到"未知错误"。
 	KindRateLimited    ErrorKind = "RATE_LIMITED"
 	KindQuotaExhausted ErrorKind = "QUOTA_EXHAUSTED"
 
@@ -49,8 +47,7 @@ const (
 	KindCanceled ErrorKind = "CANCELED"
 
 	// KindNoUsableKey：密钥池里没有一把能用的。既不是下游的错，也不是某一
-	// 把密钥的错，但必须有名字——否则用户看到"服务降级"会去查网络，
-	// 而真正该查的是密钥与账号。
+	// 把密钥的错，但必须有名字——否则用户会去查网络，而真正该查的是密钥。
 	KindNoUsableKey ErrorKind = "NO_USABLE_KEY"
 
 	KindUnknown ErrorKind = "UNKNOWN"
@@ -160,10 +157,8 @@ func ToolsToInfo(tools []mcp.Tool) []ToolInfo {
 }
 
 // marshalSchema 序列化工具入参 schema，失败返回 nil（不影响探活结论）。
-//
-// 保真度边界：走的是 mcp-go 的结构化往返，顶层 oneOf / anyOf / $ref 这类
-// 关键字不保留（properties 内部是 map[string]any，不受影响）。要做到逐字节
-// 透传得自己发原始 JSON-RPC，约 200 行协议代码，收益只在罕见的入参形态上。
+// 走的是 mcp-go 的结构化往返，顶层 oneOf / anyOf / $ref 不保留
+// （properties 内部是 map[string]any，不受影响）。
 func marshalSchema(s mcp.ToolInputSchema) json.RawMessage {
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -183,9 +178,8 @@ func (r *ProbeResult) fail(stage Stage, kind ErrorKind, err error) {
 }
 
 // capture 把一次 HTTP 观测中与判决相关的字段带进结果。
-//
-// 只带三样：状态码区分 401/403，Retry-After 是退避的权威来源，body 片段
-// 区分"限流"与"额度耗尽"。其余观测字段对用户没有意义。
+// 只带三样：状态码区分 401/403，Retry-After 是退避的权威来源，
+// body 片段区分"限流"与"额度耗尽"。
 func (r *ProbeResult) capture(obs Observation) {
 	r.StatusCode = obs.StatusCode
 	r.RetryAfter = obs.RetryAfter

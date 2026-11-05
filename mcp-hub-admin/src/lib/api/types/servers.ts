@@ -1,8 +1,6 @@
 import type { AuthMode, ErrorKind, ServerStatus, Transport } from './common'
 import type { KeySummary } from './overview'
 
-/* ────────────────────────────── Server ────────────────────────────── */
-
 export interface ServerSummary {
   id: string
   key: string
@@ -29,8 +27,7 @@ export interface ServerSummary {
   toolCount: number
   /** 人工启用的工具数。 */
   enabledToolCount: number
-  /** 此刻真正进入聚合池的数量（已启用且 server 已启用）。
-   *  server 停用时小于 enabledToolCount。 */
+  /** 此刻真正进入聚合池的数量（已启用且 server 已启用）；server 停用时小于 enabledToolCount。 */
   exposedToolCount: number
 
   /** false 表示走单密钥模式（沿用 headers）。 */
@@ -118,8 +115,7 @@ export interface ServerRequest {
   enabled?: boolean
 }
 
-/** 干跑探活（配置尚未落库）。连接结论之外还带下游工具清单，供向导勾选启用；
- *  失败时 ok=false，错误分类与排查提示在 kind / hint / detail 里。 */
+/** 干跑探活（配置尚未落库）：除连接结论外还带下游工具清单供向导勾选；失败时 ok=false，分类与提示在 kind / hint / detail。 */
 export interface ProbeDraftResult {
   ok: boolean
   serverName?: string
@@ -139,8 +135,6 @@ export interface ProbeDraftResult {
   /** 中文排查方向。 */
   hint?: string
 }
-
-/* ─────────────────────── 探活 / 试调 ─────────────────────── */
 
 export interface ProbeLevel {
   level: 'L1' | 'L2' | 'L3' | 'L4'
@@ -169,9 +163,7 @@ export interface ProbeResult {
   hint?: string
 }
 
-/** 后端探活端点直出的原始结果（downstream.ProbeResult + hint/exposedTools）。
- *  形状与 UI 的 ProbeResult 不同：没有 levels/totalMs，只有分段耗时 latency
- *  与"停在哪一步"的 stage。 */
+/** 后端探活直出的原始结果：与 UI 的 ProbeResult 不同，没有 levels/totalMs，只有分段耗时与 stage。 */
 export interface RawProbeResult {
   ok: boolean
   protocolVersion?: string

@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge'
 import { disabledKindLabel } from '@/lib/verdicts'
 import type { CredentialState, DisabledKind, ServerStatus } from '@/lib/api/types'
 
-/** 状态徽标。语义色集中在这一个文件里与文案挂钩，改配色只动这里。 */
+/** 状态徽标。语义色集中在本文件并与文案挂钩，改配色只动这里。 */
 
 const SERVER_STATUS: Record<ServerStatus, { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }> = {
   healthy: { label: 'healthy', variant: 'success' },
@@ -16,8 +16,8 @@ export function ServerStatusBadge({ status }: { status: ServerStatus }) {
   return <Badge variant={cfg.variant}>{cfg.label}</Badge>
 }
 
-/** 「停用中」与 `status` 是两回事：status 说的是下游健不健康，
- *  draining 说的是网关打算怎么处置它——停用后还有调用在收尾。 */
+/** 「停用中」与 `status` 是两回事：status 描述下游健康度，
+ *  draining 描述网关的处置方式——停用后仍有调用在收尾。 */
 export function DrainingBadge({ inflight }: { inflight?: number }) {
   return (
     <Badge variant="neutral">
@@ -49,7 +49,7 @@ export function CredentialStateBadge({
 }) {
   if (!enabled && state !== 'disabled') return <Badge variant="neutral">已停用</Badge>
   const cfg = CRED_STATE[state] ?? CRED_STATE.active
-  // 弃用时把原因直接写进徽标：用户要的是「为什么不能用了」，而非「它不能用了」。
+  // 弃用时把原因直接写进徽标：用户要的是「为什么不能用了」。
   if (state === 'disabled' && disabledKind) {
     return (
       <Badge variant={cfg.variant} title={disabledKind}>
@@ -111,8 +111,8 @@ export function KeyEventBadge({ type }: { type: 'KEY_COOLDOWN' | 'KEY_DISABLED' 
   )
 }
 
-/** 传输类型标签。等宽小胶囊；超长（streamable_http）在窄列里截断，悬停看全文，
- *  绝不溢出压到相邻的状态列。 */
+/** 传输类型标签。等宽小胶囊；超长值（streamable_http）在窄列里截断，
+ *  悬停看全文，不溢出压到相邻状态列。 */
 export function TransportTag({ transport }: { transport: string }) {
   return (
     <span

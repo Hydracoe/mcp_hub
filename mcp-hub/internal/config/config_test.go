@@ -367,11 +367,7 @@ func TestLoadFileFromAnchorsToExplicit(t *testing.T) {
 }
 
 // 锚定查找**不回退**：explicit 不存在时不能转头去读工作目录的 .env。
-//
-// 这条守的是一个真实发生过的故障：桌面端从仓库目录启动，读到了仓库的
-// .env（指向 PostgreSQL），于是一个本该零配置可用的应用直接启动失败。
-// 工作目录不该决定一个桌面应用读到哪份配置——它完全不可控：
-// 双击启动时是 / 或 System32，从终端启动时是随手进的某个目录。
+// 工作目录不可控，回退会让桌面应用读到仓库的 .env 而启动失败。
 func TestLoadFileFromDoesNotFallBack(t *testing.T) {
 	isolateConfig(t)
 

@@ -55,7 +55,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export function LogDetailSheet({ log, open, onOpenChange }: Props) {
   return (
-    // 用 Radix 受控 Sheet：关闭即卸载，避免常驻 DOM 占 tab 顺序并在深色模式闪一下。
+    // 用受控 Sheet：关闭即卸载，避免常驻 DOM 占 tab 顺序并在深色模式闪一下。
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="gap-0 p-0">
         {log ? (
@@ -110,7 +110,7 @@ export function LogDetailSheet({ log, open, onOpenChange }: Props) {
                       {log.apiKeyName ? (
                         <div className="text-foreground">{log.apiKeyName}</div>
                       ) : (
-                        // 老日志行没有名字快照，如实说明
+                        // 无名字快照时如实说明
                         <div className="text-muted-foreground">未记录名字</div>
                       )}
                       {log.apiKeyId ? <MonoText>{log.apiKeyId}</MonoText> : null}

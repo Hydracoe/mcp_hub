@@ -31,10 +31,8 @@ type Options struct {
 }
 
 // Open 按后端名打开缓存。
-//
-// 与 store 的方言解析同一套规矩：auto 只在形态明确时猜，
-// 认不出来的形态宁可报错，也不悄悄降级成另一种后端——
-// "配了 Redis 却在用内存缓存"这种错在运行时完全看不出来。
+// auto 只在形态明确时猜；认不出来的形态宁可报错，也不悄悄降级——
+// “配了 Redis 却在用内存缓存”在运行时完全看不出来。
 func Open(ctx context.Context, opts Options) (Store, error) {
 	driver := strings.ToLower(strings.TrimSpace(opts.Driver))
 	spec := strings.TrimSpace(opts.Spec)

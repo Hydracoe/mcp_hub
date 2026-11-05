@@ -13,8 +13,7 @@ import { CredentialFormDialog } from './components/CredentialFormDialog'
 import { CredentialImportDialog } from './components/CredentialImportDialog'
 import { useCredentialsPage } from './use-credentials-page'
 
-/** 密钥池：网关拿去调下游的凭据，按 Server 隔离。
- *  （「接入密钥」页是上游调网关用的，两回事。） */
+/** 密钥池：网关调下游用的凭据，按 Server 隔离（区别于上游调网关用的「接入密钥」）。 */
 export function CredentialsPage() {
   const {
     overview,

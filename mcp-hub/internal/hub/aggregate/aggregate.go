@@ -20,11 +20,8 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
-// serverInstructions 会随协商结果下发给 AI 客户端。
-//
-// 这段文字是 AI 使用本网关的唯一说明书：工具怎么找、错了怎么办，
-// 全在这里。写成"搜（薄）→ 收窄 → 取 schema → 调用"的树式流程，
-// 每步返回都很小，AI 不会因为一次模糊搜索就吞进几十个完整 schema。
+// serverInstructions 会随协商结果下发给 AI 客户端，是 AI 发现与调用工具的唯一说明书：
+// 按"搜（薄）→ 收窄 → 取 schema → 调用"的树式流程，每步返回都很小。
 const serverInstructions = `
 本端点是 mcp-hub 聚合网关，把多个下游 MCP server 的工具合并在同一个端点。
 工具命名规则：<serverKey>__<toolName>，两段分别是来源 server 的 key 与下游原始工具名。
@@ -49,26 +46,24 @@ const serverInstructions = `
 - 某下游暂时不可用时，它的工具仍在列表里，但调用会返回带错误说明的结果，请根据说明判断是稍后重试还是改用其他工具。
 `
 
-// ListMode 控制 AI 客户端 tools/list 看到什么（PRD §4.7.6）。
+// ListMode 控制 AI 客户端 tools/list 看到什么。
 //
-// meta：只列 meta-tool，下游工具靠搜索发现，列表小、AI 规划轮次少；
-// all：列出全部聚合工具。两种模式下 tools/call 的行为完全一致，
-// 任何已注册的工具都能直接调用。
+// meta：只列 meta-tool，下游工具靠搜索发现；all：列出全部聚合工具。
+// 两种模式下 tools/call 行为一致，任何已注册的工具都能直接调用。
 const (
 	ListModeMeta = "meta"
 	ListModeAll  = "all"
 )
 
-// MetaPrefix 是网关自带工具的命名前缀（PRD §4.7.6）。
+// MetaPrefix 是网关自带工具的命名前缀。
 const MetaPrefix = "hub__"
 
 // Deps 是聚合器依赖的外部能力，由服务编排层注入。
-// 用函数而不是结构体字段，是为让聚合器始终读到最新状态，
-// 不必在配置变更时重新构造它。
+// 用函数而非结构体字段，让聚合器始终读到最新状态，无需随配置变更重建。
 type Deps struct {
 	// Sources 返回当前全部 server 的聚合输入。
-	// ok 为 false 表示这次读取失败：此时应保留上一份快照，而不是拿空
-	// 列表重建，否则一次短暂的数据库错误就会让所有下游工具消失。
+	// ok 为 false 表示读取失败：必须保留上一份快照，不能拿空列表重建，
+	// 否则一次短暂的数据库错误就会让所有下游工具消失。
 	Sources func() (sources []registry.ToolSource, ok bool)
 
 	// SpecOf 按 serverID 取出下游连接配置。取不到表示该 server 已删除。
@@ -78,9 +73,8 @@ type Deps struct {
 	// 为 nil 时不拦截。拦截只挡调用，不挡探活与列表展示。
 	Blocked func(serverID string) (reason string, yes bool)
 
-	// OnCallSuccess 在真实调用成功后通知上层。可选。一次成功的调用
-	// 已经证明下游可达，应该解除探活连败留下的拦截；否则探活退避期间
-	// 即使调用能通，网关仍会继续拒绝，直到下一次探活成功。
+	// OnCallSuccess 在真实调用成功后通知上层。可选。成功调用已证明下游可达，
+	// 应解除探活连败留下的拦截，否则退避期间即使调用能通也会被继续拒绝。
 	OnCallSuccess func(serverID string)
 
 	// Log 记录一次工具调用。可选，为 nil 时不记录。
@@ -101,10 +95,7 @@ type Aggregator struct {
 	metaFn func() []mcpserver.ServerTool
 
 	// metaNames 是当前已注册到端点上的元工具名集合。
-	//
-	// 这是"哪个工具是元工具"的显式依据：元工具由 SetMetaTools 注册进来，
-	// 网关自己知道它们是谁，不必再靠工具名反推。随 Refresh 一起更新，
-	// 读侧无锁（换的是整份集合，不是逐项改）。
+	// 元工具由 SetMetaTools 显式登记，不靠工具名反推；随 Refresh 整份替换，读侧无锁。
 	metaNames atomic.Pointer[metaNameSet]
 
 	refreshMu sync.Mutex
@@ -128,8 +119,7 @@ func NewAggregator(deps Deps, reg *registry.Registry, pl *pool.Pool, listMode st
 		mcpserver.WithInstructions(serverInstructions),
 	}
 	if listMode == ListModeMeta {
-		// meta 模式下 tools/list 只暴露 meta-tool。
-		// 注意 call 路径也过同一条过滤器链，见 metaOnlyFilter。
+		// meta 模式下 tools/list 只暴露 meta-tool；call 路径也过同一条过滤器链，见 metaOnlyFilter。
 		opts = append(opts, mcpserver.WithToolFilter(a.metaOnlyFilter))
 	}
 	a.mcp = mcpserver.NewMCPServer("mcp-hub", downstream.ClientVersion, opts...)
@@ -158,22 +148,9 @@ func (a *Aggregator) metaTools() []mcpserver.ServerTool {
 
 // metaOnlyFilter 是 meta 列表模式的工具可见性过滤器。
 //
-// mcp-go 的 list 与 call 共用这条过滤器链，但两条路径要区别对待：
-//   - list：传入端点上已注册的全部工具。meta 模式下只列元工具——下游工具
-//     靠 hub__search_tools 发现，列表小、AI 规划轮次少。
-//   - call：只传入被请求的那一个工具。被请求的工具一律放行，否则下游工具
-//     就再也调不到了（meta 模式下它们仍然可按对外全名直接调用）。
-//
-// 旧实现用 len(tools)==1 猜哪条路径：端点上恰好只注册了一个工具时，列表
-// 会被当成调用整份放行——下游工具直接露给 AI，连"路由表兜底"那层判断都
-// 被跳过。判断"是不是元工具"更是靠工具名反推（hub__ 前缀 + 路由表里没有
-// 同名条目）：存量 server（key 取 hub）的工具恰好同名时，真元工具反而被
-// 当成下游工具摘掉，列表里凭空少一个元工具。
-//
-// 现在两处都改成显式依据：
-//   - 哪个是元工具：看注册时登记的元工具名单（见 metaNames），不靠名字反推；
-//   - 走的是哪条路径：看输入里有没有元工具——列表必然带全部元工具；调用
-//     路径最多带一个，而调用元工具时两种解释的结论一致（都保留它）。
+// mcp-go 的 list 与 call 共用这条过滤器链：list 传入端点上已注册的全部工具，
+// 只留元工具；call 只传入被请求的那一个，一律放行（否则下游工具再也调不到）。
+// 判据是显式元工具名单（见 metaNames），不靠工具名反推。
 func (a *Aggregator) metaOnlyFilter(_ context.Context, tools []mcp.Tool) []mcp.Tool {
 	if a.containsMetaTool(tools) {
 		// 列表路径：只留元工具。
@@ -182,18 +159,16 @@ func (a *Aggregator) metaOnlyFilter(_ context.Context, tools []mcp.Tool) []mcp.T
 	if len(tools) == 1 {
 		// 调用路径：被请求的那个工具，放行。
 		//
-		// 端点上只注册了一个工具时，列表与调用交给过滤器的输入完全一样，
-		// 没法区分。这里保留旧行为：宁可多列一个工具，也不能让工具调不到。
+		// 端点上只注册了一个工具时，列表与调用的输入无法区分：
+		// 宁可多列一个工具，也不能让工具调不到。
 		return tools
 	}
 	// 列表路径，但端点上还没有元工具（还没注册）：列表里没有任何该露的东西。
 	return a.keepMetaTools(tools)
 }
 
-// containsMetaTool 报告输入里有没有元工具。
-//
-// 这是 list 与 call 两条路径的分界信号：列表路径带全部元工具，调用路径
-// 最多带一个（而且那一个被调用的是元工具时，两种解释的结论一致）。
+// containsMetaTool 报告输入里有没有元工具，是 list 与 call 两条路径的分界信号：
+// 列表带全部元工具，调用最多带一个。
 func (a *Aggregator) containsMetaTool(tools []mcp.Tool) bool {
 	names := a.metaNameSet()
 	if len(names) == 0 {
@@ -208,11 +183,7 @@ func (a *Aggregator) containsMetaTool(tools []mcp.Tool) bool {
 }
 
 // keepMetaTools 只保留元工具，其余（下游工具）剔除。
-//
-// 下游工具即便顶着 hub__ 前缀也不留：它不是网关自带的元工具，只是名字
-// 撞了。撞名时占住这个名字的是真元工具——它后注册，mcp-go 的工具表按名字
-// 去重、后注册的覆盖先注册的（见 Refresh）。所以这里剔掉的确实是下游
-// 工具，而不是把真元工具误伤掉。
+// 下游工具即使顶 hub__ 前缀也不留：撞名时占住名字的是后注册的真元工具（见 Refresh）。
 func (a *Aggregator) keepMetaTools(tools []mcp.Tool) []mcp.Tool {
 	names := a.metaNameSet()
 	out := make([]mcp.Tool, 0, len(tools))
@@ -255,7 +226,7 @@ func (a *Aggregator) Refresh() *registry.Snapshot {
 	// 漏掉就等于下次刷新时把它们从端点上抹掉。
 	meta := a.metaTools()
 
-	// 记下元工具名单：过滤器据此判断"哪个工具是元工具"，不再靠工具名反推。
+	// 记下元工具名单，供过滤器判断。
 	names := make(map[string]struct{}, len(meta))
 	for _, m := range meta {
 		names[m.Tool.Name] = struct{}{}
@@ -264,10 +235,7 @@ func (a *Aggregator) Refresh() *registry.Snapshot {
 
 	entries := make([]mcpserver.ServerTool, 0, len(snap.Tools())+len(meta))
 	// 下游工具先注册、元工具后注册：同名时元工具胜出。
-	//
-	// hub__* 是网关的保留命名空间。存量 server（key 取 hub）的工具恰好同名时，
-	// 让真元工具占住这个名字——否则真元工具被挤掉（列表里凭空少一个元工具），
-	// 下游工具反倒冒充成元工具露给 AI。
+	// hub__* 是网关的保留命名空间，同名下游工具不得冒充成元工具。
 	for _, t := range snap.Tools() {
 		// 所有工具共用同一个 handler（按请求里的工具名反查路由）：
 		// 每个工具各配一个闭包会让每次刷新重建上千个函数值。
@@ -277,12 +245,9 @@ func (a *Aggregator) Refresh() *registry.Snapshot {
 
 	// 指纹覆盖整份待注册列表，而不只是下游工具。
 	//
-	// 只比对下游工具会漏掉"meta-tool 刚注册"这一次变化：进程带着已启用的
-	// 下游启动时，构造函数里的 Reload 已经先刷新过一次、把下游工具写进了
-	// 指纹，紧随其后的 SetMetaTools 刷新就会因"没变"被跳过——meta-tool
-	// 从此永远注册不上，meta 模式下 AI 拿到的 tools/list 会是空的。
-	// 工具列表没变就不动 MCP server 的初衷（不广播 tools/list_changed、
-	// 不让 AI 反复重新规划）由指纹本身保证，与覆盖范围无关。
+	// 只比对下游工具会漏掉"meta-tool 刚注册"这次变化：启动时 Reload 已先刷新
+	// 并把下游工具写入指纹，随后的 SetMetaTools 会因"没变"被跳过，元工具永远
+	// 注册不上，meta 模式下 tools/list 会是空的。
 	print := registry.Fingerprint(toolDefs(entries))
 	if a.hasPrint && print == a.lastPrint {
 		return snap

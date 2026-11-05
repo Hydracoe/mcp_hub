@@ -3,15 +3,9 @@ import * as React from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
-/**
- * 表格原语。视觉全部来自 `.ui-table` / `.ui-table-wrap`，结构固定为：
- * 帧（背景/描边/圆角/阴影）→ 横向滚动层 → table.ui-table → 可选页脚。
- *
- * 外壳由 `Table` 单独负责：外面不要再包 `.ui-table-wrap`，分页条走 `footer`，
- * 否则会出现双描边、双圆角、双滚动条。
- * 单元格字号由 CSS 单点决定，组件里不要再叠 `text-sm` / `text-xs`，
- * 需要第二行小字用 `<span className="cell-sub">`。
- */
+/** 表格原语。视觉全部来自 `.ui-table` / `.ui-table-wrap`，结构为帧 → 横向滚动层 → table → 可选页脚。
+ *  外壳只由 `Table` 负责：外面不要再包 `.ui-table-wrap`，分页条走 `footer`，否则会出现双描边/双圆角/双滚动条。
+ *  单元格字号由 CSS 单点决定，组件里不要叠 `text-sm` / `text-xs`，第二行小字用 `<span className="cell-sub">`。 */
 function Table({
   className,
   wrapClassName,
@@ -71,7 +65,7 @@ function TableCaption({ className, ...props }: React.ComponentProps<'caption'>) 
   )
 }
 
-/** 状态行：空态/错误态都走它，并保留表头——否则用户看不到列的构成，不知「空」的是什么形状。 */
+/** 状态行：空态/错误态都走它，并保留表头，否则用户看不到列构成。 */
 function TableStateRow({
   colSpan,
   className,

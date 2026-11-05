@@ -26,10 +26,7 @@ type posting struct {
 
 // BM25 是在一批文档上建好的内存倒排索引。语料小（数百到数千工具），
 // 随聚合快照现场重建即可，无需维护常驻状态。
-//
-// 索引是词元 → posting 列表的倒排表：打分只遍历真正含该词元的文档。
-// 之前存的是"每篇文档一个 map[string]int"，打分要对每个查询词元扫过
-// 全部文档，复杂度 O(词元数 × 文档数)，而 df 明明已经算出来了。
+// 词元 → posting 列表的倒排表让打分只遍历真正含该词元的文档，而不是扫过全部文档。
 type BM25 struct {
 	count    int
 	avgDl    float64
@@ -70,8 +67,8 @@ func NewBM25(docs []Doc) *BM25 {
 			ix.postings[term] = append(ix.postings[term], posting{doc: int32(i), freq: f})
 		}
 	}
-	// count 为 0 时 avgDl 没有定义（0/0）。这不是"空语料兜底"：此时
-	// postings 为空，Search 的打分循环一次都不会进，读不到这个值。
+	// count 为 0 时 avgDl 没有定义（0/0）；此时 postings 为空，
+	// Search 的打分循环一次都不会进，读不到这个值。
 	if ix.count > 0 {
 		ix.avgDl = float64(total) / float64(ix.count)
 	}
@@ -87,9 +84,7 @@ func (ix *BM25) idf(df int) float64 {
 }
 
 // Search 对 query 词元打分，返回按分数降序的 topK（分数 ≤0 的丢弃）。
-//
-// topK <= 0 时按字面返回 nil，不替换成默认条数。选择 topK 用最小堆完成，
-// 不对全部命中排序。
+// topK <= 0 时按字面返回 nil，不替换成默认条数；topK 用最小堆完成，不对全部命中排序。
 func (ix *BM25) Search(queryTokens []string, topK int) []rank.Hit {
 	if topK <= 0 || ix.count == 0 {
 		return nil

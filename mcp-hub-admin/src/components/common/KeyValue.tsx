@@ -2,8 +2,6 @@ import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
-/* ───────────────────────── 键值明细行 ───────────────────────── */
-
 export interface KeyValueRowProps {
   label: string
   children: ReactNode
@@ -60,8 +58,6 @@ export function KeyValueGrid({ items, columns = 4, className }: KeyValueGridProp
     </div>
   )
 }
-
-/* ───────────────────────── 指标卡 ───────────────────────── */
 
 export interface MetricCardProps {
   label: string
@@ -127,8 +123,6 @@ export function DotStat({
     </span>
   )
 }
-
-/* ───────────────────────── 等宽小片 ───────────────────────── */
 
 export function MonoText({
   children,

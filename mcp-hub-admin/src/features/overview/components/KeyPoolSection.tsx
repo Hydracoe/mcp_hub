@@ -12,7 +12,6 @@ interface ServerGroup {
   items: KeyDetail[]
 }
 
-/** 展开后的单把密钥明细行。 */
 function KeyRow({ detail, base }: { detail: KeyDetail; base: number }) {
   const isCooling = detail.state === 'cooling'
   // 倒计时按挂载时刻折算，配合父组件的 1s 重渲染真正在跳。

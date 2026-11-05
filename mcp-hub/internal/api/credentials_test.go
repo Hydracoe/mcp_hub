@@ -20,13 +20,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// --- 测试用门卫：按凭据决定是否放行工具调用 ---
-
-// credGate 是一个会在**工具调用**上校验凭据的下游前置层。
-//
-// 只拦工具调用，握手与工具列举一律放行：测试要考察的是"这把密钥在
-// 调用路径上有没有被用上"，而一次 401 若把聚合也打掉，测试就会失败
-// 在一个与被测行为无关的地方。
+// credGate 是只在工具调用上校验凭据的下游前置层。
+// 握手与工具列举一律放行，避免 401 打掉聚合、让测试失败在无关处。
 type credGate struct {
 	mu     sync.Mutex
 	deny   map[string]int // "Bearer xxx" → 状态码
@@ -85,8 +80,6 @@ func (g *credGate) wrap(next http.Handler) http.Handler {
 	})
 }
 
-// --- 响应结构 ---
-
 type credentialResp struct {
 	ID          string   `json:"id"`
 	Label       string   `json:"label"`
@@ -109,10 +102,6 @@ type credentialListResp struct {
 	KeyPool bool             `json:"keyPool"`
 }
 
-// --- 生命周期 ---
-
-// 覆盖：新增（两种填法）、列表、详情、编辑、启停、清零配额、删除，
-// 以及顺序语义——新加的密钥排在轮换末尾。
 func TestCredentialLifecycle(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "one")
@@ -157,8 +146,7 @@ func TestCredentialLifecycle(t *testing.T) {
 		t.Errorf("自定义头没有被采纳: %v", second.HeaderKeys)
 	}
 
-	// 轮换顺序：新加的在末尾。若新增插到 0，既有密钥的轮换优先级会
-	// 被静默改写——用户只是想再加一把，原来那把的配比却变了。
+	// 轮换顺序：新加的在末尾；若新增插到 0，既有密钥的轮换配比会被静默改写。
 	creds, err := e.store.Credentials.List(context.Background(), sid)
 	if err != nil {
 		t.Fatalf("回读密钥失败: %v", err)
@@ -174,14 +162,13 @@ func TestCredentialLifecycle(t *testing.T) {
 		t.Errorf("列表顺序与创建顺序不一致: %s, %s", creds[0].Label, creds[1].Label)
 	}
 
-	// 列表。
 	var list credentialListResp
 	e.get("/api/servers/"+sid+"/credentials", &list)
 	if list.Total != 2 || !list.KeyPool {
 		t.Errorf("列表结果异常: total=%d keyPool=%v", list.Total, list.KeyPool)
 	}
 
-	// 编辑：不带 headers 表示"不动凭据"。只改备注不该顺手抹掉密钥。
+	// 编辑：不带 headers 表示“不动凭据”，只改备注不该抹掉密钥。
 	var updated credentialResp
 	e.mustJSON(http.MethodPut, "/api/servers/"+sid+"/credentials/"+first.ID, map[string]any{
 		"label":    "主号（改名）",
@@ -208,7 +195,6 @@ func TestCredentialLifecycle(t *testing.T) {
 		t.Errorf("提交打码值后凭据被打坏了: %q", got)
 	}
 
-	// 启停。
 	var disabled credentialResp
 	e.mustJSON(http.MethodPost, "/api/servers/"+sid+"/credentials/"+first.ID+"/disable",
 		nil, http.StatusOK, &disabled)
@@ -222,14 +208,13 @@ func TestCredentialLifecycle(t *testing.T) {
 		t.Error("启用没有生效")
 	}
 
-	// 清零配额：窗口内用量归零。
+	// 清除窗口内的用量。
 	e.mustJSON(http.MethodPost, "/api/servers/"+sid+"/credentials/"+first.ID+"/reset-quota",
 		nil, http.StatusOK, &updated)
 	if updated.RPMUsed != 0 {
 		t.Errorf("清零配额后用量 = %d, want 0", updated.RPMUsed)
 	}
 
-	// 删除。
 	resp, _ := e.call(http.MethodDelete, "/api/servers/"+sid+"/credentials/"+second.ID, nil)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("删除状态码 = %d, want 204", resp.StatusCode)
@@ -258,10 +243,7 @@ func TestCredentialLifecycle(t *testing.T) {
 	}
 }
 
-// --- 明文绝不出现在任何响应里 ---
-
-// 这是一条安全约束而非功能断言：一旦某个接口开始回显明文，
-// 任何能读管理接口的人（包括浏览器缓存、日志采集）都拿到了真凭据。
+// 安全约束：任何接口回显明文，都等于把真凭据交给能读管理接口的人。
 func TestCredentialPlaintextNeverLeaks(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "one")
@@ -296,8 +278,6 @@ func TestCredentialPlaintextNeverLeaks(t *testing.T) {
 		}
 	}
 }
-
-// --- 批量粘贴导入 ---
 
 func TestCredentialImportFromPaste(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
@@ -387,10 +367,7 @@ func TestCredentialImportFromPaste(t *testing.T) {
 	}
 }
 
-// --- stdio 不支持密钥池 ---
-
-// stdio 的凭据在子进程环境变量里，改它必须重启进程，做不到按调用轮换。
-// 与其让它"看起来配上了但不生效"，不如在入口就说清楚。
+// stdio 的凭据在子进程环境变量里，改它必须重启进程，无法按调用轮换。
 func TestCredentialStdioUnsupported(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 
@@ -421,10 +398,7 @@ func TestCredentialStdioUnsupported(t *testing.T) {
 	}
 }
 
-// --- 密钥真的被用上了 ---
-
-// 管理接口的价值全在"它改的东西真的生效"。这条用例把链路走完整：
-// API 写入密钥 → 网关用它发起真实调用 → 下游在工具调用上看得见它。
+// 管理接口的价值在于改动真的生效：API 写入密钥 → 网关发起真实调用 → 下游可见。
 func TestCredentialIsActuallyUsedWhichKeys(t *testing.T) {
 	gate := newCredGate()
 	ds := gatedDownstream(t, gate, "ping")
@@ -467,8 +441,7 @@ func TestCredentialIsActuallyUsedWhichKeys(t *testing.T) {
 	}
 }
 
-// --- 单密钥探活：只读，不改状态 ---
-
+// 单密钥探活：只读，不改状态。
 func TestCredentialTestIsReadOnly(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "one")
@@ -504,8 +477,7 @@ func TestCredentialTestIsReadOnly(t *testing.T) {
 		t.Errorf("判决 = %q, want OK", out.Verdict)
 	}
 
-	// 关键语义：测试不改状态。否则"点一下测试"会顺手把密钥禁用，
-	// 而用户的本意只是想知道它还能不能用。
+	// 关键语义：测试不改状态，否则“点一下测试”会顺手禁用密钥。
 	saved, err := e.store.Credentials.Get(context.Background(), created.ID)
 	if err != nil {
 		t.Fatalf("回读失败: %v", err)
@@ -514,15 +486,13 @@ func TestCredentialTestIsReadOnly(t *testing.T) {
 		t.Errorf("测试改变了密钥状态: state=%s enabled=%v", saved.State, saved.Enabled)
 	}
 
-	// 不存在的密钥 → 404。
 	resp, _ := e.call(http.MethodPost, "/api/servers/"+sid+"/credentials/nope/test", nil)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("测试不存在的密钥 = %d, want 404", resp.StatusCode)
 	}
 }
 
-// --- 归属校验：拿 A 的密钥 id 不能改到 B 上 ---
-
+// 归属校验：拿 A 的密钥 id 不能操作到 B 上。
 func TestCredentialBelongsToServer(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "one")
@@ -554,8 +524,7 @@ func TestCredentialBelongsToServer(t *testing.T) {
 	}
 }
 
-// --- 密钥日志：调用的日志里能看到用了哪一把 ---
-
+// 调用日志里要能看到用了哪一把密钥。
 func TestCredentialIDInCallLogs(t *testing.T) {
 	gate := newCredGate()
 	ds := gatedDownstream(t, gate, "ping")
@@ -600,8 +569,7 @@ func TestCredentialIDInCallLogs(t *testing.T) {
 	}
 }
 
-// --- 汇总口径：不可用密钥数要能出现在概览里 ---
-
+// 概览需统计不可用密钥数。
 func TestOverviewCountsUnusableKeys(t *testing.T) {
 	e := newEnv(t, httpd.Options{})
 	ds := startDownstream(t, "one")
@@ -644,9 +612,7 @@ func TestOverviewCountsUnusableKeys(t *testing.T) {
 	}
 }
 
-// --- 同值密钥：K6/K7 拍板"不允许"，保存时拦截 ---
-
-// 同一份凭据既不允许在一个 server 里配两把（白占轮换名额），
+// 同一份凭据不允许在一个 server 里配两把（白占轮换名额），
 // 也不允许配到第二个 server（限流压力集中、用量归属搅浑）。
 // 头名按 HTTP 惯例不区分大小写。
 func TestCredentialDuplicateHeadersRejected(t *testing.T) {
@@ -670,7 +636,7 @@ func TestCredentialDuplicateHeadersRejected(t *testing.T) {
 		"label": "主号", "value": "tok-x", "authScheme": "bearer",
 	}, http.StatusCreated, &first)
 
-	// K6：同 server，同一把钥再来一次 → 409。
+	// 同 server 同值 → 409。
 	resp, raw := e.call(http.MethodPost, "/api/servers/"+idA+"/credentials", map[string]any{
 		"label": "副本", "value": "tok-x", "authScheme": "bearer",
 	})
@@ -687,7 +653,7 @@ func TestCredentialDuplicateHeadersRejected(t *testing.T) {
 		t.Errorf("头名大小写变体 = %d, want 409\n响应: %s", resp.StatusCode, raw)
 	}
 
-	// K7：同一份凭据配到第二个 server → 409。
+	// 同一份凭据配到第二个 server → 409。
 	resp, raw = e.call(http.MethodPost, "/api/servers/"+idB+"/credentials", map[string]any{
 		"label": "跨服务器", "value": "tok-x", "authScheme": "bearer",
 	})
@@ -707,8 +673,6 @@ func TestCredentialDuplicateHeadersRejected(t *testing.T) {
 		t.Errorf("server B 密钥数 = %d, want 0", listB.Total)
 	}
 }
-
-// --- 便捷封装 ---
 
 func (e *env) firstServerID() string {
 	e.t.Helper()

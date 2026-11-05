@@ -25,7 +25,6 @@ body {
   font-synthesis-weight: none;
 }
 
-/* Apple 的选区色：品牌蓝 22% */
 ::selection {
   background: color-mix(in srgb, var(--brand-500) 22%, transparent);
 }
@@ -34,7 +33,6 @@ body {
 table,
 .tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
 
-/* 细滚动条，贴近系统行为 */
 * { scrollbar-width: thin; scrollbar-color: var(--fill-primary) transparent; }
 ::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -98,7 +96,6 @@ table,
   overflow-y: auto;
 }
 
-/* 侧边栏：Apple 的 vibrancy 材质 */
 .app-sidebar {
   width: 232px;
   flex: none;
@@ -125,10 +122,8 @@ table,
 .app-sidebar[data-collapsed="true"] .sidebar-brand { justify-content: center; }
 .app-sidebar[data-collapsed="true"] .nav-item { justify-content: center; padding: 0; }
 .app-sidebar[data-collapsed="true"] .sidebar-foot { justify-content: center; padding-inline: 0; }
-/* 折叠态头部只留一个居中的展开按钮：56px 栏放不下「logo+按钮」横排，
-   logo 收起、按钮顶替它的位置（尺寸对齐 brand-mark，头部高度不变）。
-   按钮必须留在栏内——挂在栏外会被主区盖住，is-fixed 页更被
-   overflow:hidden 直接裁掉，导致折叠后没有展开入口。 */
+/* 折叠态头部只留展开按钮（logo 收起、按钮占其位）；按钮必须留在栏内，
+   挂到栏外会被主区盖住，is-fixed 页更被 overflow:hidden 裁掉。 */
 .app-sidebar[data-collapsed="true"] .sidebar-head { padding-inline: 0; }
 .app-sidebar[data-collapsed="true"] .brand-mark { display: none; }
 .app-sidebar[data-collapsed="true"] .sidebar-collapse-btn {
@@ -228,7 +223,6 @@ table,
 .nav-item:hover .nav-icon { color: var(--apple-sidebar-foreground); }
 .nav-item:active { background: var(--fill-tertiary); }
 
-/* 选中态：品牌色染色 + 图标同色，而不是一块中性灰 */
 .nav-item[aria-current="page"],
 .nav-item[data-active="true"] {
   background: var(--selection);
@@ -251,7 +245,6 @@ table,
 }
 .sidebar-foot .foot-meta { margin-left: auto; font-variant-numeric: tabular-nums; }
 
-/* 状态圆点：带一圈同色淡光晕，比纯色小圆更「活」 */
 .status-dot {
   width: 7px;
   height: 7px;
@@ -359,7 +352,6 @@ table,
 }
 .app-content p { line-height: 1.5; }
 
-/* 区块头：标题 + 右侧说明，底部留出呼吸 */
 .section-head {
   display: flex;
   align-items: baseline;
@@ -421,7 +413,6 @@ table,
   pointer-events: none;
 }
 
-/* 可点击卡片：抬起 1px + 描边转品牌色（保留原有 hover 语义，只做得更收敛） */
 .key-card:hover,
 .tool-card:hover {
   border-color: color-mix(in srgb, var(--brand-500) 55%, var(--apple-border));
@@ -475,7 +466,6 @@ table,
 }
 .ui-btn-primary:hover { background: var(--brand-600); }
 
-/* Apple 的「灰色按钮」：没有描边，靠填充和三段明度区分 */
 .ui-btn-secondary {
   background: var(--fill-tertiary);
   color: var(--apple-foreground);
@@ -499,7 +489,6 @@ table,
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-error) 55%, transparent);
 }
 
-/* 图标按钮：列表行里的探活 / 编辑 / 删除 */
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -563,7 +552,6 @@ table,
 .btn-action-ghost { background: transparent; color: var(--apple-foreground); }
 .btn-action-ghost:hover { background: var(--fill-quaternary); }
 
-/* 分页按钮 */
 .pg-btn {
   display: inline-flex;
   align-items: center;
@@ -615,7 +603,6 @@ table,
     background-color var(--dur-fast) var(--ease-apple);
 }
 
-/* 带前置图标的搜索框：图标由标记里的 absolute 定位提供，输入框让出左侧 */
 .filter-input.pl-9 { padding-left: 34px; }
 .form-input:hover,
 .filter-input:hover { border-color: var(--icon-muted); }
@@ -854,7 +841,7 @@ table,
   gap: 4px;
   height: 19px;
   padding: 0 7px;
-  border-radius: 999px; /* 胶囊形：状态徽标一眼可辨，也和圆点/开关的语言一致 */
+  border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: -0.002em;
@@ -866,7 +853,6 @@ table,
 .badge-warning { background: var(--state-warning-surface); color: var(--state-warning-strong); }
 .badge-neutral { background: var(--fill-tertiary); color: var(--apple-muted-foreground); }
 
-/* 等宽代码片：内嵌于正文的小 chip 与成块代码 */
 .code-chip {
   font-family: var(--apple-font-mono);
   font-size: 11.5px;
@@ -892,7 +878,6 @@ table,
 .json-punct { color: var(--apple-muted-foreground); }
 .json-brace { color: var(--apple-foreground); }
 
-/* 复制按钮：常态极淡，悬停浮现，复制完成变绿 */
 .copy-btn {
   display: inline-flex;
   align-items: center;
@@ -971,7 +956,7 @@ table,
   align-items: start;
 }
 
-/* 分类栏横向滑动一条：分类数量不可控，纵向撑长页面、横向只占一行；不用 flex-wrap（换行变回标签墙）。 */
+/* 分类栏横向一条：数量不可控，纵向会撑长页面；不用 flex-wrap（换行会变回标签墙）。 */
 .market-rail {
   display: flex;
   flex-direction: row;
@@ -1034,7 +1019,6 @@ details:not([open]) > summary .chevron { transform: rotate(-90deg); }
 details[open] > summary .chev,
 details[open] > summary .chevron { transform: rotate(0deg); }
 
-/* 分段控件（NSSegmentedControl 的等价物） */
 .tab-toggle {
   display: inline-flex;
   padding: 2px;
@@ -1065,13 +1049,11 @@ details[open] > summary .chevron { transform: rotate(0deg); }
   box-shadow: var(--shadow-xs), 0 0 0 0.5px var(--separator);
 }
 
-/* 抽屉 */
 .drawer-backdrop { transition: opacity var(--dur) var(--ease-apple); }
 .drawer-panel { transition: transform var(--dur-slow) var(--ease-apple); }
 .drawer-hidden .drawer-backdrop { opacity: 0; pointer-events: none; }
 .drawer-hidden .drawer-panel { transform: translateX(100%); pointer-events: none; }
 
-/* 弹窗 */
 .schema-modal { display: none; }
 .schema-modal[data-open="true"],
 .schema-modal.is-open { display: flex; }
@@ -1095,7 +1077,6 @@ details[open] > summary .chevron { transform: rotate(0deg); }
 }
 .form-section-body { padding: 18px; }
 
-/* 键值明细行 */
 .probe-level {
   display: flex;
   align-items: flex-start;

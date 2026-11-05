@@ -2,7 +2,6 @@ import { DotStat, KeyValueGrid } from '@/components/common/KeyValue'
 import { formatDateTime, formatInt, formatUptime } from '@/lib/format'
 import type { OverviewResponse } from '@/lib/api/types'
 
-/** 网关总览：运行时信息。 */
 export function RuntimeOverview({ overview }: { overview: OverviewResponse }) {
   const { servers, uptimeSeconds, builtAt, ready, endpoints } = overview
   const entries = Object.entries(endpoints ?? {})

@@ -18,8 +18,8 @@ type CredentialInput struct {
 	State    KeyState // active | disabled（cooling 是内存态，不会出现在这里）
 	Disabled DisabledInfo
 
-	// CoolingUntil 是上次进程落库的冷却到点时刻（O4），零值表示没有。
-	// 只在 entry 首次创建时用于恢复内存态——之后的 Sync 不再读它，
+	// CoolingUntil 是上次进程落库的冷却到点时刻，零值表示没有。
+	// 只在 entry 首次创建时用于恢复内存态；之后的 Sync 不再读它，
 	// 否则改一次 label 就能把运行中的冷却改回去。
 	CoolingUntil time.Time
 
@@ -27,9 +27,7 @@ type CredentialInput struct {
 }
 
 // DisabledInfo 描述一把密钥被弃用的原因。
-//
-// 随 CredentialInput 一起传入而非只留在内存：进程重启后界面仍要能说明
-// "为什么它是灰的"，否则用户只能看到一个没有解释的禁用状态。
+// 随 CredentialInput 传入而非只留在内存：进程重启后界面仍要能说明"为什么它是灰的"。
 type DisabledInfo struct {
 	Kind KeyVerdict
 	At   time.Time
@@ -46,8 +44,8 @@ type KeyRingOptions struct {
 	CoolingCap       time.Duration
 	JitterRatio      float64
 
-	// LimitedDisableThreshold 是连续限流多少次后弃用（R16）。
-	// 0 取默认；负数显式关闭，退回"5 分钟循环永不停"的旧行为。
+	// LimitedDisableThreshold 是连续限流多少次后弃用。
+	// 0 取默认；负数显式关闭，退回"5 分钟循环永不停"的行为。
 	LimitedDisableThreshold int
 
 	// Now 可注入以求可测。
@@ -57,10 +55,8 @@ type KeyRingOptions struct {
 }
 
 // KeyRing 管理一个 server 的多把密钥。
-//
-// 纯粹的内存结构：持久状态（label、headers、disabled）由调用方通过 Sync 灌入，
-// 判决结果通过 KeyOutcome 交回调用方落库。密钥池本身没有 I/O，因此测试里可以
-// 把时间拧到任意一刻。
+// 纯内存结构：持久状态由 Sync 灌入，判决结果通过 KeyOutcome 交回调用方落库；
+// 密钥池本身没有 I/O，测试里可以把时间拧到任意一刻。
 type KeyRing struct {
 	opts KeyRingOptions
 
@@ -89,8 +85,8 @@ type keyEntry struct {
 	consecutiveLimited int
 	consecutiveRevoked int
 
-	// hadCooling 标记"进过冷却且还没成功过"。冷却到期本身不算恢复——被限流的
-	// 密钥在到点后第一次成功，才说明它真的回来了。
+	// hadCooling 标记"进过冷却且还没成功过"。冷却到期本身不算恢复——
+	// 被限流的密钥在到点后第一次成功，才说明它真的回来了。
 	hadCooling bool
 
 	rpm *quotaWindow
@@ -121,7 +117,7 @@ func NewKeyRing(opts KeyRingOptions, creds []CredentialInput) *KeyRing {
 		opts.LimitedDisableThreshold = DefaultLimitedDisableThreshold
 	}
 	// 负数表示"显式关闭抖动"。用 0 表示"取默认"，是因为零值必须能构造出一个
-	// 合理的池子；而测试需要确定性，得有个方式说"别抖"。
+	// 合理的池子；测试需要确定性，得有个方式说"别抖"。
 	switch {
 	case opts.JitterRatio < 0:
 		opts.JitterRatio = 0
@@ -138,10 +134,8 @@ func NewKeyRing(opts KeyRingOptions, creds []CredentialInput) *KeyRing {
 }
 
 // Sync 让密钥池与一份最新的持久快照对齐。
-//
-// 已存在的密钥按 ID 复用同一个 entry，**保留冷却与计数**：改一次 label 就把
-// 冷却清掉，等于给用户开了个"点一下即可绕过限流"的后门。新出现的建 entry，
-// 消失的移出（连同运行态一起丢弃）。
+// 已存在的密钥按 ID 复用 entry，保留冷却与计数：改 label 就清冷却等于绕过限流的后门。
+// 新出现的建 entry，消失的连同运行态丢弃。
 func (r *KeyRing) Sync(creds []CredentialInput) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -157,13 +151,9 @@ func (r *KeyRing) Sync(creds []CredentialInput) {
 		e, ok := r.byID[c.ID]
 		if !ok {
 			e = newKeyEntry(c)
-			// O4：恢复上一进程落库的冷却。只为新 entry 做——
-			// 已存在的 entry 带着此刻真实的运行态，用库里的旧值覆盖它
-			// 等于"改个备注就能把冷却改回去"。
-			//
-			// 过期值直接丢：库里那个时刻早就过去了，按"没在冷却"处理。
-			// hadCooling 一并置位，好让冷却后的第一次成功报出 Recovered
-			// ——它是"这把钥匙真的回来了"的唯一信号。
+			// 恢复上一进程落库的冷却。只为新 entry 做——已存在的 entry 带着此刻
+			// 真实的运行态，用库里的旧值覆盖它等于"改个备注就能把冷却改回去"。
+			// 过期值直接丢；hadCooling 一并置位，好让冷却后首次成功报出 Recovered。
 			if c.CoolingUntil.After(r.opts.Now()) {
 				e.coolingUntil = c.CoolingUntil
 				e.hadCooling = true
@@ -223,8 +213,7 @@ func (r *KeyRing) Len() int {
 }
 
 // ErrNoUsableKey 表示池中此刻没有可用密钥。
-//
-// 携带 RetryAfter（最近的恢复时刻）与各状态的计数，让上游能给出"等 12 秒再试"
+// 携带 RetryAfter（最近的恢复时刻）与各状态计数，让上游能给出"等 12 秒再试"
 // 这样可执行的指引，而不是一句"暂时不可用"。
 type ErrNoUsableKey struct {
 	ServerKey  string
@@ -273,11 +262,8 @@ func (e *ErrNoUsableKey) Error() string {
 func (e *ErrNoUsableKey) Unwrap() error { return e.Cause }
 
 // KeyLease 是一次密钥借用。
-//
-// label 与 headers 是借用时刻的配置快照：Acquire 返回后调用方不再持有 KeyRing
-// 的锁，而管理端操作（改密钥头、停用、重载）随时会在锁内改写同一 entry。若在
-// 这里直接读 entry 就是数据竞争。快照在持锁期间摘取，本次调用因此与后续改动
-// 隔离——"这次用借用那一刻的凭据"，下次借用自然拿到新值。
+// label 与 headers 是借用时刻的配置快照：Acquire 返回后调用方不再持锁，而管理端
+// 操作随时在锁内改写同一 entry，直接读 entry 就是数据竞争。
 type KeyLease struct {
 	ring *KeyRing
 	key  *keyEntry
@@ -312,11 +298,8 @@ func (l *KeyLease) Headers() map[string]string {
 }
 
 // Acquire 借出一把可用密钥。
-//
-// 选法是"原子游标 + 顺时针找第一个可用者"，即轮询。不用"最少在飞"：轮询是为了
-// 摊薄流量、避免某把被打到限流，而"谁快用谁"反而会让流量集中。
-//
-// exclude 是本次调用内已失败过的密钥，重试必须排除——再打一次只会加重限流。
+// 选法是"原子游标 + 顺时针找第一个可用者"，即轮询：为了摊薄流量、避免某把被打到限流，
+// "谁快用谁"反而会让流量集中。exclude 是本次已失败过的密钥，重试必须排除。
 func (r *KeyRing) Acquire(exclude map[string]bool) (*KeyLease, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -333,10 +316,8 @@ func (r *KeyRing) Acquire(exclude map[string]bool) (*KeyLease, error) {
 }
 
 // Unavailable 报告"此刻是否真的一把也借不到"，但不消耗任何配额。
-//
-// 一次调用里换了几把密钥都失败后，上层需要判断该报"下游在限流"还是"密钥池空了"。
-// 后者携带 retryAfter 与各状态计数，对调用方（以及背后的 AI）是可执行的；
-// 前者只是一句现象描述。它只回答问题，不改变状态。
+// 换了几把都失败后，上层需要区分"下游在限流"与"密钥池空了"：后者携带 retryAfter
+// 与各状态计数，对调用方（以及背后的 AI）是可执行的。它只回答问题，不改变状态。
 func (r *KeyRing) Unavailable(exclude map[string]bool) *ErrNoUsableKey {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -350,9 +331,8 @@ func (r *KeyRing) Unavailable(exclude map[string]bool) *ErrNoUsableKey {
 }
 
 // pickLocked 是选密钥的唯一实现：从游标顺时针找第一个可用者。
-//
-// commit 为 false 时只做判断，不预扣配额、不推进游标、不记 picks。两条路径
-// 共用同一份状态统计，否则"为什么借不到"的解释迟早会与实际选法不一致。
+// commit 为 false 时只做判断，不预扣配额、不推进游标、不记 picks。
+// 两条路径共用同一份统计，否则"为什么借不到"的解释迟早会与实际选法不一致。
 func (r *KeyRing) pickLocked(now time.Time, exclude map[string]bool, commit bool) (*KeyLease, *ErrNoUsableKey) {
 	n := len(r.entries)
 

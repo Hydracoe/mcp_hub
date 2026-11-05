@@ -73,15 +73,8 @@ export function createInitialForm(server: ServerDetail): ServerFormState {
 }
 
 /** 从表单状态组装请求体。
- *
- * headers / env 是后端的"三态"字段（mergeSecrets / mergeEnvSecrets）：
- * 请求体没带 = 这次不动、沿用原值；显式给了空 = 清空；给了非空 = 整体替换。
- * 所以这两组每次都要显式带上，语义才明确：
- *  - 掩码值 *** 原样回传，后端按原值还原。不能在拼装时丢掉这一行——
- *    丢掉后 map 可能变空，而空 map 在后端是"显式清空"，凭据会被悄悄抹掉。
- *  - 当前形态用不到的那组显式给空值：切成"不需要鉴权"或切到 stdio 时，
- *    把库里残留的旧凭据清掉，否则网关会照旧往下游注入。
- */
+ *  headers / env 是后端的「三态」字段：没带 = 沿用原值，显式空 = 清空，非空 = 整体替换。
+ *  掩码 *** 必须原样回传（丢掉会变成空 map 即清空）；当前形态用不到的那组显式给空。 */
 export function buildServerRequest(s: ServerFormState): ServerRequest {
   const req: ServerRequest = {
     key: s.key.trim(),
@@ -120,8 +113,7 @@ export function buildServerRequest(s: ServerFormState): ServerRequest {
     }
     req.headers = headers
   } else {
-    // 改成"不需要鉴权"：显式清空 headers。否则旧凭据留在库里，
-    // 网关仍会注入下游，与"网关不向下游注入任何凭据"的界面文案矛盾。
+    // 改成「不需要鉴权」：显式清空 headers，否则旧凭据会继续被注入下游。
     req.headers = {}
   }
   return req

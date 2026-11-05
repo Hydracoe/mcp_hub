@@ -14,8 +14,8 @@ export interface CopyButtonProps {
   onCopied?: () => void
 }
 
-/** 复制按钮。优先 `navigator.clipboard`，失败回落到 `document.execCommand`——
- *  非 HTTPS 的局域网地址下 clipboard API 直接不可用。 */
+/** 复制按钮。优先 `navigator.clipboard`，失败回落到 `document.execCommand`：
+ *  非 HTTPS 的局域网地址下 clipboard API 不可用。 */
 export function CopyButton({
   value,
   label = '复制',

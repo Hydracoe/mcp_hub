@@ -12,8 +12,8 @@ interface State {
   error: Error | null
 }
 
-/** 路由级错误边界。旧 chunk 被换掉会让 import() 404、整棵树白屏，
- *  这里兜住并给「重新加载」入口。React 19 仍只支持类组件做错误边界。 */
+/** 路由级错误边界。旧 chunk 被替换会让 import() 404、整棵树白屏，
+ *  这里兜住并提供「重新加载」。React 19 仍只支持类组件做错误边界。 */
 export class RouteErrorBoundary extends Component<Props, State> {
   state: State = { error: null }
 

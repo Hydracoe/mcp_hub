@@ -1,11 +1,6 @@
-// Package httpd 提供网关的对外 HTTP 接口。
-//
-// 两套端点：MCP 协议端点给 AI 客户端用，管理端点给界面用。
-// 前者是产品的全部价值所在，后者的每一次变更最终都要反映到前者。
-//
-// 路由与中间件建立在 gin 上；MCP 协议端点仍由 mcp-go 提供的
-// http.Handler 直接接管，经 gin.WrapH 接入路由树——协议实现不该
-// 为了换一个路由库而重写。
+// Package httpd 提供网关的对外 HTTP 接口：MCP 协议端点给 AI 客户端，管理端点给界面。
+// 路由与中间件建立在 gin 上；MCP 协议端点由 mcp-go 的 http.Handler 直接接管，
+// 经 gin.WrapH 接入路由树。
 package httpd
 
 import (
@@ -40,29 +35,17 @@ type Options struct {
 	EnableSSE bool
 
 	// APIKey 非空时，管理接口要求请求带上它。
-	//
-	// 默认关闭：服务默认只绑 127.0.0.1。但一旦要监听到 0.0.0.0，
-	// 这个开关必须现成可用——"先暴露出去、鉴权以后再加"从来
-	// 都不是一个好计划。
+	// 服务默认只绑 127.0.0.1；监听 0.0.0.0 时必须启用。
 	APIKey string
 
-	// GinMode 是 HTTP 框架（gin）的运行模式：debug / release / test。
-	//
-	// 默认 release：开发模式每次启动都会往 stdout 打一段中间件提示，
-	// 而这个进程的 stdout 要留给用户看启动横幅。
-	// 值由配置层给（MCPHUB_GIN_MODE，gin 自己的 GIN_MODE 同义），
-	// 这里不再自己读环境变量。
+	// GinMode 是 gin 的运行模式：debug / release / test。
+	// 默认 release：debug 会往 stdout 打中间件提示，而 stdout 要留给启动横幅。
+	// 值由配置层给（MCPHUB_GIN_MODE，GIN_MODE 同义），这里不读环境变量。
 	GinMode string
 
-	// Static 是管理界面的静态资源处理器，挂在路由表最后作为兜底。
-	//
-	// 这是"把界面内嵌进二进制"的挂载点：给一个 SPA 处理器，
-	// 未命中 /api、/mcp、/healthz 的请求就落到界面。为 nil 时完全不挂，
-	// 这些路径得到干净的 404——"没带界面"本身就是一种合法形态
-	// （纯 API 部署、库形态、还没跑 `make ui`）。
-	//
-	// 路由本包不关心它从哪来（go:embed / 磁盘 / 内存），只关心
-	// 它绝不会抢在具体路由前面——见 routes() 里的说明。
+	// Static 是管理界面的静态资源处理器，作为 NoRoute 兜底挂在最后。
+	// nil 时完全不挂，未命中路径得到干净的 404（纯 API 部署是合法形态）。
+	// 路由本包不关心它从哪来，只保证它绝不会抢在具体路由前面（见 routes）。
 	Static http.Handler
 }
 
@@ -84,9 +67,7 @@ type Server struct {
 }
 
 // resolveGinMode 把配置值落成 gin 认的模式名：留空按 release 算。
-//
-// 开发模式每次启动都会往 stdout 打一段中间件提示，而这个进程的 stdout
-// 要留给用户看启动横幅，所以"没配"必须是 release 而不是 gin 自己的 debug。
+// release 保证启动横幅是 stdout 上唯一的输出。
 func resolveGinMode(mode string) string {
 	if mode == "" {
 		return gin.ReleaseMode
@@ -103,14 +84,12 @@ func New(svc *hub.Service, opts Options) *Server {
 		opts.Addr = "127.0.0.1:9090"
 	}
 
-	// 模式由调用方（配置层）决定；没给就按 release 算，
-	// 保持"启动横幅是 stdout 上唯一输出"这条约定。
+	// 模式由调用方（配置层）决定；没给就按 release 算。
 	gin.SetMode(resolveGinMode(opts.GinMode))
 
 	mcpHandler := mcpserver.NewStreamableHTTPServer(
 		svc.Aggregator().MCP(),
-		// 2026-07-28 起协议无状态，不需要粘性会话与共享 session store。
-		// 这是网关能保持极低额外延迟的前提之一。
+		// 协议无状态，不需要粘性会话与共享 session store；这是低延迟的前提之一。
 		mcpserver.WithStateLess(true),
 		mcpserver.WithEndpointPath("/mcp"),
 	)
@@ -128,12 +107,8 @@ func New(svc *hub.Service, opts Options) *Server {
 		}),
 	}
 
-	// 把 gin 的路由行为调回标准库 mux 的语义，三处都改默认值：
-	//   - 尾斜杠不重定向：gin 会把 /api/servers/ 301 到 /api/servers，
-	//     而原先 mux 没有注册该模式，是 404。多一个 301 会让部分
-	//     客户端把 GET 之外的方法丢掉。
-	//   - 不做路径纠错：/api/server 这种近似拼写不该被悄悄猜中。
-	//   - 方法不匹配回 405 而不是 404。
+	// 把 gin 路由行为调回标准库 mux 的语义：尾斜杠不重定向（否则部分客户端会丢掉
+	// GET 之外的方法）、不做路径纠错（近似拼写不该被悄悄猜中）、方法不匹配回 405 而非 404。
 	s.engine.RedirectTrailingSlash = false
 	s.engine.RedirectFixedPath = false
 	s.engine.HandleMethodNotAllowed = true
@@ -179,58 +154,29 @@ func (s *Server) routes() {
 	// 分开两个端口只会多一个需要配置、需要解释的东西。
 	s.api.Register(s.engine)
 
-	// 静态界面必须是**最后**一块拼图，用 gin 的 NoRoute 而不是通配路由。
-	//
-	// 三点原因，缺一不可：
-	//   - 顺序：它不认识路径语义，只认识文件。若挂在前面（或注册成
-	//     "/" 通配），/api/servers 这类请求会先落到它手里，然后得到一个
-	//     index.html —— 前端拿到 HTML 当 JSON 解，报错信息会指向完全
-	//     无关的地方。
-	//   - 不能用 catch-all：gin 的路由树不允许 `/*any` 与 `/healthz`、
-	//     /api 这些根级路由共存（注册时直接 panic）。NoRoute 是唯一
-	//     能兜底又不抢路由的位置。
-	//   - 语义：NoRoute 只在"路由树里确实没有这条路由"时才触发。
-	//     它天然不参与方法匹配，所以 POST /api/servers 仍然得到 405，
-	//     而不是被 SPA 回退吞掉。
+	// 静态界面必须最后挂，用 NoRoute 而不是通配路由：NoRoute 只在路由树确实没有
+	// 该路由时触发，不参与方法匹配，所以 POST /api/servers 仍是 405 而不是被 SPA 吞掉；
+	// gin 路由树也不允许 /*any 与 /healthz、/api 等根级路由共存（注册即 panic）。
 	if s.opts.Static != nil {
 		s.engine.NoRoute(func(c *gin.Context) {
-			// 保留命名空间下的未命中不归界面管。
-			//
-			// 这是 NoRoute 兜底最容易出问题的地方：/api/does-not-exist
-			// 在路由树里没有对应节点，于是会落到这里。若回退成 index.html，
-			// 客户端拿到的是 200 + HTML——它会先尝试解析、失败，
-			// 然后报一个指向 JSON 解析器的错误，而真正的事实是"这个接口
-			// 不存在"。200 还让"拼错了路径"在监控里完全隐形。
-			//
-			// 这里什么都不写就返回：gin 的 serveError 会补上它自己的
-			// 默认 404，与"没挂界面"时的响应完全一致。
+			// 保留命名空间下的未命中不归界面管：回退成 index.html 会让客户端拿到
+			// 200 + HTML，把“接口不存在”伪装成解析错误，并在监控里隐形。
 			if reservedPath(c.Request.URL.Path) {
 				return
 			}
 
-			// 重置状态码是必须的，不是防御性代码。
-			//
-			// gin 进入 NoRoute 的路径是 serveError(c, 404, ...)：它**先**
-			// 把 writermem.status 预置成 404，再调 c.Next()。而 gin 的
-			// responseWriter 只在"尚未写响应"时才接受新的状态码——
-			// 静态处理器若只是 set 头 + Write（http.ServeFile 之外最常见的
-			// 写法，我们自己的 SPA 回退就是这样）就会带着 404 发出，
-			// 于是"刷新页面"变成"页面有内容却仍是 404"，浏览器按错误处理，
-			// 问题还更难查。
-			//
-			// 改回 200 只是把默认值复原；静态处理器随后可以用 WriteHeader
-			// 覆盖成任何它想要的状态（未命中文件时 404）。
+			// 重置状态码是必须的：gin 进入 NoRoute 前已把 status 预置为 404，
+			// 而 responseWriter 只在尚未写响应时接受新状态码；静态处理器若只 set 头 + Write
+			// 就会带着 404 发出，表现为“页面有内容却仍是 404”。
 			c.Status(http.StatusOK)
 			s.opts.Static.ServeHTTP(c.Writer, c.Request)
 		})
 	}
 }
 
-// reservedPath 报告某个路径是否属于"接口命名空间"，界面不该接管它。
-//
-// 判断用整段匹配而不是前缀字符串比较："/apifoo" 不是 /api 的子路径，
-// 它应该照常回退到界面（前端确实可能有一个这样的路由）。
-// 只有 "/api" 本身和 "/api/..." 才算。
+// reservedPath 报告路径是否属于接口命名空间。
+// 用整段匹配而非前缀字符串比较："/apifoo" 应照常回退到界面；
+// 只有 "/api" 本身与 "/api/..." 才算（其余前缀同理）。
 func reservedPath(p string) bool {
 	for _, prefix := range []string{"/api", "/mcp", "/sse", "/message", "/healthz", "/readyz"} {
 		if p == prefix || strings.HasPrefix(p, prefix+"/") {
@@ -256,9 +202,7 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// Handler 返回装配好中间件的根 handler。
-//
-// 供测试用 httptest 直接挂载——不必真的占一个端口。
+// Handler 返回装配好中间件的根 handler，供测试用 httptest 直接挂载。
 func (s *Server) Handler() http.Handler { return s.http.Handler }
 
 // Shutdown 优雅关闭：停止接收新请求，等待在途请求完成。
@@ -273,8 +217,6 @@ func (s *Server) Addr() string {
 	}
 	return s.opts.Addr
 }
-
-// --- 处理器 ---
 
 func (s *Server) handleHealthz(c *gin.Context) {
 	// 存活探针只回答"进程还在吗"。任何依赖下游的判断都会让
@@ -319,20 +261,9 @@ func (s *Server) handleStatus(c *gin.Context) {
 	})
 }
 
-// --- 中间件 ---
-
 // mcpAuth 校验外部 AI 客户端的接入 API key。
-//
-// 策略是渐进收紧：库里一把 key 都没有时放行（本地开发、现有部署
-// 零配置不受影响）；一旦创建过 key，匿名请求一律 401——"创建第一把
-// key"这个动作本身就是启用鉴权的开关。
-//
-// 判断依据是"存在"而不是"启用中"（见 hub.APIKeysRequired）：全部停用
-// 意味着把端点锁死，而不是退回匿名开放——停用是收紧，不是关闭鉴权。
-//
-// 通过校验后把 key id 写进 request ctx，聚合器落调用日志时能归因
-// 到具体调用方。每请求两次小查询（计数 + hash 查找），PostgreSQL 本地
-// 读，不是热点。
+// 库里一把 key 都没有时放行；一旦存在 key，匿名请求一律 401（创建第一把即启用鉴权）。
+// 判断依据是“存在”而非“启用中”（全停用=锁死）；校验通过把 key id/名字写进 ctx 供日志归因。
 func (s *Server) mcpAuth() gin.HandlerFunc {
 	present := func(c *gin.Context) string {
 		if k := c.GetHeader("X-API-Key"); k != "" {
@@ -374,17 +305,15 @@ func (s *Server) mcpAuth() gin.HandlerFunc {
 			return
 		}
 
-		// 名字一并注入：鉴权这里已经拿到完整的 apikeys.APIKey，
-		// 落日志时就不必再查一次库（也避免把历史改写成"现在"的名字）。
+		// 名字一并注入：鉴权这里已拿到完整记录，落日志时不必再查库，
+		// 也避免把历史改写成“现在”的名字。
 		c.Request = c.Request.WithContext(callctx.WithCaller(c.Request.Context(), key.ID, key.Name))
 		c.Next()
 	}
 }
 
 // recover 兜住处理器里的 panic。
-//
-// 网关聚合的是第三方 server，其 schema 与注解完全不可控。
-// 任何一处 panic 都只能影响这一个请求。
+// 网关聚合第三方 server，其 schema 与注解不可控；一处 panic 只能影响这一个请求。
 func (s *Server) recover() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
@@ -402,11 +331,8 @@ func (s *Server) recover() gin.HandlerFunc {
 }
 
 // cors 只对本地来源开放跨源访问。
-//
-// 生产形态里前端由 go:embed 内嵌，与后端同源，不需要 CORS；Vite 开发
-// 服务器是另一个端口，需要联调。但反射任意 Origin 会让用户浏览的任意
-// 网页都能读取本机管理 API 的响应——默认监听回环地址也挡不住这种请求。
-// 因此只回显 localhost / 127.0.0.1 / ::1 的来源，其余来源不拿 CORS 头。
+// 反射任意 Origin 会让用户浏览的网页也能读本机管理 API；默认监听回环也挡不住。
+// 只回显 localhost / 127.0.0.1 / ::1 的来源，其余来源不拿 CORS 头。
 func (s *Server) cors() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if origin := c.GetHeader("Origin"); isLocalOrigin(origin) {

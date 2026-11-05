@@ -39,7 +39,7 @@ export interface DateTimeRangePickerProps extends DateTimeRange {
 const WEEK_OPTS = { weekStartsOn: 1 as const }
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日']
 
-/** 快捷区间：一次点击即生效并关闭，预设本身就是完整答案。 */
+/** 快捷区间：点击即生效并关闭。 */
 const PRESETS: { label: string; range: () => DateTimeRange }[] = [
   { label: '最近 5 分钟', range: () => ({ since: +addMinutes(Date.now(), -5), until: Date.now() }) },
   { label: '最近 1 小时', range: () => ({ since: +addHours(Date.now(), -1), until: Date.now() }) },

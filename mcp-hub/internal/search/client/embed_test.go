@@ -99,8 +99,8 @@ func TestEmbedderRejectsDimsMismatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// dims 配错必须在写入前拦住：放过去的话库里 dims 列与 vector 列对不上，
-	// 检索时距离计算要么报错要么逐行跳过，向量一路静默失效。
+	// dims 配错必须在写入前拦住：否则库里 dims 列与 vector 列对不上，
+	// 向量会一路静默失效。
 	e, err := NewEmbedder("k", srv.URL+"/v1", "m", 8, 1)
 	if err != nil {
 		t.Fatalf("构造失败: %v", err)
@@ -122,7 +122,7 @@ func TestEmbedderRejectsDimsMismatch(t *testing.T) {
 }
 
 // dims / batch 非法在构造点就报错。不存在"传 0 等于不校验 / 取默认"的隐式
-// 语义——那种设计会让配置漏填静默摘掉唯一的维度守门。
+// 语义：那会让配置漏填静默摘掉唯一的维度守门。
 func TestNewEmbedderRejectsNonPositiveParams(t *testing.T) {
 	if _, err := NewEmbedder("k", "http://example.invalid/v1", "m", 0, 1); err == nil {
 		t.Fatal("dims=0 应报错")

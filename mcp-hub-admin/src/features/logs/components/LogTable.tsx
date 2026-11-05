@@ -15,11 +15,9 @@ interface Props {
   sort: LogSort
   dir: SortDir
   onSort: (col: LogSort) => void
-  /** 外壳、状态位与页脚交给 TableFrame。 */
   frame?: Omit<TableFrameProps, 'head' | 'colCount' | 'children'>
 }
 
-/** 9 列宽表，table-fixed + 每列定宽。 */
 const COLS = [
   '时间',
   'Server',
@@ -46,9 +44,8 @@ const COL_W = [
   'w-[12%]', // 下游密钥
 ]
 
-/** 调用日志表。失败行整行染红边（`.is-error`）。
- *  只有时间 / 耗时 / 状态可排序，其余列是自由文本，排序没有可读语义。
- *  「调用方」是上游客户端调网关的凭据，「下游密钥」是网关调下游 server 的凭据，方向相反，故分列。 */
+/** 调用日志表。失败行整行染红边（`.is-error`）。只有时间 / 耗时 / 状态可排序。
+ *  「调用方」是上游凭据，「下游密钥」是网关调下游的凭据，方向相反故分列。 */
 export function LogTable({ items, onRowClick, sort, dir, onSort, frame }: Props) {
   // 全列左对齐：th 上的 text-align 工具类压不过 apple-ui.css 里未分层的
   // `.ui-table thead th`，表头右对齐、数字右对齐会造成整列视觉错位。
@@ -159,9 +156,8 @@ export function LogTable({ items, onRowClick, sort, dir, onSort, frame }: Props)
   )
 }
 
-/** 调用方单元格。三种取值：有名字快照（正常）、只有 id（老库升级的行）、
- *  两者都空（匿名调用，当时端点未启用鉴权）。
- *  名字是快照——改密钥名或删密钥都不会影响历史行。 */
+/** 调用方单元格。三种取值：有名字快照、只有 id、两者都空（匿名）。
+ *  名字是快照，改密钥名或删密钥都不影响历史行。 */
 function CallerCell({ log }: { log: LogItem }) {
   if (log.apiKeyName) {
     return (

@@ -73,8 +73,6 @@ export function useServerDetailPage() {
   // 离开未保存提示
   const blocker = useBlocker(dirty)
 
-  /* ── 操作 ── */
-
   /** Key 格式先在本地挡一道：后端会拒（400），但那是一条英文原文。 */
   const checkKey = (f: ServerFormState) => {
     const err = keyFormatError(f.key)

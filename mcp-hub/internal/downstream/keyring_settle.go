@@ -27,11 +27,11 @@ type KeyOutcome struct {
 	Disabled bool
 
 	// Recovered 表示这把密钥冷却之后第一次成功，即真的恢复了。与"冷却到期"
-	// 是两件事：到期只说明回到了候选队列，成功才说明下游不再限它。
+	// 是两件事：到期只说明回到候选队列，成功才说明下游不再限它。
 	Recovered bool
 
 	// CollectiveProtection 表示"本会被弃用，但因集体失败保护而未弃用"。
-	// 这个信号很要紧：它意味着问题多半不在密钥本身，而在配置或账号层面。
+	// 它意味着问题多半不在密钥本身，而在配置或账号层面。
 	CollectiveProtection bool
 
 	// ConsecutiveLimited 是累计连续限流次数，用于展示退避进度。
@@ -73,7 +73,7 @@ func (r *KeyRing) settle(l *KeyLease, res LeaseResult) KeyOutcome {
 
 	switch res.Verdict {
 	case VerdictOK:
-		// 唯一能重置退避计数的信号。冷却到期**不**重置：
+		// 唯一能重置退避计数的信号。冷却到期不重置：
 		// 否则会退化成 1s → 重试 → 429 → 1s 的死循环。
 		if e.hadCooling {
 			out.Recovered = true
@@ -88,8 +88,7 @@ func (r *KeyRing) settle(l *KeyLease, res LeaseResult) KeyOutcome {
 
 	case VerdictRateLimited:
 		// 冷却只落在 coolingUntil，不动 e.state。调用在飞期间密钥可能已被人工
-		// 停用（Sync 会在锁内写入 disabled）——429 的反馈不能把那个停用抹掉，
-		// 否则冷却一结束密钥就"复活"，与库里记录相反。
+		// 停用（Sync 会在锁内写入 disabled），429 的反馈不能把那个停用抹掉。
 		e.consecutiveLimited++
 		wait := r.coolingFor(e, res.Obs.RetryAfter)
 		e.coolingUntil = now.Add(wait)
@@ -107,11 +106,9 @@ func (r *KeyRing) settle(l *KeyLease, res LeaseResult) KeyOutcome {
 				e.consecutiveLimited, wait.Round(time.Second))
 		}
 
-		// R16：连续限流顶格不再无限循环。退避已到上限仍连续被拒，说明
-		// "晾一会儿能自己好"的假设不成立——大概率是账号级限流。弃用并
-		// 通知人工（M10 一键救回）；集体失败保护依然生效：整池同时顶格
-		// 是配置或账号的问题，标降级不全禁。已处于弃用态的密钥不覆盖
-		// 它原有的弃用原因。
+		// 连续限流顶格不再无限循环。退避已到上限仍连续被拒，说明"晾一会儿能自己好"
+		// 不成立，大概率是账号级限流：弃用并通知人工。集体失败保护依然生效（整池
+		// 同时顶格是配置或账号问题），已弃用的不覆盖原有弃用原因。
 		if t := r.opts.LimitedDisableThreshold; t > 0 &&
 			e.consecutiveLimited >= t && e.state != KeyDisabled {
 			r.disable(e, res.Verdict, &out, now,
@@ -156,10 +153,8 @@ func (r *KeyRing) disable(e *keyEntry, v KeyVerdict, out *KeyOutcome, now time.T
 	out.Detail = detail
 
 	// 集体失败保护：禁用这把会让可用密钥归零，而窗口内已有别的密钥因同一原因
-	// 失败——那多半不是密钥的问题，是配置或账号的问题。
-	//
-	// 没有这道闸，网关会尽职尽责地把用户填的 20 把密钥逐个禁用，
-	// 用户回来只看到一片红，且不知道第一把是从哪坏起的。
+	// 失败——那多半不是密钥的问题，是配置或账号的问题。没有这道闸，网关会把
+	// 用户填的密钥逐个禁用，用户只看到一片红，也不知道第一把是从哪坏起的。
 	if r.wouldWipeOut(e, v, now, r.collectiveWindowFor(v)) {
 		out.CollectiveProtection = true
 		out.Disabled = false
@@ -179,11 +174,8 @@ func (r *KeyRing) disable(e *keyEntry, v KeyVerdict, out *KeyOutcome, now time.T
 }
 
 // collectiveWindowFor 返回该判决适用的"同因失败"时间窗。
-//
 // 默认 1 分钟：401/402/403 是即时判决，同因失败会接连发生。
-// 限流是例外（R16）：顶格禁用的密钥大部分时间在冷却里（最长 5 分钟），
-// 其他密钥的同因判决往往落在几分钟之前——按 1 分钟算，集体保护对
-// 顶格禁用永远触发不了，是纸面承诺。放宽到两个冷却上限。
+// 限流例外：顶格禁用的密钥大部分时间在冷却里（最长 5 分钟），窗口放宽到两个冷却上限。
 func (r *KeyRing) collectiveWindowFor(v KeyVerdict) time.Duration {
 	if v == VerdictRateLimited {
 		return 2 * r.opts.CoolingCap
@@ -192,8 +184,7 @@ func (r *KeyRing) collectiveWindowFor(v KeyVerdict) time.Duration {
 }
 
 // wouldWipeOut 判断弃用 e 是否会导致可用密钥归零，且存在同因失败的其他密钥。
-//
-// 门槛刻意简单（会归零 + 窗口内 + 同分类）：它必须在禁用**之前**算出来，
+// 门槛刻意简单（会归零 + 窗口内 + 同分类）：它必须在禁用之前算出来，
 // 复杂规则在这里只会变成又一个出错点。
 func (r *KeyRing) wouldWipeOut(e *keyEntry, v KeyVerdict, now time.Time, window time.Duration) bool {
 	othersUsable := 0
@@ -219,9 +210,9 @@ func (r *KeyRing) wouldWipeOut(e *keyEntry, v KeyVerdict, now time.Time, window 
 // 否则指数退避加抖动。
 func (r *KeyRing) coolingFor(e *keyEntry, retryAfter time.Duration) time.Duration {
 	if retryAfter > 0 {
-		// R5：Retry-After 一并封顶。下游给的值不可信（bug、恶意、单位写错），
-		// 无封顶意味着一把坏钥能把整个池子按住一年。真要等远超 5 分钟的，
-		// 该走"弃用+人工"（如 402），而不是在 429 里塞一个天文数字。
+		// Retry-After 一并封顶。下游给的值不可信（bug、恶意、单位写错），无封顶
+		// 意味着一把坏钥能把整个池子按住一年。真要等远超 5 分钟的，该走"弃用+人工"
+		// （如 402），而不是在 429 里塞一个天文数字。
 		if retryAfter > r.opts.CoolingCap {
 			return r.opts.CoolingCap
 		}

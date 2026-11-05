@@ -21,7 +21,7 @@ export function useLogsPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
 
-  // 抽屉 / 弹框打开时自动暂停轮询，避免内容在阅读时跳动（建议项）
+  // 抽屉 / 弹框打开时自动暂停轮询，避免内容在阅读时跳动。
   const polling = live && !sheetOpen && !clearOpen
   const logs = useLogs(filters.query, polling)
   const clear = useClearLogs()

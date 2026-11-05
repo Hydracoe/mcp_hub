@@ -13,7 +13,6 @@ export function useCredentials(serverId: string | undefined, enabled = true) {
   })
 }
 
-/** 密钥池的全部写操作。它们在同一个 hook 里是因为共享同一份失效范围。 */
 export function useCredentialMutations(serverId: string) {
   const qc = useQueryClient()
   const invalidate = () => {

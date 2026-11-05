@@ -19,20 +19,12 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
-// 凭据删除与启停在"密钥池同步失败"时的回归测试。
-//
-// 缺陷形状：删除 / 启停的库写入已经提交，之后密钥池同步失败就把整个
-// 操作报成失败（HTTP 500）。用户看到的是"没删掉"、"没停用"，可库里
-// 其实已经改了——重试还会撞上唯一约束（409），把一次成功的操作显示成
-// 失败两次。正确语义是"落库成功即成功"：密钥池属于运行时状态，同步
-// 失败只记 error 日志，等下一次 Reload 补装。
-//
-// 这条路径以前没有用例守着：接缝缺失，"同步失败"根本没法复现。
+// 凭据删除与启停在"密钥池同步失败"时的测试。
+// 正确语义是"落库成功即成功"：密钥池属于运行时状态，同步失败只记 error 日志，
+// 等下一次 Reload 补装，不能把已提交的操作报成失败（HTTP 500）。
 
 // openSvcWithKeyRingReload 起一个服务层，并把"单个 server 的密钥池同步"
-// 这一步换成 reloadKeyRingFn。
-//
-// 留空用 reloadKeyRing 本体；非 nil 时它就是同步本身，用来复现
+// 这一步换成 fn。fn 留空用 reloadKeyRing 本体，非 nil 时用来复现
 // "凭据写已落库、密钥池同步失败"这条路径（见 Options.ReloadKeyRingFn）。
 func openSvcWithKeyRingReload(t *testing.T, logger *zap.Logger, fn func(context.Context, string) error) (*store.Store, *hub.Service) {
 	t.Helper()
@@ -52,9 +44,7 @@ func openSvcWithKeyRingReload(t *testing.T, logger *zap.Logger, fn func(context.
 }
 
 // failKeyRingReload 是一个恒定失败的密钥池同步实现。
-//
-// calls 记录它被调用的次数：断言它确实被调过，用例才不是空转的
-// （接缝没接上的话，下面的断言同样会通过）。
+// calls 记录调用次数：断言确实调过，否则接缝没接上时用例会空转通过。
 func failKeyRingReload(calls *atomic.Int64) func(context.Context, string) error {
 	return func(context.Context, string) error {
 		calls.Add(1)
@@ -62,11 +52,9 @@ func failKeyRingReload(calls *atomic.Int64) func(context.Context, string) error 
 	}
 }
 
-// seedKeyPoolServer 写一个远程 server（密钥池只支持远程传输）并挂上
-// 一把密钥，返回 server id 与密钥 id。
-//
-// URL 指向一个没人监听的端口：这些用例只关心密钥池的装载与同步，
-// 不会真的去连下游。
+// seedKeyPoolServer 写一个远程 server（密钥池只支持远程传输）并挂一把密钥，
+// 返回 server id 与密钥 id。URL 指向没人监听的端口：用例只关心密钥池的装载
+// 与同步，不会真的去连下游。
 func seedKeyPoolServer(t *testing.T, st *store.Store, key string) (string, string) {
 	t.Helper()
 	ctx := context.Background()

@@ -1,7 +1,5 @@
 // Package cachetest 提供测试用的内存 cache.Store 实现。
-//
-// 生产的唯一后端是 Redis；这里只放一个最小 map 实现，
-// 让不连 Redis 的单测也能覆盖 Typed、失效路径等纯逻辑。
+// 最小 map 实现，让不连 Redis 的单测也能覆盖 Typed、失效路径等纯逻辑。
 package cachetest
 
 import (

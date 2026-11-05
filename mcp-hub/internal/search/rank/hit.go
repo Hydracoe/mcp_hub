@@ -39,9 +39,7 @@ func SortHits(hits []Hit) {
 }
 
 // TopK 返回 hits 中最优的 k 条（顺序同 SortHits），不修改入参。
-//
-// 用大小为 k 的最小堆做选择，复杂度 O(n log k)：一次检索可能命中上千条，
-// 而调用方只要前几十条，为这个场景排序全部命中是白做功。
+// 用大小为 k 的最小堆做选择，复杂度 O(n log k)，避免为前几十条排序全部命中。
 // k <= 0 按字面返回 nil —— "要 0 条"就是 0 条，不替换成某个默认条数。
 func TopK(hits []Hit, k int) []Hit {
 	if k <= 0 || len(hits) == 0 {

@@ -38,13 +38,9 @@ func (r categoryRow) toCategory() Category {
 	}
 }
 
-// Category 是 categories 表的一行（领域形态）。
-//
-// 单值：一个 server 至多属于一个分类（servers.category_id），多标签由
-// servers.tags 承担，因此没有关联表。
-// Name 与 Slug 都是必填且各自全局唯一：Name 是中文名给人看（列表、下拉、
-// 检索语料）；Slug 是英文名给机器用（筛选参数、工具名前缀段），限定
-// [a-z0-9-]。两者之间不做任何转换——填错一个就报错，不替用户猜。
+// Category 是 categories 表的一行（领域形态）。单值：一个 server 至多属于一个分类
+// （servers.category_id），多标签由 servers.tags 承担。Name 与 Slug 都必填且各自全局唯一：
+// Name 是中文展示名，Slug 限定 [a-z0-9-] 给机器用；两者之间不做任何转换——填错就报错，不替用户猜。
 type Category struct {
 	ID          string
 	Name        string
@@ -60,20 +56,12 @@ type Category struct {
 const maxCategorySlugLen = 32
 
 // categorySlugPattern 约束分类英文名的形态：小写字母数字，单词之间单个连字符。
-//
-// 字符集与 servers.key 同源（都进标识符），这里额外要求全小写——
-// 英文名是分类的稳定标识，不允许只用大小写区分两个分类。
+// 字符集与 servers.key 同源（都进标识符）；全小写要求保证不能只用大小写区分两个分类。
 var categorySlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
-// checkCategorySlug 校验英文名，合法则原样返回。
-//
-// 刻意**不做任何改写**：不合规就报错，让用户看见自己填的东西哪里不对。
-// 旧实现会把 "Weather" 折成 weather、"web search" 折成 web-search、
-// 丢掉中文字符、静默截断到 32 字符，结果是"保存成功了，但存下来的
-// 不是我填的那个值"——用户下一次照着输入框里的内容再改，反而改不动，
-// 且两个不同的输入会撞成同一个 slug，冲突报错指向一个看不懂的名字。
-//
-// 只去掉首尾空白：那是看不见的输入噪声，不是内容。
+// checkCategorySlug 校验英文名，合法则原样返回。刻意不做任何改写：不合规就报错。
+// 静默改写会出现"保存成功但存下来的不是用户填的值"，且不同输入会撞成同一 slug；
+// 只去掉首尾空白——那是看不见的输入噪声，不是内容。
 func checkCategorySlug(raw string) (string, error) {
 	slug := strings.TrimSpace(raw)
 	switch {
@@ -162,8 +150,7 @@ func (s *Store) Update(ctx context.Context, id, name, slug, description string) 
 		})
 	if res.Error != nil {
 		// 预检与 UPDATE 之间有并发窗口：别的请求可能刚占用了这个名字。
-		// 重查一次占用情况，把撞车翻译成与预检同样的领域错误（上层映射
-		// 409），而不是让它作为未知错误冒出去变成 500。
+		// 重查后把撞车翻译成与预检同样的领域错误（上层映射 409），不让它变成 500。
 		if storeutil.IsUniqueViolation(res.Error) {
 			if err := s.checkNameFree(ctx, name, id); err != nil {
 				return Category{}, err
@@ -171,8 +158,7 @@ func (s *Store) Update(ctx context.Context, id, name, slug, description string) 
 			if err := s.checkSlugFree(ctx, slug, id); err != nil {
 				return Category{}, err
 			}
-			// 占用方在这两次重查之间又放开了：照样按撞车报，
-			// 让用户重试一次即可，不做无谓的重试循环。
+			// 占用方此时又放开了：仍按撞车报，让用户重试一次即可。
 			return Category{}, fmt.Errorf("%w: %q", ErrCategoryTaken, name)
 		}
 		return Category{}, fmt.Errorf("更新分类失败: %w", res.Error)
@@ -224,18 +210,9 @@ func (s *Store) List(ctx context.Context) ([]Category, error) {
 	return out, nil
 }
 
-// Delete 删除分类。分类下还挂着 server 时**拒绝删除**（ErrCategoryInUse）。
-//
-// 早先的实现会把引用它的 server 的 category_id 置空再删分类。那是一次
-// 静默的批量改动：用户点的是"删掉这个分类"，实际结果却是"这个分类下的
-// 12 个 server 一起变成未分类"——多出来的改动在界面上只表现为若干行
-// 突然空掉的分类列，没人会把它和刚才那次点击联系起来。要删，先显式把
-// server 改归别的分类或删掉它们。
-//
-// 判空与删除写在**同一条语句**里（NOT EXISTS 子查询），不是先查后删：
-// 两步之间有窗口，会删掉一个刚被挂上 server 的分类，留下指向不存在
-// 分类的 category_id。category_id 没有外键（空串是合法值，"未分类"
-// 装不进 FK），这层约束只能落在应用里。
+// Delete 删除分类。分类下还挂着 server 时拒绝删除（ErrCategoryInUse），
+// 不做静默的批量改归类的副作用。判空与删除写在同一条语句里（NOT EXISTS 子查询），
+// 避免先查后删的窗口；category_id 没有外键（空串是合法值），这层约束只能落在应用里。
 func (s *Store) Delete(ctx context.Context, id string) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res := tx.Where("id = ?", id).
@@ -274,8 +251,7 @@ func (s *Store) checkNameFree(ctx context.Context, name, selfID string) error {
 	return nil
 }
 
-// checkSlugFree 预检分类英文名是否被占用。
-// 英文名已不可能为空（checkCategorySlug 拦在前面），空值分支只是兜底：
+// checkSlugFree 预检分类英文名是否被占用。空 slug 兜底放行：
 // 库里存量行可能留着空 slug，它们之间不算冲突。
 func (s *Store) checkSlugFree(ctx context.Context, slug, selfID string) error {
 	if slug == "" {
@@ -316,9 +292,8 @@ func (s *Store) serverCounts(ctx context.Context) (map[string]int, error) {
 	return out, nil
 }
 
-// toolCounts 返回分类 id → 工具数。
-// 取工具缓存的全量（含被过滤名单挡住的）："分类装了多少"与
-// 聚合层"此刻暴露几个"是两个口径，混用会让改过滤名单像删了工具。
+// toolCounts 返回分类 id → 工具数。取工具缓存的全量（含被过滤名单挡住的）：
+// "分类装了多少"与聚合层"此刻暴露几个"是两个口径，混用会让改过滤名单像删了工具。
 func (s *Store) toolCounts(ctx context.Context) (map[string]int, error) {
 	type row struct {
 		CategoryID string
